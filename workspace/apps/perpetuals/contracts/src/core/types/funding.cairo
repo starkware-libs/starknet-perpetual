@@ -195,5 +195,16 @@ mod tests {
         let balance = BalanceTrait::new(-1_000_000_001);
         let result: i64 = index.mul(balance).into();
         assert!(result == -500_000_000, "Expected -500000000, got {}", result);
+
+        // extended contributed test
+        let index = FundingIndex { value: 38654705 };
+        let balance = BalanceTrait::new(225000000);
+        let result: i64 = index.mul(balance).into();
+        assert!(result == 2024999, "Expected 2024999, got {}", result);
+
+        let index = FundingIndex { value: 38654705 };
+        let balance = BalanceTrait::new(-225000000);
+        let result: i64 = index.mul(balance).into();
+        assert!(result == -2024999, "Expected 2024999, got {}", result);
     }
 }
