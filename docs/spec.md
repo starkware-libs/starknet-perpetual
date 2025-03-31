@@ -287,7 +287,7 @@ $$ {TR}\_{new} \lt {TR\_{old}} $$
 
 checks if the deleverage is fair.
 
-$$ \frac{TV\_{new}-1e^{-6}USDC}{TR\_{new}} \leq \frac{TV}{TR}\_{old} \leq \frac{TV\_{new}}{TR}\_{new} $$
+$$ \frac{TV\_{new}-1e^{-6}USDC}{TR\_{new}} \leq \frac{TV}{TR}\_{old} \leq \frac{TV\_{new}}{{TR}\_{new}} $$
 
 Deleveragerer should be [healthy](#healthy) or [healthier](#is-healthier).
 Deleveragree should be ([healthy](#healthy) or [healthier](#is-healthier)) **and** [is fair deleverage](#is-fair-deleverage)
