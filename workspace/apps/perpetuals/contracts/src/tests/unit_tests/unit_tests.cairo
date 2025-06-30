@@ -1,6 +1,7 @@
 use core::num::traits::Zero;
 use perpetuals::core::components::assets::interface::{
-    IAssets, IAssetsSafeDispatcher, IAssetsSafeDispatcherTrait,
+    IAssets, IAssetsDispatcher, IAssetsDispatcherTrait, IAssetsSafeDispatcher,
+    IAssetsSafeDispatcherTrait,
 };
 use perpetuals::core::components::deposit::Deposit::deposit_hash;
 use perpetuals::core::components::deposit::interface::{
@@ -56,10 +57,10 @@ use starkware_utils::components::replaceability::interface::IReplaceable;
 use starkware_utils::components::request_approvals::interface::{IRequestApprovals, RequestStatus};
 use starkware_utils::components::roles::interface::IRoles;
 use starkware_utils::constants::{HOUR, MAX_U128};
-use starkware_utils::iterable_map::*;
+use starkware_utils::hash::message_hash::OffchainMessageHash;
 use starkware_utils::math::abs::Abs;
-use starkware_utils::message_hash::OffchainMessageHash;
-use starkware_utils::types::time::time::{Time, Timestamp};
+use starkware_utils::storage::iterable_map::*;
+use starkware_utils::time::time::{Time, Timestamp};
 use starkware_utils_testing::test_utils::{
     Deployable, TokenTrait, assert_panic_with_error, assert_panic_with_felt_error,
     cheat_caller_address_once,
@@ -410,6 +411,301 @@ fn test_expiration_validation() {
             salt: withdraw_args.salt,
         );
     assert_panic_with_felt_error(:result, expected_error: WITHDRAW_EXPIRED);
+}
+
+#[test]
+#[feature("safe_dispatcher")]
+fn test_signature_validation() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+
+    let dispatcher = ICoreSafeDispatcher { contract_address };
+    let asset_dispatcher = IAssetsDispatcher { contract_address };
+    let deposit_dispatcher = IDepositDispatcher { contract_address };
+    let position_dispatcher = IPositionsDispatcher { contract_address };
+
+    let user_a: User = Default::default();
+    let user_b = UserTrait::new(position_id: POSITION_ID_2, key_pair: KEY_PAIR_2());
+    let collateral_id = cfg.collateral_cfg.collateral_id;
+    let synthetic_id_1 = SYNTHETIC_ASSET_ID_1();
+    let synthetic_id_2 = SYNTHETIC_ASSET_ID_2();
+
+    let risk_factor_first_tier_boundary = MAX_U128;
+    let risk_factor_tier_size = 1;
+    let risk_factor_tiers = array![10].span();
+    let quorum = 1_u8;
+    let resolution_factor = 2_000_000_000;
+
+    let oracle_price: u128 = ORACLE_PRICE;
+    let asset_name = 'ASSET_NAME';
+    let oracle1_name = 'ORCL1';
+    let oracle1 = Oracle { oracle_name: oracle1_name, asset_name, key_pair: KEY_PAIR_1() };
+    let old_time: u64 = Time::now().into();
+    let new_time = Time::now().add(delta: MAX_ORACLE_PRICE_VALIDITY);
+    start_cheat_block_timestamp_global(block_timestamp: new_time.into());
+
+    // Add synthetic assets.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    asset_dispatcher
+        .add_synthetic_asset(
+            asset_id: synthetic_id_1,
+            :risk_factor_tiers,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+            :quorum,
+            :resolution_factor,
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    asset_dispatcher
+        .add_synthetic_asset(
+            asset_id: synthetic_id_2,
+            :risk_factor_tiers,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+            :quorum,
+            :resolution_factor,
+        );
+
+    // Add to oracle.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    asset_dispatcher
+        .add_oracle_to_asset(
+            asset_id: synthetic_id_1,
+            oracle_public_key: oracle1.key_pair.public_key,
+            oracle_name: oracle1_name,
+            :asset_name,
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    asset_dispatcher
+        .add_oracle_to_asset(
+            asset_id: synthetic_id_2,
+            oracle_public_key: oracle1.key_pair.public_key,
+            oracle_name: oracle1_name,
+            :asset_name,
+        );
+
+    // Activate synthetic assets.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    asset_dispatcher
+        .price_tick(
+            operator_nonce: 0,
+            asset_id: synthetic_id_1,
+            :oracle_price,
+            signed_prices: [
+                oracle1.get_signed_price(:oracle_price, timestamp: old_time.try_into().unwrap())
+            ]
+                .span(),
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    asset_dispatcher
+        .price_tick(
+            operator_nonce: 1,
+            asset_id: synthetic_id_2,
+            :oracle_price,
+            signed_prices: [
+                oracle1.get_signed_price(:oracle_price, timestamp: old_time.try_into().unwrap())
+            ]
+                .span(),
+        );
+
+    // Add positions, so signatures can be checked.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    position_dispatcher
+        .new_position(
+            operator_nonce: 2,
+            position_id: POSITION_ID_1,
+            owner_public_key: KEY_PAIR_1().public_key,
+            owner_account: Zero::zero(),
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    position_dispatcher
+        .new_position(
+            operator_nonce: 3,
+            position_id: POSITION_ID_2,
+            owner_public_key: KEY_PAIR_2().public_key,
+            owner_account: Zero::zero(),
+        );
+
+    // Deposit money for users.
+    let amount = 1000_u64;
+    token_state.fund(recipient: user_a.address, amount: USER_INIT_BALANCE.try_into().unwrap());
+    token_state.fund(recipient: user_b.address, amount: USER_INIT_BALANCE.try_into().unwrap());
+    token_state
+        .approve(
+            owner: user_a.address,
+            spender: contract_address,
+            amount: amount.into() * cfg.collateral_cfg.quantum.into(),
+        );
+    token_state
+        .approve(
+            owner: user_b.address,
+            spender: contract_address,
+            amount: amount.into() * cfg.collateral_cfg.quantum.into(),
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: user_a.address);
+    deposit_dispatcher
+        .deposit(
+            position_id: user_a.position_id, quantized_amount: amount, salt: user_a.salt_counter,
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    deposit_dispatcher
+        .process_deposit(
+            operator_nonce: 4,
+            depositor: user_a.address,
+            position_id: user_a.position_id,
+            quantized_amount: amount,
+            salt: user_a.salt_counter,
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: user_b.address);
+    deposit_dispatcher
+        .deposit(
+            position_id: user_b.position_id, quantized_amount: amount, salt: user_b.salt_counter,
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    deposit_dispatcher
+        .process_deposit(
+            operator_nonce: 5,
+            depositor: user_b.address,
+            position_id: user_b.position_id,
+            quantized_amount: amount,
+            salt: user_b.salt_counter,
+        );
+
+    // Build orders.
+    let mut order_a = Order {
+        position_id: POSITION_ID_1,
+        base_asset_id: synthetic_id_1,
+        base_amount: 1,
+        quote_asset_id: collateral_id,
+        quote_amount: -1,
+        fee_asset_id: collateral_id,
+        fee_amount: 0,
+        expiration: Time::now(),
+        salt: 0,
+    };
+
+    let mut order_b = Order {
+        position_id: POSITION_ID_2,
+        base_asset_id: synthetic_id_1,
+        base_amount: -1,
+        quote_asset_id: collateral_id,
+        quote_amount: 1,
+        fee_asset_id: collateral_id,
+        fee_amount: 0,
+        expiration: Time::now(),
+        salt: 0,
+    };
+
+    // Test:
+
+    // Send empty signature.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    let result = dispatcher
+        .trade(
+            operator_nonce: 6,
+            signature_a: array![].span(),
+            signature_b: array![].span(),
+            :order_a,
+            :order_b,
+            actual_amount_base_a: 1,
+            actual_amount_quote_a: -1,
+            actual_fee_a: 0,
+            actual_fee_b: 0,
+        );
+    assert_panic_with_felt_error(:result, expected_error: 'INVALID_STARK_KEY_SIGNATURE');
+
+    let hash_a = order_a.get_message_hash(user_a.get_public_key());
+    let signature_a = user_a.sign_message(hash_a);
+    let hash_b = order_b.get_message_hash(user_b.get_public_key());
+    let signature_b = user_b.sign_message(hash_b);
+
+    // Send Correct signature.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    dispatcher
+        .trade(
+            operator_nonce: 7,
+            :signature_a,
+            :signature_b,
+            :order_a,
+            :order_b,
+            actual_amount_base_a: 1,
+            actual_amount_quote_a: -1,
+            actual_fee_a: 0,
+            actual_fee_b: 0,
+        )
+        .unwrap();
+
+    let hash_a = order_a.get_message_hash(KEY_PAIR_2().public_key);
+    let signature_a = user_a.sign_message(hash_a);
+
+    // Send a signature created by different key.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    let result = dispatcher
+        .trade(
+            operator_nonce: 8,
+            :signature_a,
+            :signature_b,
+            :order_a,
+            :order_b,
+            actual_amount_base_a: 1,
+            actual_amount_quote_a: -1,
+            actual_fee_a: 0,
+            actual_fee_b: 0,
+        );
+    assert_panic_with_felt_error(:result, expected_error: 'INVALID_STARK_KEY_SIGNATURE');
+
+    let hash_a = order_a.get_message_hash(user_a.get_public_key());
+    let signature_a = user_a.sign_message(hash_a);
+    order_a.base_asset_id = synthetic_id_2;
+    order_b.base_asset_id = synthetic_id_2;
+
+    // Send different order message, than the signed one.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    let result = dispatcher
+        .trade(
+            operator_nonce: 9,
+            :signature_a,
+            :signature_b,
+            :order_a,
+            :order_b,
+            actual_amount_base_a: 1,
+            actual_amount_quote_a: -1,
+            actual_fee_a: 0,
+            actual_fee_b: 0,
+        );
+    assert_panic_with_felt_error(:result, expected_error: 'INVALID_STARK_KEY_SIGNATURE');
+
+    // Revert the previous change.
+    order_a.base_asset_id = synthetic_id_1;
+    order_b.base_asset_id = synthetic_id_1;
+    // Change the salt.
+    order_a.salt = 123;
+
+    // Send different order message, than the signed one.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    let result = dispatcher
+        .trade(
+            operator_nonce: 10,
+            :signature_a,
+            :signature_b,
+            :order_a,
+            :order_b,
+            actual_amount_base_a: 1,
+            actual_amount_quote_a: -1,
+            actual_fee_a: 0,
+            actual_fee_b: 0,
+        );
+    assert_panic_with_felt_error(:result, expected_error: 'INVALID_STARK_KEY_SIGNATURE');
 }
 
 // New position tests.
