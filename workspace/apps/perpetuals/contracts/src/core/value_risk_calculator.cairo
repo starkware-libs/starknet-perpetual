@@ -1,16 +1,14 @@
-use perpetuals::core::types::price::AssetValue;
 use core::num::traits::{One, Zero};
 use core::panics::panic_with_byte_array;
 use perpetuals::core::errors::{
-    position_not_deleveragable, position_not_fair_deleverage, position_not_healthy_nor_healthier, position_not_liquidatable,
+    position_not_deleveragable, position_not_fair_deleverage, position_not_healthy_nor_healthier,
+    position_not_liquidatable,
 };
 use perpetuals::core::types::asset::synthetic::SyntheticAsset;
 use perpetuals::core::types::balance::{Balance, BalanceDiff};
 use perpetuals::core::types::position::{PositionDiffEnriched, PositionId};
-use perpetuals::core::types::price::{Price, PriceMulTrait};
-use perpetuals::core::types::risk_factor::RiskFactorTrait;
-use perpetuals::core::types::risk_factor::RiskFactorMulTrait;
-use perpetuals::core::types::risk_factor::AssetRisk;
+use perpetuals::core::types::price::{AssetValue, Price, PriceMulTrait};
+use perpetuals::core::types::risk_factor::{AssetRisk, RiskFactorMulTrait, RiskFactorTrait};
 use starkware_utils::errors::assert_with_byte_array;
 use starkware_utils::math::abs::Abs;
 use starkware_utils::math::fraction::FractionTrait;
@@ -21,10 +19,12 @@ use starkware_utils::math::fraction::FractionTrait;
 const EPSILON: i128 = 1_i128;
 
 
+
+
 /// Represents the state of a position based on its total value and total risk.
 /// - A position is **Deleveragable** (and also **Liquidatable**) if its total value is negative.
 /// - A position is **Liquidatable** if its total value is less than its total risk.
-/// - Otherwise, the position is considered **Healthy**.
+/// - Otherwise, the position is considered **Healthy**.clear
 #[derive(Copy, Drop, Debug, PartialEq, Serde)]
 pub enum PositionState {
     Healthy,
@@ -88,7 +88,11 @@ pub fn evaluate_position(
     get_position_state(position_tvtr: tvtr)
 }
 
-pub fn assert_healthy_or_healthier(position_id: PositionId, tvtr: TVTRChange) {
+pub fn assert_healthy_or_healthier(
+    position_id: PositionId,
+    tvtr: TVTRChange,
+    allowed_bps_slippage: u16,
+) {
     let position_state_after_change = get_position_state(position_tvtr: tvtr.after);
     if position_state_after_change == PositionState::Healthy {
         // If the position is healthy we can return.
@@ -109,14 +113,23 @@ pub fn assert_healthy_or_healthier(position_id: PositionId, tvtr: TVTRChange) {
         panic_with_byte_array(@position_not_healthy_nor_healthier(:position_id, :tvtr));
     }
     let before_ratio = FractionTrait::new(tvtr.before.total_value, tvtr.before.total_risk);
+
+     //if tv <0 we want to increase tr so that tv/tr is a smaller negative number in absolute value
+    let (nominator, denominator) = if (tvtr.after.total_value < 0) {
+        (10000_u128 + allowed_bps_slippage.into(), 10000_u128)
+    } else {
+        (10000_u128, 10000_u128 + allowed_bps_slippage.into())
+    };
+
+    let scaled_tr: u128 = (tvtr.after.total_risk.into() * nominator) / denominator;
+
     let after_ratio = FractionTrait::new(
-        tvtr.after.total_value,
-        // allow negative 1bps change
-        max((tvtr.after.total_risk * 1000) / 1001, 1)
-     );
+        tvtr.after.total_value, // allow negative 1bps change
+        max(scaled_tr, 1_u128),
+    );
 
     assert_with_byte_array(
-        after_ratio >=  before_ratio, position_not_healthy_nor_healthier(:position_id, :tvtr),
+        after_ratio >= before_ratio, position_not_healthy_nor_healthier(:position_id, :tvtr),
     );
 }
 
@@ -142,7 +155,11 @@ pub fn liquidated_position_validations(
             || position_state_before_change == PositionState::Deleveragable,
         position_not_liquidatable(:position_id, :tvtr),
     );
-    assert_healthy_or_healthier(:position_id, :tvtr);
+    assert_healthy_or_healthier(
+        :position_id,
+        :tvtr,
+        allowed_bps_slippage: 10,
+    );
 }
 
 pub fn deleveraged_position_validations(
@@ -158,7 +175,11 @@ pub fn deleveraged_position_validations(
         position_not_deleveragable(:position_id, :tvtr),
     );
 
-    assert_healthy_or_healthier(:position_id, :tvtr);
+    assert_healthy_or_healthier(
+        :position_id,
+        :tvtr,
+        allowed_bps_slippage: 10,
+    );
     assert_with_byte_array(
         is_fair_deleverage(before: tvtr.before, after: tvtr.after),
         position_not_fair_deleverage(:position_id, :tvtr),
@@ -230,20 +251,24 @@ pub fn calculate_position_tvtr_change(
     total_value_after += price.mul(rhs: position_diff_enriched.collateral_enriched.after);
 
     TVTRChange {
-        before: PositionTVTR { total_value: total_value_before.into(), total_risk: total_risk_before.into() },
-        after: PositionTVTR { total_value: total_value_after.into(), total_risk: total_risk_after.into() },
+        before: PositionTVTR {
+            total_value: total_value_before.into(), total_risk: total_risk_before.into(),
+        },
+        after: PositionTVTR {
+            total_value: total_value_after.into(), total_risk: total_risk_after.into(),
+        },
     }
 }
 
 
 #[cfg(test)]
 mod tests {
-use perpetuals::core::types::asset::synthetic::{SyntheticAsset, SyntheticDiffEnriched};
+    use perpetuals::core::types::asset::synthetic::{SyntheticAsset, SyntheticDiffEnriched};
     use perpetuals::core::types::asset::{AssetId, AssetIdTrait};
     use perpetuals::core::types::balance::BalanceTrait;
+    use perpetuals::core::types::funding::FundingIndex;
     use perpetuals::core::types::price::{Price, PriceTrait};
     use perpetuals::core::types::risk_factor::RiskFactor;
-    use perpetuals::core::types::funding::FundingIndex;
     use super::*;
 
 
@@ -345,20 +370,34 @@ use perpetuals::core::types::asset::synthetic::{SyntheticAsset, SyntheticDiffEnr
     }
 
     #[test]
-    fn test_assert_healthy_or_healthier_negative_1bps_change() {
+    fn test_assert_healthy_or_healthier_accepts_less_than_negative_10bps_change() {
         // Create a position with a single asset entry.
-        let position_tvtr_change = TVTRChange{
-             before: PositionTVTR{
-                  total_value: 15000,
-                  total_risk: 20000,
-             },
-             after: PositionTVTR{
-                  total_value: 7499,
-                  total_risk: 10000,
-             },
+        let position_tvtr_change = TVTRChange {
+            before: PositionTVTR { total_value: 15000, total_risk: 20000 },
+            after: PositionTVTR { total_value: 7499, total_risk: 10000 },
         };
 
-        assert_healthy_or_healthier(PositionId{ value: 42 },position_tvtr_change)
+        assert_healthy_or_healthier(
+            PositionId { value: 42 },
+            position_tvtr_change,
+            allowed_bps_slippage: 10,
+        );
+    }
+
+    #[test]
+    #[should_panic(expected: "POSITION_NOT_HEALTHY_NOR_HEALTHIER position_id: PositionId { value: 42 } TV before 15000, TR before 20000, TV after 7400, TR after 10000")]
+    fn test_assert_healthy_or_healthier_rejects_more_than_negative_10bps_change() {
+        // Create a position with a single asset entry.
+        let position_tvtr_change = TVTRChange {
+            before: PositionTVTR { total_value: 15000, total_risk: 20000 },
+            after: PositionTVTR { total_value: 7400, total_risk: 10000 },
+        };
+
+        assert_healthy_or_healthier(
+                PositionId { value: 42 },
+                position_tvtr_change,
+                allowed_bps_slippage: 10,
+        );
     }
 
     /// Test the `calculate_position_tvtr_change` function for the case where the balance is

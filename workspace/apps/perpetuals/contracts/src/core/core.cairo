@@ -321,7 +321,7 @@ pub mod Core {
                     position_diff: PositionDiff {
                         collateral_diff: 0_i64.into(), synthetic_diff: Option::None,
                     },
-                );                
+                );
             /// Validations - Fundamentals:
             let position_diff = PositionDiff {
                 collateral_diff: -amount.into(), synthetic_diff: Option::None,
@@ -1178,7 +1178,7 @@ pub mod Core {
             let tvtr = calculate_position_tvtr_change(
                 :unchanged_synthetics, :position_diff_enriched,
             );
-            assert_healthy_or_healthier(:position_id, :tvtr);
+            assert_healthy_or_healthier(:position_id, :tvtr, allowed_bps_slippage: 0);
         }
 
         fn _validate_liquidated_position(
