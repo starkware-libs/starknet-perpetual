@@ -221,6 +221,39 @@ pub fn calculate_position_tvtr_change(
     }
 }
 
+pub fn calculate_position_tvtr_change_v2(
+    x: PositionTVTR, position_diff_enriched: PositionDiffEnriched,
+) -> TVTRChange {
+    let mut total_value_before = x.total_value;
+    let mut total_risk_before = x.total_risk;
+    let mut total_value_after = x.total_value;
+    let mut total_risk_after = x.total_risk;
+
+    if let Option::Some(asset_diff) = position_diff_enriched.synthetic_enriched {
+        // asset_value is in units of 10^-6 USD.
+        let asset_value_before = asset_diff.price.mul(rhs: asset_diff.balance_before);
+        let asset_value_after = asset_diff.price.mul(rhs: asset_diff.balance_after);
+
+        total_value_before += asset_value_before;
+        total_value_after += asset_value_after;
+
+        total_risk_before += asset_diff.risk_factor_before.mul(asset_value_before.abs());
+        total_risk_after += asset_diff.risk_factor_after.mul(asset_value_after.abs());
+    }
+
+    // Collateral price is always "One" in Perps - "One" is 10^-6 USD which means 2^28 same as the
+    // PRICE_SCALE.
+    let price: Price = One::one();
+    // asset_value is in units of 10^-6 USD.
+    total_value_before += price.mul(rhs: position_diff_enriched.collateral_enriched.before);
+    total_value_after += price.mul(rhs: position_diff_enriched.collateral_enriched.after);
+
+    TVTRChange {
+        before: PositionTVTR { total_value: total_value_before, total_risk: total_risk_before },
+        after: PositionTVTR { total_value: total_value_after, total_risk: total_risk_after },
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

@@ -65,6 +65,7 @@ pub mod Core {
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
     use starkware_utils::time::time::{Time, TimeDelta, Timestamp, validate_expiration};
+    use crate::core::value_risk_calculator::calculate_position_tvtr_change_v2;
 
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
     component!(path: OperatorNonceComponent, storage: operator_nonce, event: OperatorNonceEvent);
@@ -335,6 +336,10 @@ pub mod Core {
                 );
         }
 
+        fn update_before(ref self: ContractState, position_id: PositionId) {
+            self.positions.update_funding(:position_id);
+        }
+
         /// Executes a transfer request.
         ///
         /// Validations:
@@ -479,8 +484,11 @@ pub mod Core {
             actual_fee_b: u64,
         ) {
             self.pausable.assert_not_paused();
+            // 40_000
             self.operator_nonce.use_checked_nonce(:operator_nonce);
+            // 40_000
             self.assets.validate_assets_integrity();
+            // -- 200_000
 
             self
                 ._validate_trade(
@@ -491,13 +499,16 @@ pub mod Core {
                     :actual_fee_a,
                     :actual_fee_b,
                 );
+            //--- 3_520_000
 
             let position_id_a = order_a.position_id;
             let position_id_b = order_b.position_id;
 
+            // each get_postion snapshot is 40_000
             let position_a = self.positions.get_position_snapshot(position_id_a);
             let position_b = self.positions.get_position_snapshot(position_id_b);
             // Signatures validation:
+            // each validate is 160_000
             let hash_a = self
                 ._validate_order_signature(
                     public_key: position_a.get_owner_public_key(),
@@ -548,30 +559,34 @@ pub mod Core {
             };
 
             /// Validations - Fundamentals:
+            /// 2_600_000 _> 2_120_000
             self
                 ._validate_healthy_or_healthier_position(
                     position_id: order_a.position_id,
                     position: position_a,
                     position_diff: position_diff_a,
                 );
+            // 17_360_000 -> 14_160_000
             self
                 ._validate_healthy_or_healthier_position(
                     position_id: order_b.position_id,
                     position: position_b,
                     position_diff: position_diff_b,
                 );
-
             // Apply Diffs.
+            // 600_000 and 608 data
             self
                 .positions
                 .apply_diff(position_id: order_a.position_id, position_diff: position_diff_a);
 
+            // this 640_000 and 146 data
             self
                 .positions
                 .apply_diff(position_id: order_b.position_id, position_diff: position_diff_b);
-
+            // this 440_000 and 64 data
             self.positions.apply_diff(position_id: FEE_POSITION, position_diff: fee_position_diff);
 
+            // emit event is 173_120
             self
                 .emit(
                     events::Trade {
@@ -1156,6 +1171,25 @@ pub mod Core {
             assert_healthy_or_healthier(:position_id, :tvtr);
         }
 
+
+        fn _validate_healthy_or_healthier_position_v2(
+            self: @ContractState,
+            position_id: PositionId,
+            position: StoragePath<Position>,
+            position_diff: PositionDiff,
+        ) { // 9_880_000(b) --- 880_000(a) 
+            // 12_720_000(b)
+            let (tvtr, delta) = self
+                .positions
+                .get_position_unchanged_synthetics_v2(:position, :position_diff);
+            // 6_400_000(b) --- 1_480_000(a)
+            let position_diff_enriched = self
+                .enrich_position_diff_v2(:position, :position_diff, :delta);
+            // 1_080_000(b) --- 240_000(a)
+            let tvtr = calculate_position_tvtr_change_v2(x: tvtr, :position_diff_enriched);
+            assert_healthy_or_healthier(:position_id, :tvtr);
+        }
+
         fn _validate_liquidated_position(
             ref self: ContractState,
             position_id: PositionId,
@@ -1230,6 +1264,45 @@ pub mod Core {
             };
 
             let before = self.positions.get_collateral_provisional_balance(:position);
+            let after = before + position_diff.collateral_diff;
+            let collateral_enriched = BalanceDiff { before: before, after };
+
+            PositionDiffEnriched { collateral_enriched, synthetic_enriched }
+        }
+
+        fn enrich_position_diff_v2(
+            self: @ContractState,
+            position: StoragePath<Position>,
+            position_diff: PositionDiff,
+            delta: Balance,
+        ) -> PositionDiffEnriched {
+            let synthetic_enriched = if let Option::Some((synthetic_id, diff)) = position_diff
+                .synthetic_diff {
+                let balance_before = self.positions.get_synthetic_balance(:position, :synthetic_id);
+                let balance_after = balance_before + diff;
+                let price = self.assets.get_synthetic_price(synthetic_id);
+                let risk_factor_before = self
+                    .assets
+                    .get_synthetic_risk_factor(synthetic_id, balance_before, price);
+                let risk_factor_after = self
+                    .assets
+                    .get_synthetic_risk_factor(synthetic_id, balance_after, price);
+
+                let asset_diff_enriched = SyntheticDiffEnriched {
+                    asset_id: synthetic_id,
+                    balance_before,
+                    balance_after,
+                    price,
+                    risk_factor_before,
+                    risk_factor_after,
+                };
+                Option::Some(asset_diff_enriched)
+            } else {
+                Option::None
+            };
+            let collateral_provisional_balance = position.collateral_balance.read();
+
+            let before = collateral_provisional_balance + delta;
             let after = before + position_diff.collateral_diff;
             let collateral_enriched = BalanceDiff { before: before, after };
 

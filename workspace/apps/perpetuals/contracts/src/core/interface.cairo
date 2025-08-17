@@ -26,6 +26,7 @@ pub trait ICore<TContractState> {
         expiration: Timestamp,
         salt: felt252,
     );
+    fn update_before(ref self: TContractState, position_id: PositionId);
     fn transfer_request(
         ref self: TContractState,
         signature: Signature,

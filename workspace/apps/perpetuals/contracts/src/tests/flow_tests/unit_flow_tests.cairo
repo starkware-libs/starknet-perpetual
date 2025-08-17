@@ -2283,3 +2283,118 @@ fn test_funding_index_rounding() {
     state.facade.validate_collateral_balance(user_1.position_id, 1000_i64.into());
     state.facade.validate_collateral_balance(user_2.position_id, 999_i64.into());
 }
+use perpetuals::core::core::Core::{InternalCoreFunctions, SNIP12MetadataImpl};
+use perpetuals::core::interface::{ICoreSafeDispatcher, ICoreSafeDispatcherTrait};
+use perpetuals::core::types::order::Order;
+use perpetuals::core::types::position::PositionId;
+use perpetuals::tests::constants::*;
+use snforge_std::DeclareResultTrait;
+use snforge_std::signature::stark_curve::StarkCurveSignerImpl;
+use starknet::ContractAddress;
+use starkware_utils::components::replaceability::interface::{
+    IReplaceableDispatcher, IReplaceableDispatcherTrait, ImplementationData,
+};
+use starkware_utils::storage::iterable_map::*;
+use starkware_utils::time::time::Timestamp;
+use starkware_utils_testing::test_utils::cheat_caller_address_once;
+
+
+#[test]
+#[feature("safe_dispatcher")]
+#[fork(
+    url: "wip",
+    block_number: 1674796,
+)]
+fn test_profile() {
+    let caller_address: ContractAddress =
+        0x048ddc53f41523d2a6b40c3dff7f69f4bbac799cd8b2e3fc50d3de1d4119441f
+        .try_into()
+        .unwrap();
+
+    let contract_address: ContractAddress =
+        0x062da0780fae50d68cecaa5a051606dc21217ba290969b302db4dd99d2e9b470
+        .try_into()
+        .unwrap();
+    let dispatcher = ICoreSafeDispatcher { contract_address };
+
+    // Replace class hash:
+    let core_contract = (*snforge_std::declare("Core").unwrap().contract_class()).class_hash;
+
+    let re = IReplaceableDispatcher { contract_address };
+    let implementation_data = ImplementationData {
+        impl_hash: core_contract, eic_data: Option::None, final: false,
+    };
+    let deployer: ContractAddress =
+        0x0522e5ba327bfbd85138b29bde060a5340a460706b00ae2e10e6d2a16fbf8c57
+        .try_into()
+        .unwrap();
+    cheat_caller_address_once(:contract_address, caller_address: deployer);
+    re.add_new_implementation(:implementation_data);
+    cheat_caller_address_once(:contract_address, caller_address: deployer);
+    re.replace_to(:implementation_data);
+
+    cheat_caller_address_once(:contract_address, :caller_address);
+    let operator_nonce: u64 = 0x1d580;
+    let signature_a = array![
+        0x41e67f516c3105943e86e73a60e93774da5a38d75359fde9fb98d0a2610aeaf,
+        0x12afc2b2fdb8e2e390bfc7e514ec4e14bd0fb0afd6c1417702d5f20067f44ca,
+    ]
+        .span();
+    let signature_b = array![
+        0x75d9ec0f53b0ebec53f9287c4f9cdabd66c3a0c9386bc486341aa63a10eedc0,
+        0x6df8ed9af3723061acb299e1ded4a9cfdee0b638de9173973d08f425105f536,
+    ]
+        .span();
+    let order_a: Order = Order {
+        position_id: PositionId { value: 0x30d51.try_into().unwrap() },
+        base_asset_id: 0x5852502d3100000000000000000000.into(),
+        base_amount: 0x64.try_into().unwrap(),
+        quote_asset_id: 0x1.into(),
+        quote_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffe336209
+            .try_into()
+            .unwrap(),
+        fee_asset_id: 0x1.into(),
+        fee_amount: 0x1d7b.try_into().unwrap(),
+        expiration: Timestamp { seconds: 0x6919ba78.try_into().unwrap() },
+        salt: 0xb3934b5.into(),
+    };
+
+    let order_b: Order = Order {
+        position_id: PositionId { value: 0x1f4.try_into().unwrap() },
+        base_asset_id: 0x5852502d3100000000000000000000.into(),
+        base_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffffc0cf3
+            .try_into()
+            .unwrap(),
+        quote_asset_id: 0x1.into(),
+        quote_amount: 0x120e60ed78.try_into().unwrap(),
+        fee_asset_id: 0x1.into(),
+        fee_amount: 0x24faa1b.try_into().unwrap(),
+        expiration: Timestamp { seconds: 0x68a3059b.try_into().unwrap() },
+        salt: 0xd64a30e.into(),
+    };
+
+    let actual_amount_base_a: i64 = 0x64;
+    let actual_amount_quote_a: i64 =
+        0x800000000000010fffffffffffffffffffffffffffffffffffffffffe36d0f1
+        .try_into()
+        .unwrap();
+    let actual_fee_a: u64 = 0x1d42;
+    let actual_fee_b: u64 = 0x0;
+    // let x = dispatcher.update_before(position_id: order_a.position_id);
+    // let y = dispatcher.update_before(position_id: order_b.position_id);
+    // assert(x.is_ok() && y.is_ok(), 'Update before failed');
+
+    let trade_result = dispatcher
+        .trade(
+            :operator_nonce,
+            :signature_a,
+            :signature_b,
+            :order_a,
+            :order_b,
+            :actual_amount_base_a,
+            :actual_amount_quote_a,
+            :actual_fee_a,
+            :actual_fee_b,
+        );
+    assert(trade_result.is_ok(), 'Trade operation failed');
+}

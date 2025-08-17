@@ -1,6 +1,8 @@
 #[starknet::component]
 pub(crate) mod Positions {
-    use core::num::traits::Zero;
+    use starkware_utils::math::abs::Abs;
+use crate::core::types::risk_factor::RiskFactorTrait;
+use core::num::traits::Zero;
     use core::panic_with_felt252;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
@@ -46,6 +48,7 @@ pub(crate) mod Positions {
     };
     use starkware_utils::storage::utils::AddToStorage;
     use starkware_utils::time::time::{Timestamp, validate_expiration};
+    use crate::core::types::price::PriceMulTrait;
 
     pub const FEE_POSITION: PositionId = PositionId { value: 0 };
     pub const INSURANCE_FUND_POSITION: PositionId = PositionId { value: 1 };
@@ -385,6 +388,15 @@ pub(crate) mod Positions {
                 .write(insurance_fund_position_owner_public_key);
         }
 
+        fn update_funding(ref self: ComponentState<TContractState>, position_id: PositionId) {
+            let position_mut = self.get_position_mut(:position_id);
+
+            for (synthetic_id, _synthetic) in position_mut.synthetic_balance {
+                if let Option::Some(synthetic) = position_mut.synthetic_balance.read(synthetic_id) {
+                    position_mut.synthetic_balance.write(synthetic_id, synthetic);
+                }
+            }
+        }
         fn apply_diff(
             ref self: ComponentState<TContractState>,
             position_id: PositionId,
@@ -477,6 +489,51 @@ pub(crate) mod Positions {
                     .append(SyntheticAsset { id: synthetic_id, balance, price, risk_factor });
             }
             unchanged_synthetics.span()
+        }
+
+
+        /// Returns all assets from the position, excluding assets with zero balance
+        /// and those included in `position_diff`.
+        fn get_position_unchanged_synthetics_v2(
+            self: @ComponentState<TContractState>,
+            position: StoragePath<Position>,
+            position_diff: PositionDiff,
+        ) -> (PositionTVTR, Balance) {
+            let assets = get_dep_component!(self, Assets);
+            let mut unchanged_synthetics = array![];
+            let mut delta: Balance = 0_i64.into();
+            let mut total_value: i128 = 0;
+            let mut total_risk: u128 = 0;
+
+            let synthetic_diff_id = if let Option::Some((id, _)) = position_diff.synthetic_diff {
+                id
+            } else {
+                Default::default()
+            };
+
+            for (synthetic_id, synthetic) in position.synthetic_balance {
+                let balance = synthetic.balance;
+                if balance.is_zero() || synthetic_diff_id == synthetic_id {
+                    continue;
+                }
+                let price = assets.get_synthetic_price(synthetic_id);
+                let global_funding_index = assets.get_funding_index(synthetic_id);
+                delta +=
+                    calculate_funding(
+                        old_funding_index: synthetic.funding_index,
+                        new_funding_index: global_funding_index,
+                        balance: synthetic.balance,
+                    );
+
+                // 4_880_000(b)
+                let risk_factor = assets.get_synthetic_risk_factor(synthetic_id, balance, price);
+                let asset_value = price.mul(rhs: balance).into();
+                total_value += asset_value;
+                total_risk += risk_factor.mul(asset_value.abs());
+                unchanged_synthetics
+                    .append(SyntheticAsset { id: synthetic_id, balance, price, risk_factor });
+            }
+            (PositionTVTR { total_value: total_value, total_risk: total_risk }, delta)
         }
     }
 
