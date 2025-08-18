@@ -38,8 +38,9 @@ pub mod Core {
     use perpetuals::core::types::transfer::TransferArgs;
     use perpetuals::core::types::withdraw::WithdrawArgs;
     use perpetuals::core::value_risk_calculator::{
-        PositionTVTR, assert_healthy_or_healthier, calculate_position_tvtr_change,
-        deleveraged_position_validations, liquidated_position_validations,
+        PositionTVTR, assert_healthy_or_healthier, calculate_position_tvtr_before,
+        calculate_position_tvtr_change, deleveraged_position_validations,
+        liquidated_position_validations,
     };
     use starknet::ContractAddress;
     use starknet::event::EventEmitter;
@@ -1214,9 +1215,10 @@ pub mod Core {
                 .get_position_unchanged_synthetics(:position, :position_diff);
 
             let position_diff_enriched = self.enrich_position_diff(:position, :position_diff);
-            let tvtr = calculate_position_tvtr_change(
+            let tvtr_before = calculate_position_tvtr_before(
                 :unchanged_synthetics, :position_diff_enriched,
             );
+            let tvtr = calculate_position_tvtr_change(:tvtr_before, :position_diff_enriched);
             assert_healthy_or_healthier(:position_id, :tvtr);
             tvtr.after
         }
