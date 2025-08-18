@@ -541,6 +541,7 @@ mod tests {
     #[test]
     fn test_evaluate_position_empty_position_and_empty_diff() {
         // Create an empty position.
+        assert!(false);
 
         let evaluated_position = evaluate_position(
             unchanged_synthetics: array![].span(), collateral_balance: Zero::zero(),
