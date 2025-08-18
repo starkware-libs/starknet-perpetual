@@ -25,7 +25,7 @@ pub mod Core {
         TRANSFER_EXPIRED, WITHDRAW_EXPIRED, fulfillment_exceeded_err, order_expired_err,
     };
     use perpetuals::core::events;
-    use perpetuals::core::interface::ICore;
+    use perpetuals::core::interface::{ICore, Settlement};
     use perpetuals::core::types::asset::synthetic::SyntheticDiffEnriched;
     use perpetuals::core::types::asset::{AssetId, AssetStatus};
     use perpetuals::core::types::balance::{Balance, BalanceDiff};
@@ -441,6 +441,26 @@ pub mod Core {
                     },
                 );
         }
+        fn multi_trade(ref self: ContractState, operator_nonce: u64, trades: Span<Settlement>) {
+            self.pausable.assert_not_paused();
+            self.operator_nonce.use_checked_nonce(:operator_nonce);
+            self.assets.validate_assets_integrity();
+            for _trade in trades {
+                let trade = *_trade;
+                self
+                    ._execute_trade(
+                        signature_a: trade.signature_a,
+                        signature_b: trade.signature_b,
+                        order_a: trade.order_a,
+                        order_b: trade.order_b,
+                        actual_amount_base_a: trade.actual_amount_base_a,
+                        actual_amount_quote_a: trade.actual_amount_quote_a,
+                        actual_fee_a: trade.actual_fee_a,
+                        actual_fee_b: trade.actual_fee_b,
+                    );
+            }
+        }
+
 
         /// Executes a trade between two orders (Order A and Order B).
         ///
@@ -483,7 +503,9 @@ pub mod Core {
             self.assets.validate_assets_integrity();
 
             self
-                ._validate_trade(
+                ._execute_trade(
+                    :signature_a,
+                    :signature_b,
                     :order_a,
                     :order_b,
                     :actual_amount_base_a,
@@ -491,113 +513,8 @@ pub mod Core {
                     :actual_fee_a,
                     :actual_fee_b,
                 );
-
-            let position_id_a = order_a.position_id;
-            let position_id_b = order_b.position_id;
-
-            let position_a = self.positions.get_position_snapshot(position_id_a);
-            let position_b = self.positions.get_position_snapshot(position_id_b);
-            // Signatures validation:
-            let hash_a = self
-                ._validate_order_signature(
-                    public_key: position_a.get_owner_public_key(),
-                    order: order_a,
-                    signature: signature_a,
-                );
-            let hash_b = self
-                ._validate_order_signature(
-                    public_key: position_b.get_owner_public_key(),
-                    order: order_b,
-                    signature: signature_b,
-                );
-
-            // Validate and update fulfillments.
-            self
-                ._update_fulfillment(
-                    position_id: position_id_a,
-                    hash: hash_a,
-                    order_base_amount: order_a.base_amount,
-                    actual_base_amount: actual_amount_base_a,
-                );
-
-            self
-                ._update_fulfillment(
-                    position_id: position_id_b,
-                    hash: hash_b,
-                    order_base_amount: order_b.base_amount,
-                    // Passing the negative of actual amounts to `order_b` as it is linked to
-                    // `order_a`.
-                    actual_base_amount: -actual_amount_base_a,
-                );
-
-            /// Positions' Diffs:
-            let position_diff_a = PositionDiff {
-                collateral_diff: actual_amount_quote_a.into() - actual_fee_a.into(),
-                synthetic_diff: Option::Some((order_a.base_asset_id, actual_amount_base_a.into())),
-            };
-
-            // Passing the negative of actual amounts to order_b as it is linked to order_a.
-            let position_diff_b = PositionDiff {
-                collateral_diff: -actual_amount_quote_a.into() - actual_fee_b.into(),
-                synthetic_diff: Option::Some((order_b.base_asset_id, -actual_amount_base_a.into())),
-            };
-
-            // Assuming fee_asset_id is the same for both orders.
-            let fee_position_diff = PositionDiff {
-                collateral_diff: (actual_fee_a + actual_fee_b).into(), synthetic_diff: Option::None,
-            };
-
-            /// Validations - Fundamentals:
-            self
-                ._validate_healthy_or_healthier_position(
-                    position_id: order_a.position_id,
-                    position: position_a,
-                    position_diff: position_diff_a,
-                );
-            self
-                ._validate_healthy_or_healthier_position(
-                    position_id: order_b.position_id,
-                    position: position_b,
-                    position_diff: position_diff_b,
-                );
-
-            // Apply Diffs.
-            self
-                .positions
-                .apply_diff(position_id: order_a.position_id, position_diff: position_diff_a);
-
-            self
-                .positions
-                .apply_diff(position_id: order_b.position_id, position_diff: position_diff_b);
-
-            self.positions.apply_diff(position_id: FEE_POSITION, position_diff: fee_position_diff);
-
-            self
-                .emit(
-                    events::Trade {
-                        order_a_position_id: position_id_a,
-                        order_a_base_asset_id: order_a.base_asset_id,
-                        order_a_base_amount: order_a.base_amount,
-                        order_a_quote_asset_id: order_a.quote_asset_id,
-                        order_a_quote_amount: order_a.quote_amount,
-                        fee_a_asset_id: order_a.fee_asset_id,
-                        fee_a_amount: order_a.fee_amount,
-                        order_b_position_id: position_id_b,
-                        order_b_base_asset_id: order_b.base_asset_id,
-                        order_b_base_amount: order_b.base_amount,
-                        order_b_quote_asset_id: order_b.quote_asset_id,
-                        order_b_quote_amount: order_b.quote_amount,
-                        fee_b_asset_id: order_b.fee_asset_id,
-                        fee_b_amount: order_b.fee_amount,
-                        actual_amount_base_a,
-                        actual_amount_quote_a,
-                        actual_fee_a,
-                        actual_fee_b,
-                        order_a_hash: hash_a,
-                        order_b_hash: hash_b,
-                    },
-                );
         }
+
 
         /// Executes a liquidate of a user position with liquidator order.
         ///
@@ -967,6 +884,135 @@ pub mod Core {
 
     #[generate_trait]
     pub impl InternalCoreFunctions of InternalCoreFunctionsTrait {
+        fn _execute_trade(
+            ref self: ContractState,
+            signature_a: Signature,
+            signature_b: Signature,
+            order_a: Order,
+            order_b: Order,
+            actual_amount_base_a: i64,
+            actual_amount_quote_a: i64,
+            actual_fee_a: u64,
+            actual_fee_b: u64,
+        ) {
+            self
+                ._validate_trade(
+                    :order_a,
+                    :order_b,
+                    :actual_amount_base_a,
+                    :actual_amount_quote_a,
+                    :actual_fee_a,
+                    :actual_fee_b,
+                );
+
+            let position_id_a = order_a.position_id;
+            let position_id_b = order_b.position_id;
+
+            let position_a = self.positions.get_position_snapshot(position_id_a);
+            let position_b = self.positions.get_position_snapshot(position_id_b);
+            // Signatures validation:
+            let hash_a = self
+                ._validate_order_signature(
+                    public_key: position_a.get_owner_public_key(),
+                    order: order_a,
+                    signature: signature_a,
+                );
+            let hash_b = self
+                ._validate_order_signature(
+                    public_key: position_b.get_owner_public_key(),
+                    order: order_b,
+                    signature: signature_b,
+                );
+
+            // Validate and update fulfillments.
+            self
+                ._update_fulfillment(
+                    position_id: position_id_a,
+                    hash: hash_a,
+                    order_base_amount: order_a.base_amount,
+                    actual_base_amount: actual_amount_base_a,
+                );
+
+            self
+                ._update_fulfillment(
+                    position_id: position_id_b,
+                    hash: hash_b,
+                    order_base_amount: order_b.base_amount,
+                    // Passing the negative of actual amounts to `order_b` as it is linked to
+                    // `order_a`.
+                    actual_base_amount: -actual_amount_base_a,
+                );
+
+            /// Positions' Diffs:
+            let position_diff_a = PositionDiff {
+                collateral_diff: actual_amount_quote_a.into() - actual_fee_a.into(),
+                synthetic_diff: Option::Some((order_a.base_asset_id, actual_amount_base_a.into())),
+            };
+
+            // Passing the negative of actual amounts to order_b as it is linked to order_a.
+            let position_diff_b = PositionDiff {
+                collateral_diff: -actual_amount_quote_a.into() - actual_fee_b.into(),
+                synthetic_diff: Option::Some((order_b.base_asset_id, -actual_amount_base_a.into())),
+            };
+
+            // Assuming fee_asset_id is the same for both orders.
+            let fee_position_diff = PositionDiff {
+                collateral_diff: (actual_fee_a + actual_fee_b).into(), synthetic_diff: Option::None,
+            };
+
+            /// Validations - Fundamentals:
+            self
+                ._validate_healthy_or_healthier_position(
+                    position_id: order_a.position_id,
+                    position: position_a,
+                    position_diff: position_diff_a,
+                );
+            self
+                ._validate_healthy_or_healthier_position(
+                    position_id: order_b.position_id,
+                    position: position_b,
+                    position_diff: position_diff_b,
+                );
+
+            // Apply Diffs.
+            self
+                .positions
+                .apply_diff(position_id: order_a.position_id, position_diff: position_diff_a);
+
+            self
+                .positions
+                .apply_diff(position_id: order_b.position_id, position_diff: position_diff_b);
+
+            self.positions.apply_diff(position_id: FEE_POSITION, position_diff: fee_position_diff);
+
+            self
+                .emit(
+                    events::Trade {
+                        order_a_position_id: position_id_a,
+                        order_a_base_asset_id: order_a.base_asset_id,
+                        order_a_base_amount: order_a.base_amount,
+                        order_a_quote_asset_id: order_a.quote_asset_id,
+                        order_a_quote_amount: order_a.quote_amount,
+                        fee_a_asset_id: order_a.fee_asset_id,
+                        fee_a_amount: order_a.fee_amount,
+                        order_b_position_id: position_id_b,
+                        order_b_base_asset_id: order_b.base_asset_id,
+                        order_b_base_amount: order_b.base_amount,
+                        order_b_quote_asset_id: order_b.quote_asset_id,
+                        order_b_quote_amount: order_b.quote_amount,
+                        fee_b_asset_id: order_b.fee_asset_id,
+                        fee_b_amount: order_b.fee_amount,
+                        actual_amount_base_a,
+                        actual_amount_quote_a,
+                        actual_fee_a,
+                        actual_fee_b,
+                        order_a_hash: hash_a,
+                        order_b_hash: hash_b,
+                    },
+                );
+        }
+
+
         fn _execute_transfer(
             ref self: ContractState,
             recipient: PositionId,

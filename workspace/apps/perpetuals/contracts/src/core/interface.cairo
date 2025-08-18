@@ -5,6 +5,17 @@ use starknet::ContractAddress;
 use starkware_utils::signature::stark::Signature;
 use starkware_utils::time::time::Timestamp;
 
+#[derive(Copy, Drop, Serde)]
+pub struct Settlement {
+    pub signature_a: Signature,
+    pub signature_b: Signature,
+    pub order_a: Order,
+    pub order_b: Order,
+    pub actual_amount_base_a: i64,
+    pub actual_amount_quote_a: i64,
+    pub actual_fee_a: u64,
+    pub actual_fee_b: u64,
+}
 
 #[starknet::interface]
 pub trait ICore<TContractState> {
@@ -56,6 +67,7 @@ pub trait ICore<TContractState> {
         actual_fee_a: u64,
         actual_fee_b: u64,
     );
+    fn multi_trade(ref self: TContractState, operator_nonce: u64, trades: Span<Settlement>);
     fn liquidate(
         ref self: TContractState,
         operator_nonce: u64,
