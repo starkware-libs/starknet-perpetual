@@ -264,15 +264,14 @@ $TV\geq TR $
 
 ```rust
 fn calculate_position_tvtr_change(
-    unchanged_assets: UnchangedAssets, position_diff_enriched: PositionDiffEnriched,
+    tvtr_before: PositionTVTR, position_diff_enriched: PositionDiffEnriched,
 ) -> TVTRChange
 ```
 
 ##### Logic
-1. Calculates value and risk for unchanged assets
-2. Calculates value and risk changes for collateral asset
-3. Calculates value and risk changes for synthetic assets
-4. Combines all calculations into final before/after totals
+1. Calculates value and risk changes for synthetic assets
+2. Calculates value and risk changes for collateral assets
+3. Combines all calculations into final before/after totals
 
 #### Is Healthier
 
