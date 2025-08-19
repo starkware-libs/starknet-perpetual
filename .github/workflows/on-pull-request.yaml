@@ -6,7 +6,7 @@ on:
       - dev
 
 jobs:
-  CI:
+  cairo:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,9 +18,6 @@ jobs:
         with:
           scarb-version: "2.11.4"
 
-      - name: Build Contracts
-        run: scarb build
-
       - name: Install cairo-coverage
         run: |
           curl -L https://raw.githubusercontent.com/software-mansion/cairo-coverage/main/scripts/install.sh | sh
@@ -28,6 +25,39 @@ jobs:
       - name: Run test and coverage
         run: scarb test -w --coverage
 
-
       - name: Check formatting
         run: scarb fmt -w --check
+
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install asdf
+        run: scripts/install_asdf.sh
+
+      - name: Install starknet-devnet
+        run: |
+          asdf plugin add starknet-devnet
+          asdf install starknet-devnet 0.4.3
+          asdf global starknet-devnet 0.4.3
+
+      - name: Install scarb
+        uses: software-mansion/setup-scarb@v1
+        with:
+          scarb-version: "2.11.4"
+
+      - name: Build Contracts
+        run: scarb build
+
+      - name: Install Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: "3.10"
+          cache: "pip"
+
+      - name: Install python testdependencies
+        run: pip install -r requirements.txt
+
+      - name: Run Python Tests
+        run: scripts/python_tests.sh
