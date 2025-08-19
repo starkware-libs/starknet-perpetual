@@ -8,15 +8,18 @@ on:
 jobs:
   CI:
     runs-on: ubuntu-latest
-
     steps:
+      - uses: actions/checkout@v4
       - uses: foundry-rs/setup-snfoundry@v3
         with:
-          starknet-foundry-version: "0.41.0"
+          starknet-foundry-version: "0.45.0"
 
       - uses: software-mansion/setup-scarb@v1
         with:
-          scarb-version: "2.11.0"
+          scarb-version: "2.11.4"
+
+      - name: Build Contracts
+        run: scarb build
 
       - name: Install cairo-coverage
         run: |
@@ -25,14 +28,6 @@ jobs:
       - name: Run test and coverage
         run: scarb test -w --coverage
 
-      - uses: codecov/codecov-action@v5
-        with:
-          fail_ci_if_error: true
 
       - name: Check formatting
-        run: |
-          scarb fmt -w --check
-
-      - name: Build Contracts
-        run: |
-          scarb build
+        run: scarb fmt -w --check
