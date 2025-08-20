@@ -1,5 +1,6 @@
 #[starknet::contract]
 pub mod Core {
+    use core::dict::{Felt252Dict, Felt252DictTrait};
     use core::num::traits::Zero;
     use core::panic_with_felt252;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
@@ -37,7 +38,7 @@ pub mod Core {
     use perpetuals::core::types::transfer::TransferArgs;
     use perpetuals::core::types::withdraw::WithdrawArgs;
     use perpetuals::core::value_risk_calculator::{
-        assert_healthy_or_healthier, calculate_position_tvtr_change,
+        PositionTVTR, assert_healthy_or_healthier, calculate_position_tvtr_change,
         deleveraged_position_validations, liquidated_position_validations,
     };
     use starknet::ContractAddress;
@@ -445,9 +446,17 @@ pub mod Core {
             self.pausable.assert_not_paused();
             self.operator_nonce.use_checked_nonce(:operator_nonce);
             self.assets.validate_assets_integrity();
+
+            let mut tvtr_cache: Felt252Dict<Nullable<PositionTVTR>> = Default::default();
+
             for _trade in trades {
                 let trade = *_trade;
-                self
+                let position_id_a: felt252 = trade.order_a.position_id.value.into();
+                let position_id_b: felt252 = trade.order_b.position_id.value.into();
+                // In case there is no cached tvtr for position, it will be Nullable::Null.
+                let cached_pos_a_tvtr = tvtr_cache.get(position_id_a);
+                let cached_pos_b_tvtr = tvtr_cache.get(position_id_b);
+                let (updated_a, updated_b) = self
                     ._execute_trade(
                         signature_a: trade.signature_a,
                         signature_b: trade.signature_b,
@@ -457,7 +466,11 @@ pub mod Core {
                         actual_amount_quote_a: trade.actual_amount_quote_a,
                         actual_fee_a: trade.actual_fee_a,
                         actual_fee_b: trade.actual_fee_b,
+                        tvtr_a_before: cached_pos_a_tvtr,
+                        tvtr_b_before: cached_pos_b_tvtr,
                     );
+                tvtr_cache.insert(position_id_a, NullableTrait::new(updated_a));
+                tvtr_cache.insert(position_id_b, NullableTrait::new(updated_b));
             }
         }
 
@@ -512,6 +525,8 @@ pub mod Core {
                     :actual_amount_quote_a,
                     :actual_fee_a,
                     :actual_fee_b,
+                    tvtr_a_before: Default::default(),
+                    tvtr_b_before: Default::default(),
                 );
         }
 
@@ -894,7 +909,9 @@ pub mod Core {
             actual_amount_quote_a: i64,
             actual_fee_a: u64,
             actual_fee_b: u64,
-        ) {
+            tvtr_a_before: Nullable<PositionTVTR>,
+            tvtr_b_before: Nullable<PositionTVTR>,
+        ) -> (PositionTVTR, PositionTVTR) {
             self
                 ._validate_trade(
                     :order_a,
@@ -961,13 +978,13 @@ pub mod Core {
             };
 
             /// Validations - Fundamentals:
-            self
+            let tvtr_a_after = self
                 ._validate_healthy_or_healthier_position(
                     position_id: order_a.position_id,
                     position: position_a,
                     position_diff: position_diff_a,
                 );
-            self
+            let tvtr_b_after = self
                 ._validate_healthy_or_healthier_position(
                     position_id: order_b.position_id,
                     position: position_b,
@@ -1010,6 +1027,7 @@ pub mod Core {
                         order_b_hash: hash_b,
                     },
                 );
+            (tvtr_a_after, tvtr_b_after)
         }
 
 
@@ -1190,7 +1208,7 @@ pub mod Core {
             position_id: PositionId,
             position: StoragePath<Position>,
             position_diff: PositionDiff,
-        ) {
+        ) -> PositionTVTR {
             let unchanged_synthetics = self
                 .positions
                 .get_position_unchanged_synthetics(:position, :position_diff);
@@ -1200,6 +1218,7 @@ pub mod Core {
                 :unchanged_synthetics, :position_diff_enriched,
             );
             assert_healthy_or_healthier(:position_id, :tvtr);
+            tvtr.after
         }
 
         fn _validate_liquidated_position(
