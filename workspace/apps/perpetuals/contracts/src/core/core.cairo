@@ -1,6 +1,7 @@
 #[starknet::contract]
 pub mod Core {
     use core::dict::{Felt252Dict, Felt252DictTrait};
+    use core::nullable::{FromNullableResult, match_nullable};
     use core::num::traits::Zero;
     use core::panic_with_felt252;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
@@ -315,7 +316,10 @@ pub mod Core {
                 collateral_diff: -amount.into(), synthetic_diff: Option::None,
             };
 
-            self._validate_healthy_or_healthier_position(:position_id, :position, :position_diff);
+            self
+                ._validate_healthy_or_healthier_position(
+                    :position_id, :position, :position_diff, tvtr_before: Default::default(),
+                );
 
             self.positions.apply_diff(:position_id, :position_diff);
             let quantum = self.assets.get_collateral_quantum();
@@ -665,6 +669,7 @@ pub mod Core {
                     position_id: liquidator_position_id,
                     position: liquidator_position,
                     position_diff: liquidator_position_diff,
+                    tvtr_before: Default::default(),
                 );
 
             // Apply Diffs.
@@ -786,6 +791,7 @@ pub mod Core {
                     position_id: deleverager_position_id,
                     position: deleverager_position,
                     position_diff: deleverager_position_diff,
+                    tvtr_before: Default::default(),
                 );
 
             // Apply diffs
@@ -984,12 +990,14 @@ pub mod Core {
                     position_id: order_a.position_id,
                     position: position_a,
                     position_diff: position_diff_a,
+                    tvtr_before: tvtr_a_before,
                 );
             let tvtr_b_after = self
                 ._validate_healthy_or_healthier_position(
                     position_id: order_b.position_id,
                     position: position_b,
                     position_diff: position_diff_b,
+                    tvtr_before: tvtr_b_before,
                 );
 
             // Apply Diffs.
@@ -1052,7 +1060,10 @@ pub mod Core {
             let position = self.positions.get_position_snapshot(:position_id);
             self
                 ._validate_healthy_or_healthier_position(
-                    :position_id, :position, position_diff: position_diff_sender,
+                    :position_id,
+                    :position,
+                    position_diff: position_diff_sender,
+                    tvtr_before: Default::default(),
                 );
 
             // Execute transfer
@@ -1209,15 +1220,19 @@ pub mod Core {
             position_id: PositionId,
             position: StoragePath<Position>,
             position_diff: PositionDiff,
+            tvtr_before: Nullable<PositionTVTR>,
         ) -> PositionTVTR {
-            let unchanged_synthetics = self
-                .positions
-                .get_position_unchanged_synthetics(:position, :position_diff);
-
             let position_diff_enriched = self.enrich_position_diff(:position, :position_diff);
-            let tvtr_before = calculate_position_tvtr_before(
-                :unchanged_synthetics, :position_diff_enriched,
-            );
+            let tvtr_before: PositionTVTR = match match_nullable(tvtr_before) {
+                FromNullableResult::Null => {
+                    let unchanged_synthetics = self
+                        .positions
+                        .get_position_unchanged_synthetics(:position, :position_diff);
+
+                    calculate_position_tvtr_before(:unchanged_synthetics, :position_diff_enriched)
+                },
+                FromNullableResult::NotNull(value) => value.unbox(),
+            };
             let tvtr = calculate_position_tvtr_change(:tvtr_before, :position_diff_enriched);
             assert_healthy_or_healthier(:position_id, :tvtr);
             tvtr.after
