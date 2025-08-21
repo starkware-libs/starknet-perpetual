@@ -296,6 +296,21 @@ Deleveragree should be ([healthy](#healthy) or [healthier](#is-healthier)) **and
 
 ## Structs
 
+### Settlement
+
+```rust
+struct Settlement {
+    pub signature_a: Signature,
+    pub signature_b: Signature,
+    pub order_a: Order,
+    pub order_b: Order,
+    pub actual_amount_base_a: i64,
+    pub actual_amount_quote_a: i64,
+    pub actual_fee_a: u64,
+    pub actual_fee_b: u64,
+}
+```
+
 ### PositionId
 
 ```rust
@@ -2781,8 +2796,8 @@ fn trade(
 	order_b: Order,
 	actual_amount_base_a: i64,
 	actual_amount_quote_a: i64,
-	actual_fee_a: i64,
-	actual_fee_b: i64,
+	actual_fee_a: u64,
+	actual_fee_b: u64,
 )
 ```
 
@@ -2861,6 +2876,48 @@ Only the Operator can execute.
 - ILLEGAL_BASE_TO_QUOTE_RATIO
 - ILLEGAL_FEE_TO_QUOTE_RATIO
 - POSITION_NOT_HEALTHY_NOR_HEALTHIER
+
+
+### Multi Trade
+
+#### Description
+
+Executes multiple trades in a single operation.  
+Each trade is validated and executed using the same logic as a single trade.  
+All trades are processed within one transaction.
+
+```rust
+fn multi_trade(
+	ref self: ContractState,
+	operator_nonce: u64,
+    trades: Span<Settlement>,
+)
+```
+
+#### Access Control
+
+Only the Operator can execute.
+
+#### Hash
+
+See [Trade](#trade) for details.
+
+#### Validations
+
+See [Trade](#trade) for details.
+
+#### Logic
+
+See [Trade](#trade) for details.
+
+#### Emits
+
+See [Trade](#trade) for details.
+
+#### Errors
+
+See [Trade](#trade) for details.
+
 
 ### Liquidate
 
