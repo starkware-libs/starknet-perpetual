@@ -257,16 +257,16 @@ mod tests {
         PriceTrait::new(value: 900_u64)
     }
     fn PRICE_2() -> Price {
-        PriceTrait::new(value: 900_u64)
+        PriceTrait::new(value: 1000_u64)
     }
     fn PRICE_3() -> Price {
-        PriceTrait::new(value: 900_u64)
+        PriceTrait::new(value: 500_u64)
     }
     fn PRICE_4() -> Price {
-        PriceTrait::new(value: 900_u64)
+        PriceTrait::new(value: 100_u64)
     }
     fn PRICE_5() -> Price {
-        PriceTrait::new(value: 900_u64)
+        PriceTrait::new(value: 2000_u64)
     }
 
     /// Risk factors
@@ -274,16 +274,16 @@ mod tests {
         RiskFactorTrait::new(50)
     }
     fn RISK_FACTOR_2() -> RiskFactor {
-        RiskFactorTrait::new(50)
+        RiskFactorTrait::new(90)
     }
     fn RISK_FACTOR_3() -> RiskFactor {
-        RiskFactorTrait::new(50)
+        RiskFactorTrait::new(10)
     }
     fn RISK_FACTOR_4() -> RiskFactor {
-        RiskFactorTrait::new(50)
+        RiskFactorTrait::new(70)
     }
     fn RISK_FACTOR_5() -> RiskFactor {
-        RiskFactorTrait::new(50)
+        RiskFactorTrait::new(0)
     }
 
     /// Assets IDs
@@ -467,35 +467,36 @@ mod tests {
 
         /// Ensures `total_value` before the change is `121,500`, calculated as `balance_1_before *
         /// price + balance_2_before * price + balance_3_before * price + balance_4_before * price +
-        /// balance_5_before * price` (`60 * 900 + 40 * 900 + 20 * 900 + 10 * 900 + 5 * 900`).
-        assert!(position_tvtr_change.before.total_value == 121_500 * PRICE_SCALE.into());
+        /// balance_5_before * price` (`60 * 900 + 40 * 1000 + 20 * 500 + 10 * 100 + 5 * 2000`).
+        assert!(position_tvtr_change.before.total_value == 115_000 * PRICE_SCALE.into());
 
-        /// Ensures `total_risk` before the change is `60,750`, calculated as `abs(balance_1_before)
+        /// Ensures `total_risk` before the change is `57,500`, calculated as `abs(balance_1_before)
         /// *
         /// price * risk_factor_1 + abs(balance_2_before) * price * risk_factor_2 +
         /// abs(balance_3_before) *
         /// price * risk_factor_3 + abs(balance_4_before) * price * risk_factor_4 +
         /// abs(balance_5_before) *
-        /// price * risk_factor_5` (`abs(60) * 900 * 0.5 + abs(40) * 900 * 0.5 + abs(20) * 900 * 0.5
-        /// +
-        /// abs(10) * 900 * 0.5 + abs(5) * 900 * 0.5`).
-        assert!(position_tvtr_change.before.total_risk == 60_750 * PRICE_SCALE.into());
+        /// price * risk_factor_5` (`abs(60) * 900 * 0.5 + abs(40) * 1000 * 0.9 + abs(20) * 500 *
+        /// 0.1 +
+        /// abs(10) * 100 * 0.7 + abs(5) * 2000 * 0`).
+        assert!(position_tvtr_change.before.total_risk == 64_700 * PRICE_SCALE.into());
 
         /// Ensures `total_value` after the change is `139,500`, calculated as `balance_1_after *
         /// price + balance_2_after * price` + balance_3_after * price + balance_4_after * price +
-        /// balance_5_after * price` (`80 * 900 + 40 * 900 + 20 * 900 + 10 * 900 + 5 * 900`).
+        /// balance_5_after * price` (`80 * 900 + 40 * 1000 + 20 * 500 + 10 * 100 + 5 * 2000`).
         /// The balance of the other assets remains the same, so balance_2_after = 40,
         /// balance_3_after = 20, balance_4_after = 10, balance_5_after = 5.
-        assert!(position_tvtr_change.after.total_value == 139_500 * PRICE_SCALE.into());
+        assert!(position_tvtr_change.after.total_value == 133_000 * PRICE_SCALE.into());
 
-        /// Ensures `total_risk` after the change is `69,750`, calculated as `abs(balance_1_after) *
+        /// Ensures `total_risk` after the change is `66,500`, calculated as `abs(balance_1_after) *
         /// price * risk_factor_1 + abs(balance_2_after) * price * risk_factor_2 +
         /// abs(balance_3_after) * price * risk_factor_3 + abs(balance_4_after) * price *
         /// risk_factor_4 + abs(balance_5_after) * price * risk_factor_5` (`abs(80) * 900 * 0.5 +
-        /// abs(40) * 900 * 0.5 + abs(20) * 900 * 0.5 + abs(10) * 900 * 0.5 + abs(5) * 900 * 0.5`).
+        /// abs(40) * 1000 * 0.9 + abs(20) * 500 * 0.1 + abs(10) * 100 * 0.7 + abs(5) * 2000 *
+        /// 0`).
         /// The balance of the other assets remains the same, so balance_2_after = 40,
         /// balance_3_after = 20, balance_4_after = 10, balance_5_after = 5.
-        assert!(position_tvtr_change.after.total_risk == 69_750 * PRICE_SCALE.into());
+        assert!(position_tvtr_change.after.total_risk == 73_700 * PRICE_SCALE.into());
     }
 
     /// Test the `calculate_position_tvtr_change` function for the case where the diff is empty.
@@ -580,5 +581,190 @@ mod tests {
             unchanged_synthetics: array![].span(), collateral_balance: Zero::zero(),
         );
         assert!(evaluated_position == PositionState::Healthy);
+    }
+
+    #[test]
+    fn test_basic_calculate_position_tvtr_before() {
+        let balance = 50;
+        let asset = SyntheticAsset {
+            id: SYNTHETIC_ASSET_ID_1(),
+            balance: BalanceTrait::new(value: balance),
+            price: PRICE_1(),
+            risk_factor: RISK_FACTOR_1(),
+        };
+        let unchanged_synthetics = array![asset].span();
+        let position_diff_enriched = Default::default();
+        let tvtr_before = calculate_position_tvtr_before(
+            unchanged_synthetics: unchanged_synthetics,
+            position_diff_enriched: position_diff_enriched,
+        );
+        //tvtr_before.total_value = balance * PRICE_1() * PRICE_SCALE = 50 * 900 * PRICE_SCALE =
+        //45_000 * PRICE_SCALE
+        //tvtr_before.total_risk = balance * PRICE_1() * RISK_FACTOR_1() * PRICE_SCALE = 50 * 900 *
+        //0.5 * PRICE_SCALE = 22_500 * PRICE_SCALE
+        assert!(tvtr_before.total_value == 45_000 * PRICE_SCALE.into());
+        assert!(tvtr_before.total_risk == 22_500 * PRICE_SCALE.into());
+    }
+
+    #[test]
+    fn test_calculate_position_tvtr_before_with_multiple_assets() {
+        let balance_1 = 50;
+        let balance_2 = 100;
+        let balance_3 = 150;
+        let collateral_balance_before = 50;
+        let asset_1 = SyntheticAsset {
+            id: SYNTHETIC_ASSET_ID_1(),
+            balance: BalanceTrait::new(value: balance_1),
+            price: PRICE_1(),
+            risk_factor: RISK_FACTOR_1(),
+        };
+        let asset_2 = SyntheticAsset {
+            id: SYNTHETIC_ASSET_ID_2(),
+            balance: BalanceTrait::new(value: balance_2),
+            price: PRICE_2(),
+            risk_factor: RISK_FACTOR_2(),
+        };
+        let asset_3 = SyntheticAsset {
+            id: SYNTHETIC_ASSET_ID_3(),
+            balance: BalanceTrait::new(value: balance_3),
+            price: PRICE_3(),
+            risk_factor: RISK_FACTOR_3(),
+        };
+        let unchanged_synthetics = array![asset_1, asset_2].span();
+        let position_diff_enriched = PositionDiffEnriched {
+            collateral_enriched: BalanceDiff {
+                before: BalanceTrait::new(value: collateral_balance_before),
+                after: BalanceTrait::new(value: 0),
+            },
+            synthetic_enriched: Option::Some(
+                SyntheticDiffEnriched {
+                    asset_id: asset_3.id,
+                    balance_before: asset_3.balance,
+                    balance_after: BalanceTrait::new(value: 0),
+                    price: asset_3.price,
+                    risk_factor_before: RISK_FACTOR_3(),
+                    risk_factor_after: RISK_FACTOR_3(),
+                },
+            ),
+        };
+        let tvtr_before = calculate_position_tvtr_before(
+            unchanged_synthetics: unchanged_synthetics,
+            position_diff_enriched: position_diff_enriched,
+        );
+        //tvtr_before.total_value = balance_1 * PRICE_1() * PRICE_SCALE + balance_2 * PRICE_2() *
+        //PRICE_SCALE + balance_3 * PRICE_3() * PRICE_SCALE + collateral_balance_before *
+        //PRICE_SCALE = 50 * 900 * PRICE_SCALE + 100 * 1000 * PRICE_SCALE + 150 * 500 * PRICE_SCALE
+        //+ 50 *
+        //PRICE_SCALE = 220_050 * PRICE_SCALE
+        //tvtr_before.total_risk = abs(balance_1) * PRICE_1() * RISK_FACTOR_1() * PRICE_SCALE +
+        //abs(balance_2) * PRICE_2() * RISK_FACTOR_2() * PRICE_SCALE + abs(balance_3) *
+        //PRICE_3() * RISK_FACTOR_3() * PRICE_SCALE = abs(50) * 900 * 0.5 * PRICE_SCALE +
+        //abs(100) * 1000 * 0.9 * PRICE_SCALE + abs(150) * 500 * 0.1 * PRICE_SCALE = 120_000 *
+        //PRICE_SCALE
+        assert!(tvtr_before.total_value == 220_050 * PRICE_SCALE.into());
+        assert!(tvtr_before.total_risk == 120_000 * PRICE_SCALE.into());
+    }
+
+    #[test]
+    fn test_calculate_position_tvtr_before_no_unchanged_synthetics() {
+        let collateral_balance_before = 50;
+        let synthetic_balance_before = 200;
+        let asset = SyntheticAsset {
+            id: SYNTHETIC_ASSET_ID_1(),
+            balance: BalanceTrait::new(value: synthetic_balance_before),
+            price: PRICE_1(),
+            risk_factor: RISK_FACTOR_1(),
+        };
+        let unchanged_synthetics = array![].span();
+        let position_diff_enriched = PositionDiffEnriched {
+            collateral_enriched: BalanceDiff {
+                before: BalanceTrait::new(value: collateral_balance_before),
+                after: BalanceTrait::new(value: 0),
+            },
+            synthetic_enriched: Option::Some(
+                SyntheticDiffEnriched {
+                    asset_id: asset.id,
+                    balance_before: asset.balance,
+                    balance_after: BalanceTrait::new(value: 0),
+                    price: asset.price,
+                    risk_factor_before: RISK_FACTOR_1(),
+                    risk_factor_after: RISK_FACTOR_1(),
+                },
+            ),
+        };
+        let tvtr_before = calculate_position_tvtr_before(
+            unchanged_synthetics: unchanged_synthetics,
+            position_diff_enriched: position_diff_enriched,
+        );
+        //tvtr_before.total_value = asset.balance * asset.price * PRICE_SCALE +
+        //collateral_balance_before * PRICE_SCALE = 200 * 900 * PRICE_SCALE + 50 * PRICE_SCALE =
+        //180_050 * PRICE_SCALE
+        //tvtr_before.total_risk = abs(asset.balance) * asset.price * RISK_FACTOR_1() *
+        //PRICE_SCALE = abs(200) * 900 * 0.5 * PRICE_SCALE = 90_000 * PRICE_SCALE
+        assert!(tvtr_before.total_value == 180_050 * PRICE_SCALE.into());
+        assert!(tvtr_before.total_risk == 90_000 * PRICE_SCALE.into());
+    }
+
+    #[test]
+    fn test_calculate_position_tvtr_before_no_assets() {
+        let unchanged_synthetics = array![].span();
+        let position_diff_enriched = Default::default();
+        let tvtr_before = calculate_position_tvtr_before(
+            :unchanged_synthetics, :position_diff_enriched,
+        );
+        assert!(tvtr_before.total_value == 0);
+        assert!(tvtr_before.total_risk == 0);
+    }
+
+    #[test]
+    fn test_calculate_position_tvtr_before_negative_balance() {
+        let balance = -50;
+        let asset = SyntheticAsset {
+            id: SYNTHETIC_ASSET_ID_1(),
+            balance: BalanceTrait::new(value: balance),
+            price: PRICE_1(),
+            risk_factor: RISK_FACTOR_1(),
+        };
+        let unchanged_synthetics = array![asset].span();
+        let position_diff_enriched = Default::default();
+        let tvtr_before = calculate_position_tvtr_before(
+            :unchanged_synthetics, :position_diff_enriched,
+        );
+        assert!(tvtr_before.total_value == -45_000 * PRICE_SCALE.into());
+        assert!(tvtr_before.total_risk == 22_500 * PRICE_SCALE.into());
+    }
+
+    #[test]
+    fn test_calculate_position_tvtr_before_negative_balance_in_diff() {
+        let balance = -50;
+        let asset = SyntheticAsset {
+            id: SYNTHETIC_ASSET_ID_1(),
+            balance: BalanceTrait::new(value: balance),
+            price: PRICE_1(),
+            risk_factor: RISK_FACTOR_1(),
+        };
+        let unchanged_synthetics = array![].span();
+        let position_diff_enriched = PositionDiffEnriched {
+            collateral_enriched: Default::default(),
+            synthetic_enriched: Option::Some(
+                SyntheticDiffEnriched {
+                    asset_id: asset.id,
+                    balance_before: asset.balance,
+                    balance_after: BalanceTrait::new(value: 0),
+                    price: asset.price,
+                    risk_factor_before: RISK_FACTOR_1(),
+                    risk_factor_after: RISK_FACTOR_1(),
+                },
+            ),
+        };
+        let tvtr_before = calculate_position_tvtr_before(
+            :unchanged_synthetics, :position_diff_enriched,
+        );
+        //tvtr_before.total_value = asset.balance * asset.price * PRICE_SCALE = -50 * 900 *
+        //PRICE_SCALE = -45_000 * PRICE_SCALE
+        //tvtr_before.total_risk = abs(asset.balance) * asset.price * RISK_FACTOR_1() * PRICE_SCALE
+        //= abs(-50) * 900 * 0.5 * PRICE_SCALE = 22_500 * PRICE_SCALE
+        assert!(tvtr_before.total_value == -45_000 * PRICE_SCALE.into());
+        assert!(tvtr_before.total_risk == 22_500 * PRICE_SCALE.into());
     }
 }
