@@ -2283,3 +2283,236 @@ fn test_funding_index_rounding() {
     state.facade.validate_collateral_balance(user_1.position_id, 1000_i64.into());
     state.facade.validate_collateral_balance(user_2.position_id, 999_i64.into());
 }
+use perpetuals::core::core::Core::{InternalCoreFunctions, SNIP12MetadataImpl};
+use perpetuals::core::interface::{ICoreDispatcher, ICoreDispatcherTrait, Settlement};
+use perpetuals::core::types::order::Order;
+use perpetuals::core::types::position::PositionId;
+use perpetuals::tests::constants::*;
+use snforge_std::DeclareResultTrait;
+use snforge_std::signature::stark_curve::StarkCurveSignerImpl;
+use starknet::ContractAddress;
+use starkware_utils::components::replaceability::interface::{
+    IReplaceableDispatcher, IReplaceableDispatcherTrait, ImplementationData,
+};
+use starkware_utils::storage::iterable_map::*;
+use starkware_utils::time::time::Timestamp;
+use starkware_utils_testing::test_utils::cheat_caller_address_once;
+
+/// tx: 0x07b042c11b78c947b958f5559f40feac97866bc8b1ecc9ec62818f1a1b177586 (12 trades)
+/// block number: 1844545
+/// gas : 5940188809(L2)
+
+#[test]
+#[fork(
+    url: "wip",
+    block_number: 1844544,
+)]
+fn test_profile() {
+    let caller_address: ContractAddress =
+        0x048ddc53f41523d2a6b40c3dff7f69f4bbac799cd8b2e3fc50d3de1d4119441f
+        .try_into()
+        .unwrap();
+
+    let contract_address: ContractAddress =
+        0x062da0780fae50d68cecaa5a051606dc21217ba290969b302db4dd99d2e9b470
+        .try_into()
+        .unwrap();
+    let dispatcher = ICoreDispatcher { contract_address };
+
+    // Replace class hash:
+    let core_contract = (*snforge_std::declare("Core").unwrap().contract_class()).class_hash;
+
+    let re = IReplaceableDispatcher { contract_address };
+    let implementation_data = ImplementationData {
+        impl_hash: core_contract, eic_data: Option::None, final: false,
+    };
+    let deployer: ContractAddress =
+        0x0522e5ba327bfbd85138b29bde060a5340a460706b00ae2e10e6d2a16fbf8c57
+        .try_into()
+        .unwrap();
+    cheat_caller_address_once(:contract_address, caller_address: deployer);
+    re.add_new_implementation(:implementation_data);
+    cheat_caller_address_once(:contract_address, caller_address: deployer);
+    re.replace_to(:implementation_data);
+
+    cheat_caller_address_once(:contract_address, :caller_address);
+
+    let trade_1 = Settlement {
+        signature_a: array![
+            0x71fedaf53734966afd09513c40f50036bb742c06eef36c41e2aaa0d74022f99,
+            0x71be0b92594231bdf28698d9beec79f0a68daa103f5dc57347925c63f76643c,
+        ]
+            .span(),
+        signature_b: array![
+            0x60a98b1e87f6e434331dc3f194afbb1f9bfdcc24e6099533ee9a02efc765275,
+            0x4ed771fdfb4e5941f8c5daafc698ca78644a19212262cca7235faa7390b4a98,
+        ]
+            .span(),
+        order_a: Order {
+            position_id: PositionId { value: 0x19f1b.try_into().unwrap() },
+            base_asset_id: 0x485950452d33000000000000000000.into(),
+            base_amount: 0x3a98.try_into().unwrap(),
+            quote_asset_id: 0x1.into(),
+            quote_amount: 0x800000000000010ffffffffffffffffffffffffffffffffffffffffb13ce231
+                .try_into()
+                .unwrap(),
+            fee_asset_id: 0x1.into(),
+            fee_amount: 0x50a71.try_into().unwrap(),
+            expiration: Timestamp { seconds: 0x6933e295.try_into().unwrap() },
+            salt: 0x50a705a3.into(),
+        },
+        order_b: Order {
+            position_id: PositionId { value: 0x30d7e.try_into().unwrap() },
+            base_asset_id: 0x485950452d33000000000000000000.into(),
+            base_amount: 0x800000000000010ffffffffffffffffffffffffffffffffffffffffffffe599
+                .try_into()
+                .unwrap(),
+            quote_asset_id: 0x1.into(),
+            quote_amount: 0x11d0c058.try_into().unwrap(),
+            fee_asset_id: 0x1.into(),
+            fee_amount: 0xe983.try_into().unwrap(),
+            expiration: Timestamp { seconds: 0x68bd405a.try_into().unwrap() },
+            salt: 0x3a3590e6.into(),
+        },
+        actual_amount_base_a: 0xfa,
+        actual_amount_quote_a: 0x800000000000010ffffffffffffffffffffffffffffffffffffffffff57554b
+            .try_into()
+            .unwrap(),
+        actual_fee_a: 0xacb,
+        actual_fee_b: 0x0,
+    };
+
+    let trade_2 = Settlement {
+        signature_a: array![
+            0x7ca1d5af750dad6cfc97ac20fe45ea2a4a7269e18fd8fe8fb9243b62fce6aa5,
+            0x357038901909841f6ed4930a769442fa042033c1a89db6539ae0896fd875fcf,
+        ]
+            .span(),
+        signature_b: array![
+            0x453eaeac0fccb0084931b0dcfb88bc70cc9889158cb09a7bc6b2abc8ca3cd10,
+            0x5cf4778b3fdf08ce858b98c1e836c4ed543319a00630da481ba29a75ffe0c10,
+        ]
+            .span(),
+        order_a: Order {
+            position_id: PositionId { value: 0x31303.try_into().unwrap() },
+            base_asset_id: 0x4554482d3400000000000000000000.into(),
+            base_amount: 0x48a8.try_into().unwrap(),
+            quote_asset_id: 0x1.into(),
+            quote_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffbe1cf7101
+                .try_into()
+                .unwrap(),
+            fee_asset_id: 0x1.into(),
+            fee_amount: 0x3cb8a9.try_into().unwrap(),
+            expiration: Timestamp { seconds: 0x6933f115.try_into().unwrap() },
+            salt: 0x5dca0f41.into(),
+        },
+        order_b: Order {
+            position_id: PositionId { value: 0x30d7e.try_into().unwrap() },
+            base_asset_id: 0x4554482d3400000000000000000000.into(),
+            base_amount: 0x800000000000010ffffffffffffffffffffffffffffffffffffffffffffef85
+                .try_into()
+                .unwrap(),
+            quote_asset_id: 0x1.into(),
+            quote_amount: 0x780e5830.try_into().unwrap(),
+            fee_asset_id: 0x1.into(),
+            fee_amount: 0x6259a.try_into().unwrap(),
+            expiration: Timestamp { seconds: 0x68bd406b.try_into().unwrap() },
+            salt: 0x4dda9a9.into(),
+        },
+        actual_amount_base_a: 0x136,
+        actual_amount_quote_a: 0x800000000000010fffffffffffffffffffffffffffffffffffffffff72e4389
+            .try_into()
+            .unwrap(),
+        actual_fee_a: 0x820b,
+        actual_fee_b: 0x0,
+    };
+
+    let trade_3 = Settlement {
+        signature_a: array![
+            0xb2d7c5904593c6c37a03015c803762f23525c89abaa21cf2c4bb6674563dc4,
+            0x78e9490d089c20c2be23ec6d661682d804db8bb8ee0aa38a4ff04506b9d0228,
+        ]
+            .span(),
+        signature_b: array![
+            0x4a93a8c9c5b961732a64ae6e6d35eec73faad38117388a27aa445cbdbb89b71,
+            0x415e7e909a133da5eacfdb255fea2868f0e96c46247a6717e69860fb3501e5f,
+        ]
+            .span(),
+        order_a: Order {
+            position_id: PositionId { value: 0x30d7e.try_into().unwrap() },
+            base_asset_id: 0x4254432d3600000000000000000000.into(),
+            base_amount: 0xa3c.try_into().unwrap(),
+            quote_asset_id: 0x1.into(),
+            quote_amount: 0x800000000000010ffffffffffffffffffffffffffffffffffffffffee0d90b1
+                .try_into()
+                .unwrap(),
+            fee_asset_id: 0x1.into(),
+            fee_amount: 0xeb3d.try_into().unwrap(),
+            expiration: Timestamp { seconds: 0x68bd406a.try_into().unwrap() },
+            salt: 0x9b1f91a.into(),
+        },
+        order_b: Order {
+            position_id: PositionId { value: 0x31303.try_into().unwrap() },
+            base_asset_id: 0x4254432d3600000000000000000000.into(),
+            base_amount: 0x800000000000010ffffffffffffffffffffffffffffffffffffffffffff0237
+                .try_into()
+                .unwrap(),
+            quote_asset_id: 0x1.into(),
+            quote_amount: 0xfdca.try_into().unwrap(),
+            fee_asset_id: 0x1.into(),
+            fee_amount: 0xf.try_into().unwrap(),
+            expiration: Timestamp { seconds: 0x6933f12e.try_into().unwrap() },
+            salt: 0x9756924.into(),
+        },
+        actual_amount_base_a: 0x438,
+        actual_amount_quote_a: 0x800000000000010fffffffffffffffffffffffffffffffffffffffff89a1c61
+            .try_into()
+            .unwrap(),
+        actual_fee_a: 0x0,
+        actual_fee_b: 0x6d16,
+    };
+
+    let operator_nonce: u64 = 3486792;
+
+    // let trade_result = dispatcher
+    //     .trade(
+    //         :operator_nonce,
+    //         signature_a: trade_1.signature_a,
+    //         signature_b: trade_1.signature_b,
+    //         order_a: trade_1.order_a,
+    //         order_b: trade_1.order_b,
+    //         actual_amount_base_a: trade_1.actual_amount_base_a,
+    //         actual_amount_quote_a: trade_1.actual_amount_quote_a,
+    //         actual_fee_a: trade_1.actual_fee_a,
+    //         actual_fee_b: trade_1.actual_fee_b,
+    //     );
+    cheat_caller_address_once(:contract_address, :caller_address);
+
+    // let trade_result = dispatcher
+    //     .trade(
+    //         operator_nonce: operator_nonce + 1,
+    //         signature_a: trade_2.signature_a,
+    //         signature_b: trade_2.signature_b,
+    //         order_a: trade_2.order_a,
+    //         order_b: trade_2.order_b,
+    //         actual_amount_base_a: trade_2.actual_amount_base_a,
+    //         actual_amount_quote_a: trade_2.actual_amount_quote_a,
+    //         actual_fee_a: trade_2.actual_fee_a,
+    //         actual_fee_b: trade_2.actual_fee_b,
+    //     );
+    cheat_caller_address_once(:contract_address, :caller_address);
+
+    let trade_result = dispatcher
+        .trade(
+            operator_nonce: operator_nonce,
+            signature_a: trade_3.signature_a,
+            signature_b: trade_3.signature_b,
+            order_a: trade_3.order_a,
+            order_b: trade_3.order_b,
+            actual_amount_base_a: trade_3.actual_amount_base_a,
+            actual_amount_quote_a: trade_3.actual_amount_quote_a,
+            actual_fee_a: trade_3.actual_fee_a,
+            actual_fee_b: trade_3.actual_fee_b,
+        );
+    // dispatcher.multi_trade(:operator_nonce, trades: array![trade_1, trade_2].span());
+}

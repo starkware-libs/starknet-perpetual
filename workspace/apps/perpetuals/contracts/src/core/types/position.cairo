@@ -47,6 +47,22 @@ pub struct PositionDiffEnriched {
     pub synthetic_enriched: Option<SyntheticDiffEnriched>,
 }
 
+#[derive(Copy, Debug, Drop, Serde, Default)]
+pub struct PositionDiffEnrichedV2 {
+    pub collateral_diff: Balance,
+    pub synthetic_enriched: Option<SyntheticDiffEnriched>,
+}
+
+pub impl PositionDiffEnrichedIntoV2 of Into<PositionDiffEnriched, PositionDiffEnrichedV2> {
+    fn into(self: PositionDiffEnriched) -> PositionDiffEnrichedV2 {
+        PositionDiffEnrichedV2 {
+            collateral_diff: self.collateral_enriched.after - self.collateral_enriched.before,
+            synthetic_enriched: self.synthetic_enriched,
+        }
+    }
+}
+
+
 #[derive(Copy, Debug, Drop, Serde)]
 pub struct PositionData {
     pub synthetics: Span<SyntheticAsset>,
