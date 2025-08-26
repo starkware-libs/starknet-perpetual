@@ -1,4 +1,5 @@
 use perpetuals::tests::flow_tests::infra::*;
+use perpetuals::tests::flow_tests::perps_tests_facade::User;
 
 #[test]
 fn test_two_users_two_synthetics() {
@@ -583,4 +584,79 @@ fn test_short_liquidate_after_price_tick() {
     //                            49 - 18 - 5 = 26               1 * 539 * 0.1 = 53           0.541
     test.validate_total_value(liquidated_user, 26);
     test.validate_total_risk(liquidated_user, 53);
+}
+
+
+#[test]
+fn test_multi_trade_basic() {
+    let mut test = FlowTestExtendedTrait::new(fee_percentage: 1);
+    let mut users: Array<User> = ArrayTrait::new();
+    let mut orders: Array<OrderRequest> = ArrayTrait::new();
+    let mut sign = 1;
+    for _ in 0_u8..10_u8 {
+        let user = test.new_user();
+        test.process_deposit(test.deposit(user, 10_000));
+        users.append(user);
+        orders.append(test.create_order_request(user: user, asset: ETH_ASSET, base: sign));
+        sign = -sign;
+    }
+
+    let mut trades: Array<(OrderRequest, OrderRequest)> = ArrayTrait::new();
+    let orders_span = orders.span();
+    for i in 0_u8..5_u8 {
+        let order_a = *orders_span.at((i * 2).into());
+        let order_b = *orders_span.at((i * 2 + 1).into());
+        trades.append((order_a, order_b));
+    }
+    test.multi_trade(settlements: trades.span());
+
+    // for trade in trades_after {
+    //     let (order_a, order_b) = trade;
+    //     order_a.a
+    // }
+
+    for user in users {
+        test.validate_total_value(user, 9995);
+        test.validate_total_risk(user, 51);
+    }
+}
+
+#[test]
+fn test_multi_trade_single_market_maker_many_users() {
+    let mut test = FlowTestExtendedTrait::new(fee_percentage: 1);
+    let mut users: Array<User> = ArrayTrait::new();
+    let mut trades: Array<(OrderRequest, OrderRequest)> = ArrayTrait::new();
+    let mut tvtrs: Array<(i128, u128)> = ArrayTrait::new();
+    let market_maker = test.new_user();
+    test.process_deposit(test.deposit(market_maker, 1_000_000));
+    for asset_name in array![
+        BTC_ASSET,
+        ETH_ASSET,
+        STRK_ASSET,
+        SOL_ASSET,
+        DOGE_ASSET,
+        PEPE_ASSET,
+        ETC_ASSET,
+        TAO_ASSET,
+        XRP_ASSET,
+        ADA_ASSET,
+    ] {
+        let user = test.new_user();
+        test.process_deposit(test.deposit(user, 10_000));
+        users.append(user);
+
+        let order_a = test.create_order_request(user: market_maker, asset: asset_name, base: -5);
+        let order_b = test.create_order_request(user: user, asset: asset_name, base: 5);
+        trades.append((order_a, order_b));
+        let price: u128 = test.get_asset_price(asset_name);
+        tvtrs.append((10_000 - 5 * price.try_into().unwrap() / 100, 5 * price / 10));
+    }
+    test.multi_trade(settlements: trades.span());
+
+    for i in 0_u8..10_u8 {
+        let user = *users.at(i.into());
+        let (tv, tr) = *tvtrs.at(i.into());
+        test.validate_total_value(user, tv);
+        test.validate_total_risk(user, tr);
+    }
 }
