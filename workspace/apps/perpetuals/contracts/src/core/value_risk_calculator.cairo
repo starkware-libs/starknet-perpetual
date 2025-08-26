@@ -6,7 +6,9 @@ use perpetuals::core::errors::{
 };
 use perpetuals::core::types::asset::synthetic::SyntheticAsset;
 use perpetuals::core::types::balance::{Balance, BalanceDiff};
-use perpetuals::core::types::position::{PositionDiffEnriched, PositionId};
+use perpetuals::core::types::position::{
+    PositionDiffEnriched, PositionId, SyntheticEnrichedPositionDiff,
+};
 use perpetuals::core::types::price::{Price, PriceMulTrait};
 use perpetuals::core::types::risk_factor::RiskFactorTrait;
 use starkware_utils::errors::assert_with_byte_array;
@@ -122,7 +124,9 @@ pub fn liquidated_position_validations(
     let tvtr_before = calculate_position_tvtr_before(
         :unchanged_synthetics, :position_diff_enriched,
     );
-    let tvtr = calculate_position_tvtr_change(:tvtr_before, :position_diff_enriched);
+    let tvtr = calculate_position_tvtr_change(
+        :tvtr_before, synthetic_enriched_position_diff: position_diff_enriched.into(),
+    );
     let position_state_before_change = get_position_state(position_tvtr: tvtr.before);
 
     // Validate that the position isn't healthy before the change.
@@ -142,7 +146,9 @@ pub fn deleveraged_position_validations(
     let tvtr_before = calculate_position_tvtr_before(
         :unchanged_synthetics, :position_diff_enriched,
     );
-    let tvtr = calculate_position_tvtr_change(:tvtr_before, :position_diff_enriched);
+    let tvtr = calculate_position_tvtr_change(
+        :tvtr_before, synthetic_enriched_position_diff: position_diff_enriched.into(),
+    );
     let position_state_before_change = get_position_state(position_tvtr: tvtr.before);
 
     assert_with_byte_array(
@@ -184,12 +190,12 @@ pub fn calculate_position_tvtr(
 /// 2. Calculates value and risk changes for collateral assets
 /// 3. Combines all calculations into final before/after totals
 pub fn calculate_position_tvtr_change(
-    tvtr_before: PositionTVTR, position_diff_enriched: PositionDiffEnriched,
+    tvtr_before: PositionTVTR, synthetic_enriched_position_diff: SyntheticEnrichedPositionDiff,
 ) -> TVTRChange {
     let mut total_value_after = tvtr_before.total_value;
     let mut total_risk_after = tvtr_before.total_risk;
 
-    if let Option::Some(asset_diff) = position_diff_enriched.synthetic_enriched {
+    if let Option::Some(asset_diff) = synthetic_enriched_position_diff.synthetic_enriched {
         // asset_value is in units of 10^-6 USD.
         let asset_value_before = asset_diff.price.mul(rhs: asset_diff.balance_before);
         let asset_value_after = asset_diff.price.mul(rhs: asset_diff.balance_after);
@@ -203,11 +209,9 @@ pub fn calculate_position_tvtr_change(
     // Collateral price is always "One" in Perps - "One" is 10^-6 USD which means 2^28 same as the
     // PRICE_SCALE.
     let price: Price = One::one();
-    let collateral_balance_diff = position_diff_enriched.collateral_enriched.after
-        - position_diff_enriched.collateral_enriched.before;
 
     // asset_value is in units of 10^-6 USD.
-    total_value_after += price.mul(rhs: collateral_balance_diff);
+    total_value_after += price.mul(rhs: synthetic_enriched_position_diff.collateral_diff);
 
     TVTRChange {
         before: tvtr_before,
@@ -328,7 +332,7 @@ mod tests {
             unchanged_synthetics: position_data, position_diff_enriched: position_diff_enriched,
         );
         let position_tvtr_change = calculate_position_tvtr_change(
-            tvtr_before, :position_diff_enriched,
+            tvtr_before, synthetic_enriched_position_diff: position_diff_enriched.into(),
         );
 
         /// Ensures `total_value` before the change is `54,000`, calculated as `balance_before *
@@ -382,7 +386,7 @@ mod tests {
             unchanged_synthetics: position_data, position_diff_enriched: position_diff_enriched,
         );
         let position_tvtr_change = calculate_position_tvtr_change(
-            tvtr_before, :position_diff_enriched,
+            tvtr_before, synthetic_enriched_position_diff: position_diff_enriched.into(),
         );
 
         /// Ensures `total_value` before the change is `-54,000`, calculated as `balance_before *
@@ -462,7 +466,7 @@ mod tests {
             unchanged_synthetics: position_data, position_diff_enriched: position_diff_enriched,
         );
         let position_tvtr_change = calculate_position_tvtr_change(
-            tvtr_before, :position_diff_enriched,
+            tvtr_before, synthetic_enriched_position_diff: position_diff_enriched.into(),
         );
 
         /// Ensures `total_value` before the change is `121,500`, calculated as `balance_1_before *
@@ -518,7 +522,7 @@ mod tests {
             unchanged_synthetics: position_data, position_diff_enriched: position_diff_enriched,
         );
         let position_tvtr_change = calculate_position_tvtr_change(
-            tvtr_before, :position_diff_enriched,
+            tvtr_before, synthetic_enriched_position_diff: position_diff_enriched.into(),
         );
 
         /// Ensures `total_value` before the change is `54,000`, calculated as `balance_before *
@@ -555,7 +559,7 @@ mod tests {
             unchanged_synthetics: position_data, position_diff_enriched: position_diff_enriched,
         );
         let position_tvtr_change = calculate_position_tvtr_change(
-            tvtr_before, :position_diff_enriched,
+            tvtr_before, synthetic_enriched_position_diff: position_diff_enriched.into(),
         );
 
         /// Ensures `total_value` before the change is `0`.
