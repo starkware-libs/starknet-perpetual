@@ -35,16 +35,36 @@ pub struct PositionId {
     pub value: u32,
 }
 
+/// Diff where both collateral and synthetic are raw (not enriched).
 #[derive(Copy, Debug, Drop, Serde, Default)]
 pub struct PositionDiff {
     pub collateral_diff: Balance,
     pub synthetic_diff: Option<(AssetId, Balance)>,
 }
 
+/// Diff where synthetic is enriched but collateral is still raw.
+#[derive(Copy, Debug, Drop, Serde, Default)]
+pub struct SyntheticEnrichedPositionDiff {
+    pub collateral_diff: Balance,
+    pub synthetic_enriched: Option<SyntheticDiffEnriched>,
+}
+
+/// Diff where both collateral and synthetic are enriched.
 #[derive(Copy, Debug, Drop, Serde, Default)]
 pub struct PositionDiffEnriched {
     pub collateral_enriched: BalanceDiff,
     pub synthetic_enriched: Option<SyntheticDiffEnriched>,
+}
+
+pub impl PositionDiffEnrichedIntoSyntheticEnrichedPositionDiff of Into<
+    PositionDiffEnriched, SyntheticEnrichedPositionDiff,
+> {
+    fn into(self: PositionDiffEnriched) -> SyntheticEnrichedPositionDiff {
+        SyntheticEnrichedPositionDiff {
+            collateral_diff: self.collateral_enriched.after - self.collateral_enriched.before,
+            synthetic_enriched: self.synthetic_enriched,
+        }
+    }
 }
 
 #[derive(Copy, Debug, Drop, Serde)]

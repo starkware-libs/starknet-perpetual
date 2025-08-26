@@ -34,6 +34,7 @@ pub mod Core {
     use perpetuals::core::types::order::{Order, OrderTrait};
     use perpetuals::core::types::position::{
         Position, PositionDiff, PositionDiffEnriched, PositionId, PositionTrait,
+        SyntheticEnrichedPositionDiff,
     };
     use perpetuals::core::types::price::PriceMulTrait;
     use perpetuals::core::types::transfer::TransferArgs;
@@ -1222,18 +1223,24 @@ pub mod Core {
             position_diff: PositionDiff,
             tvtr_before: Nullable<PositionTVTR>,
         ) -> PositionTVTR {
-            let position_diff_enriched = self.enrich_position_diff(:position, :position_diff);
+            let synthetic_enriched_position_diff = self.enrich_synthetic(:position, :position_diff);
             let tvtr_before: PositionTVTR = match match_nullable(tvtr_before) {
                 FromNullableResult::Null => {
                     let unchanged_synthetics = self
                         .positions
                         .get_position_unchanged_synthetics(:position, :position_diff);
+                    let position_diff_enriched = self
+                        .enrich_collateral(
+                            :position, position_diff: synthetic_enriched_position_diff,
+                        );
 
                     calculate_position_tvtr_before(:unchanged_synthetics, :position_diff_enriched)
                 },
                 FromNullableResult::NotNull(value) => value.unbox(),
             };
-            let tvtr = calculate_position_tvtr_change(:tvtr_before, :position_diff_enriched);
+            let tvtr = calculate_position_tvtr_change(
+                :tvtr_before, :synthetic_enriched_position_diff,
+            );
             assert_healthy_or_healthier(:position_id, :tvtr);
             tvtr.after
         }
@@ -1258,8 +1265,9 @@ pub mod Core {
             let unchanged_synthetics = self
                 .positions
                 .get_position_unchanged_synthetics(:position, :position_diff);
-
-            let position_diff_enriched = self.enrich_position_diff(:position, :position_diff);
+            let synthetic_enriched_position_diff = self.enrich_synthetic(:position, :position_diff);
+            let position_diff_enriched = self
+                .enrich_collateral(:position, position_diff: synthetic_enriched_position_diff);
 
             liquidated_position_validations(
                 :position_id, :unchanged_synthetics, :position_diff_enriched,
@@ -1276,16 +1284,38 @@ pub mod Core {
                 .positions
                 .get_position_unchanged_synthetics(:position, :position_diff);
 
-            let position_diff_enriched = self.enrich_position_diff(:position, :position_diff);
+            let synthetic_enriched_position_diff = self.enrich_synthetic(:position, :position_diff);
+            let position_diff_enriched = self
+                .enrich_collateral(:position, position_diff: synthetic_enriched_position_diff);
 
             deleveraged_position_validations(
                 :position_id, :unchanged_synthetics, :position_diff_enriched,
             );
         }
 
-        fn enrich_position_diff(
-            self: @ContractState, position: StoragePath<Position>, position_diff: PositionDiff,
+        /// Enriches collateral, producing a fully enriched diff.
+        /// This computation is relatively expensive due to the funding mechanism.
+        /// If the calculation can rely on the raw collateral values, prefer using
+        /// `PositionDiff` or `SyntheticEnrichedPositionDiff` without fully enriching.
+        fn enrich_collateral(
+            self: @ContractState,
+            position: StoragePath<Position>,
+            position_diff: SyntheticEnrichedPositionDiff,
         ) -> PositionDiffEnriched {
+            let before = self.positions.get_collateral_provisional_balance(:position);
+            let after = before + position_diff.collateral_diff;
+            let collateral_enriched = BalanceDiff { before: before, after };
+
+            PositionDiffEnriched {
+                collateral_enriched: collateral_enriched,
+                synthetic_enriched: position_diff.synthetic_enriched,
+            }
+        }
+
+        /// Enriches the synthetic part, leaving collateral raw.
+        fn enrich_synthetic(
+            self: @ContractState, position: StoragePath<Position>, position_diff: PositionDiff,
+        ) -> SyntheticEnrichedPositionDiff {
             let synthetic_enriched = if let Option::Some((synthetic_id, diff)) = position_diff
                 .synthetic_diff {
                 let balance_before = self.positions.get_synthetic_balance(:position, :synthetic_id);
@@ -1310,12 +1340,10 @@ pub mod Core {
             } else {
                 Option::None
             };
-
-            let before = self.positions.get_collateral_provisional_balance(:position);
-            let after = before + position_diff.collateral_diff;
-            let collateral_enriched = BalanceDiff { before: before, after };
-
-            PositionDiffEnriched { collateral_enriched, synthetic_enriched }
+            SyntheticEnrichedPositionDiff {
+                collateral_diff: position_diff.collateral_diff,
+                synthetic_enriched: synthetic_enriched,
+            }
         }
     }
 }
