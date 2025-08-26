@@ -1,4 +1,6 @@
+use core::num::traits::Pow;
 use perpetuals::tests::flow_tests::infra::*;
+use perpetuals::tests::flow_tests::perps_tests_facade::User;
 
 #[test]
 fn test_two_users_two_synthetics() {
@@ -583,4 +585,210 @@ fn test_short_liquidate_after_price_tick() {
     //                            49 - 18 - 5 = 26               1 * 539 * 0.1 = 53           0.541
     test.validate_total_value(liquidated_user, 26);
     test.validate_total_risk(liquidated_user, 53);
+}
+
+
+#[test]
+fn test_multi_trade_basic() {
+    let mut test = FlowTestExtendedTrait::new(fee_percentage: 1);
+    let mut users: Array<User> = ArrayTrait::new();
+    let mut orders: Array<OrderRequest> = ArrayTrait::new();
+    let mut sign = 1;
+    for _ in 0_u8..10_u8 {
+        let user = test.new_user();
+        test.process_deposit(test.deposit(user, 10_000));
+        users.append(user);
+        orders.append(test.create_order_request(user: user, asset: ETH_ASSET, base: sign));
+        sign = -sign;
+    }
+
+    let mut trades: Array<(OrderRequest, OrderRequest)> = ArrayTrait::new();
+    let orders_span = orders.span();
+    for i in 0_u8..5_u8 {
+        let order_a = *orders_span.at((i * 2).into());
+        let order_b = *orders_span.at((i * 2 + 1).into());
+        trades.append((order_a, order_b));
+    }
+    let after_trades = test.multi_trade(settlements: trades.span());
+
+    for trade in after_trades {
+        let (order_a, order_b) = *trade;
+        assert_eq!(order_a.actual_base, 0_u64);
+        assert_eq!(order_b.actual_base, 0_u64);
+    }
+
+    for user in users {
+        // tv = balance - fee = 10_000 - 512 / 100 = 9995
+        test.validate_total_value(user, 9995);
+
+        // tr = synthetic_balance * synthetic_price * risk = 1 * 512 * 0.1 = 51
+        test.validate_total_risk(user, 51);
+    }
+}
+
+#[test]
+fn test_multi_trade_single_market_maker_many_users() {
+    let mut test = FlowTestExtendedTrait::new(fee_percentage: 5);
+    let mut users: Array<User> = ArrayTrait::new();
+    let mut trades: Array<(OrderRequest, OrderRequest)> = ArrayTrait::new();
+    let mut tvtrs: Array<(i128, u128)> = ArrayTrait::new(); // (tv, tr)
+    const MM_INITIAL_BALANCE: u64 = 1_000_000;
+    const USER_INITIAL_BALANCE: u64 = 20_000;
+    let market_maker = test.new_user();
+    test.process_deposit(test.deposit(market_maker, MM_INITIAL_BALANCE));
+    for asset_name in array![
+        BTC_ASSET,
+        ETH_ASSET,
+        STRK_ASSET,
+        SOL_ASSET,
+        DOGE_ASSET,
+        PEPE_ASSET,
+        ETC_ASSET,
+        TAO_ASSET,
+        XRP_ASSET,
+        ADA_ASSET,
+    ] {
+        let user = test.new_user();
+        test.process_deposit(test.deposit(user, USER_INITIAL_BALANCE));
+        users.append(user);
+
+        let order_a = test.create_order_request(user: market_maker, asset: asset_name, base: -10);
+        let order_b = test.create_order_request(user: user, asset: asset_name, base: 10);
+        trades.append((order_a, order_b));
+        let price: u128 = test.get_asset_price(asset_name);
+
+        //tv = balance - fee = balance - 5% of tx value = 20_000 - 10 * price / 20
+        //tr = synthetic_balance * synthetic_price * risk = 10 * synthetic_price * 0.1
+        //= 10 * synthetic_price / 10
+        tvtrs
+            .append(
+                (
+                    USER_INITIAL_BALANCE.into() - 10 * price.try_into().unwrap() / 20,
+                    10 * price / 10,
+                ),
+            );
+    }
+    let after_trades = test.multi_trade(settlements: trades.span());
+
+    for trade in after_trades {
+        let (order_a, order_b) = *trade;
+        assert_eq!(order_a.actual_base, 0_u64);
+        assert_eq!(order_b.actual_base, 0_u64);
+    }
+
+    for i in 0_u8..10_u8 {
+        let user = *users.at(i.into());
+        let (tv, tr) = *tvtrs.at(i.into());
+        test.validate_total_value(user, tv);
+        test.validate_total_risk(user, tr);
+    }
+
+    // sum_1-->n(2^i) = 2^(n+1) - 2
+    //tv = balance - total_fee = balance - 5% of total txs value = balance - sum_txs(10 * price /
+    //20) = 1_000_000 - 10 * (2^11 - 2) / 20
+    let mm_tv = (MM_INITIAL_BALANCE.into() - 10 * (2_u128.pow(11) - 2) / 20).try_into().unwrap();
+
+    //tr = sum_txs(10 * price / 20) = 10 * (2^11 - 2) / 20
+    let mm_tr = 10 * (2_u128.pow(11) - 2) / 10;
+    test.validate_total_value(market_maker, mm_tv);
+    test.validate_total_risk(market_maker, mm_tr);
+}
+
+#[test]
+fn test_multi_trade_single_order() {
+    let mut test = FlowTestExtendedTrait::new(fee_percentage: 5);
+    let mut users: Array<User> = ArrayTrait::new();
+    let mut trades: Array<(OrderRequest, OrderRequest)> = ArrayTrait::new();
+    let mut tvtrs: Array<(i128, u128)> = ArrayTrait::new(); // (tv, tr)
+    const MM_INITIAL_BALANCE: u64 = 1_000_000;
+    const USER_INITIAL_BALANCE: u64 = 20_000;
+    let price: u128 = test.get_asset_price(BTC_ASSET);
+    let market_maker = test.new_user();
+    test.process_deposit(test.deposit(market_maker, MM_INITIAL_BALANCE));
+    let mut main_order = test.create_order_request(user: market_maker, asset: BTC_ASSET, base: -10);
+    let mut total_fee: u128 = 0;
+    for _ in 0_u8..10_u8 {
+        let user = test.new_user();
+        test.process_deposit(test.deposit(user, USER_INITIAL_BALANCE));
+        users.append(user);
+
+        let order = test.create_order_request(user: user, asset: BTC_ASSET, base: 1);
+        trades.append((main_order, order));
+        main_order
+            .actual_base = if main_order.actual_base > 0 {
+                main_order.actual_base - 1
+            } else {
+                0
+            };
+
+        // tv = balance - fee = balance - 5% of tx value = 20_000 - price / 20
+        // tr = synthetic_balance * synthetic_price * risk = 1 * price * 0.1 = price / 10
+        tvtrs.append((USER_INITIAL_BALANCE.into() - price.try_into().unwrap() / 20, price / 10));
+        total_fee += price / 20;
+    }
+
+    let after_trades = test.multi_trade(settlements: trades.span());
+
+    let mut i = 9;
+    for trade in after_trades {
+        let (main_order, order) = *trade;
+        assert_eq!(main_order.actual_base, i);
+        assert_eq!(order.actual_base, 0_u64);
+        i = if i > 0 {
+            i - 1
+        } else {
+            0
+        };
+    }
+
+    for i in 0_u8..10_u8 {
+        let user = *users.at(i.into());
+        let (tv, tr) = *tvtrs.at(i.into());
+        test.validate_total_value(user, tv);
+        test.validate_total_risk(user, tr);
+    }
+
+    // tv = balance - total_fee
+    let mm_tv = (MM_INITIAL_BALANCE.into() - total_fee).try_into().unwrap();
+
+    //tr = abs(balance) * price * risk = 10 * price * 0.1 = 10 * price / 10
+    let mm_tr = 10 * price / 10;
+    test.validate_total_value(market_maker, mm_tv);
+    test.validate_total_risk(market_maker, mm_tr);
+}
+
+#[test]
+fn test_multi_trade_empty() {
+    let mut test = FlowTestExtendedTrait::new(fee_percentage: 1);
+    let mut trades: Array<(OrderRequest, OrderRequest)> = ArrayTrait::new(); //(tv, tr)
+    let after_trades = test.multi_trade(settlements: trades.span());
+    assert_eq!(after_trades.len(), 0);
+}
+
+#[test]
+fn test_multi_trade_with_one_trade() {
+    let mut test = FlowTestExtendedTrait::new(fee_percentage: 1);
+    let user_a = test.new_user();
+    let user_b = test.new_user();
+
+    test.process_deposit(test.deposit(user_a, 10_000));
+    test.process_deposit(test.deposit(user_b, 10_000));
+
+    let order_a = test.create_order_request(user: user_a, asset: ETH_ASSET, base: -1);
+    let order_b = test.create_order_request(user: user_b, asset: ETH_ASSET, base: 1);
+
+    let trades = array![(order_a, order_b)].span();
+
+    let after_trades = test.multi_trade(settlements: trades);
+
+    for trade in after_trades {
+        let (order_a, order_b) = *trade;
+        assert_eq!(order_a.actual_base, 0_u64);
+        assert_eq!(order_b.actual_base, 0_u64);
+    }
+
+    test.validate_total_value(user_a, 9995);
+    test.validate_total_risk(user_a, 51);
+    test.validate_total_value(user_b, 9995);
+    test.validate_total_risk(user_b, 51);
 }
