@@ -1,6 +1,7 @@
 use core::cmp::min;
 use core::dict::{Felt252Dict, Felt252DictTrait};
 use core::num::traits::{Pow, Zero};
+use perpetuals::core::interface::Settlement;
 use perpetuals::core::types::balance::Balance;
 use perpetuals::core::types::funding::FundingTick;
 use perpetuals::core::types::position::PositionId;
@@ -59,7 +60,7 @@ pub impl FlowTestBaseImpl of FlowTestBaseTrait {
     }
 }
 
-#[derive(Drop)]
+#[derive(Copy, Drop)]
 pub struct OrderRequest {
     pub order_info: OrderInfo,
     pub actual_base: u64,
@@ -92,7 +93,7 @@ pub const ADA_ASSET: felt252 = 'ADA';
 pub impl FlowTestImpl of FlowTestExtendedTrait {
     fn new(fee_percentage: u8) -> FlowTestExtended {
         let risk_factor_tiers = RiskFactorTiers {
-            tiers: array![10, 20, 50].span(), first_tier_boundary: 10_000, tier_size: 10_000,
+            tiers: array![10, 20, 50].span(), first_tier_boundary: 11_000, tier_size: 10_000,
         };
         let mut synthetics = Default::default();
         let mut flow_test_base = FlowTestBaseTrait::new();
@@ -262,6 +263,58 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
         (buy, sell)
     }
 
+    fn multi_trade(
+        ref self: FlowTestExtended, settlements: Span<(OrderRequest, OrderRequest)>,
+    ) -> Span<(OrderRequest, OrderRequest)> {
+        let mut trades: Array<Settlement> = ArrayTrait::new();
+        let mut orders_after_trade: Array<(OrderRequest, OrderRequest)> = ArrayTrait::new();
+        for (order_a, order_b) in settlements {
+            let mut flipped = false;
+            let (mut buy, mut sell) = if *order_a.order_info.order.base_amount > 0 {
+                (*order_a, *order_b)
+            } else {
+                flipped = true;
+                (*order_b, *order_a)
+            };
+            let base = min(buy.actual_base, sell.actual_base)
+                .try_into()
+                .expect('Value should not overflow');
+            let quote = base * buy.order_info.order.quote_amount / buy.order_info.order.base_amount;
+
+            let fee_a = quote.abs()
+                * buy.order_info.order.fee_amount
+                / buy.order_info.order.quote_amount.abs();
+
+            let fee_b = quote.abs()
+                * sell.order_info.order.fee_amount
+                / sell.order_info.order.quote_amount.abs();
+
+            trades
+                .append(
+                    self
+                        .flow_test_base
+                        .facade
+                        .create_settlement(
+                            order_a: buy.order_info,
+                            order_b: sell.order_info,
+                            :base,
+                            :quote,
+                            :fee_a,
+                            :fee_b,
+                        ),
+                );
+            buy.actual_base -= base.abs();
+            sell.actual_base -= base.abs();
+            if flipped {
+                orders_after_trade.append((sell, buy));
+            } else {
+                orders_after_trade.append((buy, sell));
+            }
+        }
+        self.flow_test_base.facade.multi_trade(trades: trades.span());
+        orders_after_trade.span()
+    }
+
     fn liquidate(
         ref self: FlowTestExtended, liquidated_user: User, mut liquidator_order: OrderRequest,
     ) -> OrderRequest {
@@ -370,6 +423,29 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
                 base_asset_id: synthetic_info.asset_id,
                 :base_amount_a,
             );
+    }
+
+    fn get_asset_price(ref self: FlowTestExtended, asset: felt252) -> u128 {
+        let mut initial_price = 2_u128.pow(10);
+        for asset_name in array![
+            BTC_ASSET,
+            ETH_ASSET,
+            STRK_ASSET,
+            SOL_ASSET,
+            DOGE_ASSET,
+            PEPE_ASSET,
+            ETC_ASSET,
+            TAO_ASSET,
+            XRP_ASSET,
+            ADA_ASSET,
+        ] {
+            if asset_name == asset {
+                return initial_price;
+            }
+            initial_price /= 2;
+        }
+        panic!("Asset not found: {:?}", asset);
+        initial_price
     }
 }
 
