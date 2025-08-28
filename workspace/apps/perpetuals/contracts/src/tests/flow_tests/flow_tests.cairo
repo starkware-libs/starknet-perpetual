@@ -1,4 +1,5 @@
 use perpetuals::tests::flow_tests::infra::*;
+use perpetuals::tests::flow_tests::perps_tests_facade::User;
 
 #[test]
 fn test_two_users_two_synthetics() {
@@ -585,3 +586,82 @@ fn test_short_liquidate_after_price_tick() {
     test.validate_total_risk(liquidated_user, 53);
 }
 
+
+#[test]
+fn test_multi_trade_basic() {
+    // Setup:
+    let mut test = FlowTestExtendedTrait::new(fee_percentage: 1);
+    let mut users: Array<User> = ArrayTrait::new();
+    let mut orders: Array<OrderRequest> = ArrayTrait::new();
+    let mut base = 1;
+    for _ in 0_u8..10_u8 {
+        let user = test.new_user();
+        test.process_deposit(test.deposit(user, 10_000));
+        users.append(user);
+        orders.append(test.create_order_request(user: user, asset: ETH_ASSET, base: base));
+        // alternate between long and short
+        base = -base;
+    }
+
+    let mut trades: Array<(OrderRequest, OrderRequest)> = ArrayTrait::new();
+    for i in 0_u8..5_u8 {
+        let order_a = *orders.at((i * 2).into());
+        let order_b = *orders.at((i * 2 + 1).into());
+        trades.append((order_a, order_b));
+    }
+    let after_trades = test.multi_trade(settlements: trades.span());
+
+    // order are fulfilled entirely
+    for trade in after_trades {
+        let (order_a, order_b) = *trade;
+        assert_eq!(order_a.actual_base, 0_u64);
+        assert_eq!(order_b.actual_base, 0_u64);
+    }
+
+    for user in users {
+        // tv = balance - fee = 10_000 - 512 / 100 = 9995
+        test.validate_total_value(user, 9995);
+
+        // tr = 1 * 512 * 0.1 = 51
+        test.validate_total_risk(user, 51);
+    }
+}
+
+#[test]
+fn test_multi_trade_empty() {
+    let mut test = FlowTestExtendedTrait::new(fee_percentage: 1);
+    let mut trades: Array<(OrderRequest, OrderRequest)> = ArrayTrait::new();
+    let after_trades = test.multi_trade(settlements: trades.span());
+    assert_eq!(after_trades.len(), 0);
+}
+
+#[test]
+fn test_multi_trade_with_one_trade() {
+    // Setup:
+    let mut test = FlowTestExtendedTrait::new(fee_percentage: 1);
+    let user_a = test.new_user();
+    let user_b = test.new_user();
+
+    test.process_deposit(test.deposit(user_a, 10_000));
+    test.process_deposit(test.deposit(user_b, 10_000));
+
+    let order_a = test.create_order_request(user: user_a, asset: ETH_ASSET, base: -1);
+    let order_b = test.create_order_request(user: user_b, asset: ETH_ASSET, base: 1);
+    let trades = array![(order_a, order_b)].span();
+
+    // Test:
+    let after_trades = test.multi_trade(settlements: trades);
+
+    // Validate:
+    // Orders are fulfilled entirely
+    for trade in after_trades {
+        let (order_a, order_b) = *trade;
+        assert_eq!(order_a.actual_base, 0_u64);
+        assert_eq!(order_b.actual_base, 0_u64);
+    }
+
+    test.validate_total_value(user_a, 9995);
+    test.validate_total_risk(user_a, 51);
+    test.validate_total_value(user_b, 9995);
+    test.validate_total_risk(user_b, 51);
+}

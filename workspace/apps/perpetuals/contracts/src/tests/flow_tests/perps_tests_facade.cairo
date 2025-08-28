@@ -871,15 +871,16 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
 
     fn create_updated_position_data(
         ref self: PerpsTestsFacade,
-        position_data: PositionData,
+        position_data_a: PositionData,
+        position_data_b: PositionData,
         asset_id: AssetId,
         settlement: Settlement,
-    ) -> PositionData {
-        let mut new_synthetics = ArrayTrait::new();
-        for synthetic in position_data.synthetics {
+    ) -> (PositionData, PositionData) {
+        let mut new_synthetics_a = ArrayTrait::new();
+        for synthetic in position_data_a.synthetics {
             if *synthetic.id == asset_id {
                 let new_balance = *synthetic.balance + settlement.actual_amount_base_a.into();
-                new_synthetics
+                new_synthetics_a
                     .append(
                         SyntheticAsset {
                             id: *synthetic.id,
@@ -889,16 +890,42 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                         },
                     );
             } else {
-                new_synthetics.append(*synthetic);
+                new_synthetics_a.append(*synthetic);
             }
         }
 
-        PositionData {
-            collateral_balance: position_data.collateral_balance
-                + settlement.actual_amount_quote_a.into()
-                - settlement.actual_fee_a.into(),
-            synthetics: new_synthetics.span(),
+        let mut new_synthetics_b = ArrayTrait::new();
+        for synthetic in position_data_b.synthetics {
+            if *synthetic.id == asset_id {
+                let new_balance = *synthetic.balance - settlement.actual_amount_base_a.into();
+                new_synthetics_b
+                    .append(
+                        SyntheticAsset {
+                            id: *synthetic.id,
+                            balance: new_balance,
+                            price: *synthetic.price,
+                            risk_factor: *synthetic.risk_factor,
+                        },
+                    );
+            } else {
+                new_synthetics_b.append(*synthetic);
+            }
         }
+
+        (
+            PositionData {
+                collateral_balance: position_data_a.collateral_balance
+                    + settlement.actual_amount_quote_a.into()
+                    - settlement.actual_fee_a.into(),
+                synthetics: new_synthetics_a.span(),
+            },
+            PositionData {
+                collateral_balance: position_data_b.collateral_balance
+                    - settlement.actual_amount_quote_a.into()
+                    - settlement.actual_fee_b.into(),
+                synthetics: new_synthetics_b.span(),
+            },
+        )
     }
 
     fn multi_trade(ref self: PerpsTestsFacade, trades: Span<Settlement>) {
@@ -922,15 +949,6 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 FromNullableResult::NotNull(value) => value.unbox(),
             };
 
-            let updated_position_data_a = self
-                .create_updated_position_data(position_data_a, asset_id, settlement);
-
-            positions_dict
-                .insert(
-                    settlement.order_a.position_id.value.into(),
-                    NullableTrait::new(updated_position_data_a),
-                );
-
             let mut position_data_b =
                 match match_nullable(
                     positions_dict.get(settlement.order_b.position_id.value.into()),
@@ -942,8 +960,16 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 FromNullableResult::NotNull(value) => value.unbox(),
             };
 
-            let updated_position_data_b = self
-                .create_updated_position_data(position_data_b, asset_id, settlement);
+            let (updated_position_data_a, updated_position_data_b) = self
+                .create_updated_position_data(
+                    position_data_a, position_data_b, asset_id, settlement,
+                );
+
+            positions_dict
+                .insert(
+                    settlement.order_a.position_id.value.into(),
+                    NullableTrait::new(updated_position_data_a),
+                );
 
             positions_dict
                 .insert(
@@ -960,20 +986,17 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         self.operator.set_as_caller(self.perpetuals_contract);
         ICoreDispatcher { contract_address: self.perpetuals_contract }
             .multi_trade(:operator_nonce, :trades);
-
         self
             .validate_collateral_balance(
                 position_id: FEE_POSITION,
                 expected_balance: fee_position_balance_before + total_fee.into(),
             );
-
         for position_id in cached_positions {
             let balance = positions_dict.get(position_id.value.into());
             let position_data = match match_nullable(balance) {
                 FromNullableResult::Null => panic!("Position not found"),
                 FromNullableResult::NotNull(value) => value.unbox(),
             };
-
             self
                 .validate_collateral_balance(
                     :position_id, expected_balance: position_data.collateral_balance,
