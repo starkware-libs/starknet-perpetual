@@ -584,3 +584,4 @@ fn test_short_liquidate_after_price_tick() {
     test.validate_total_value(liquidated_user, 26);
     test.validate_total_risk(liquidated_user, 53);
 }
+
