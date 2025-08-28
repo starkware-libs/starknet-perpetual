@@ -1,3 +1,5 @@
+use core::dict::{Felt252Dict, Felt252DictTrait};
+use core::nullable::{FromNullableResult, match_nullable};
 use openzeppelin_testing::deployment::declare_and_deploy;
 use openzeppelin_testing::signing::StarkKeyPair;
 use perpetuals::core::components::assets::interface::{IAssetsDispatcher, IAssetsDispatcherTrait};
@@ -13,13 +15,13 @@ use perpetuals::core::components::positions::interface::{
     IPositionsDispatcher, IPositionsDispatcherTrait,
 };
 use perpetuals::core::core::Core::SNIP12MetadataImpl;
-use perpetuals::core::interface::{ICoreDispatcher, ICoreDispatcherTrait};
+use perpetuals::core::interface::{ICoreDispatcher, ICoreDispatcherTrait, Settlement};
 use perpetuals::core::types::asset::synthetic::SyntheticAsset;
 use perpetuals::core::types::asset::{AssetId, AssetIdTrait, AssetStatus};
 use perpetuals::core::types::balance::Balance;
 use perpetuals::core::types::funding::FundingTick;
 use perpetuals::core::types::order::Order;
-use perpetuals::core::types::position::PositionId;
+use perpetuals::core::types::position::{PositionData, PositionId};
 use perpetuals::core::types::price::{Price, SignedPrice};
 use perpetuals::core::types::transfer::TransferArgs;
 use perpetuals::core::types::withdraw::WithdrawArgs;
@@ -844,6 +846,146 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             order_a_hash: hash_a,
             order_b_hash: hash_b,
         );
+    }
+
+    fn create_settlement(
+        ref self: PerpsTestsFacade,
+        order_a: OrderInfo,
+        order_b: OrderInfo,
+        base: i64,
+        quote: i64,
+        fee_a: u64,
+        fee_b: u64,
+    ) -> Settlement {
+        Settlement {
+            signature_a: order_a.signature,
+            signature_b: order_b.signature,
+            order_a: order_a.order,
+            order_b: order_b.order,
+            actual_amount_base_a: base,
+            actual_amount_quote_a: quote,
+            actual_fee_a: fee_a,
+            actual_fee_b: fee_b,
+        }
+    }
+
+    fn create_updated_position_data(
+        ref self: PerpsTestsFacade,
+        position_data: PositionData,
+        asset_id: AssetId,
+        settlement: Settlement,
+    ) -> PositionData {
+        let mut new_synthetics = ArrayTrait::new();
+        for synthetic in position_data.synthetics {
+            if *synthetic.id == asset_id {
+                let new_balance = *synthetic.balance + settlement.actual_amount_base_a.into();
+                new_synthetics
+                    .append(
+                        SyntheticAsset {
+                            id: *synthetic.id,
+                            balance: new_balance,
+                            price: *synthetic.price,
+                            risk_factor: *synthetic.risk_factor,
+                        },
+                    );
+            } else {
+                new_synthetics.append(*synthetic);
+            }
+        }
+
+        PositionData {
+            collateral_balance: position_data.collateral_balance
+                + settlement.actual_amount_quote_a.into()
+                - settlement.actual_fee_a.into(),
+            synthetics: new_synthetics.span(),
+        }
+    }
+
+    fn multi_trade(ref self: PerpsTestsFacade, trades: Span<Settlement>) {
+        let dispatcher = IPositionsDispatcher { contract_address: self.perpetuals_contract };
+        let mut positions_dict: Felt252Dict<Nullable<PositionData>> = Default::default();
+        let mut cached_positions: Array<PositionId> = ArrayTrait::new();
+        let mut total_fee: u64 = 0;
+        for trade in trades {
+            let settlement = *trade;
+            let asset_id = settlement.order_a.base_asset_id;
+            total_fee += settlement.actual_fee_a + settlement.actual_fee_b;
+
+            let mut position_data_a =
+                match match_nullable(
+                    positions_dict.get(settlement.order_a.position_id.value.into()),
+                ) {
+                FromNullableResult::Null => {
+                    cached_positions.append(settlement.order_a.position_id);
+                    dispatcher.get_position_assets(position_id: settlement.order_a.position_id)
+                },
+                FromNullableResult::NotNull(value) => value.unbox(),
+            };
+
+            let updated_position_data_a = self
+                .create_updated_position_data(position_data_a, asset_id, settlement);
+
+            positions_dict
+                .insert(
+                    settlement.order_a.position_id.value.into(),
+                    NullableTrait::new(updated_position_data_a),
+                );
+
+            let mut position_data_b =
+                match match_nullable(
+                    positions_dict.get(settlement.order_b.position_id.value.into()),
+                ) {
+                FromNullableResult::Null => {
+                    cached_positions.append(settlement.order_b.position_id);
+                    dispatcher.get_position_assets(position_id: settlement.order_b.position_id)
+                },
+                FromNullableResult::NotNull(value) => value.unbox(),
+            };
+
+            let updated_position_data_b = self
+                .create_updated_position_data(position_data_b, asset_id, settlement);
+
+            positions_dict
+                .insert(
+                    settlement.order_b.position_id.value.into(),
+                    NullableTrait::new(updated_position_data_b),
+                );
+        }
+
+        let fee_position_balance_before = dispatcher
+            .get_position_assets(position_id: FEE_POSITION)
+            .collateral_balance;
+
+        let operator_nonce = self.get_nonce();
+        self.operator.set_as_caller(self.perpetuals_contract);
+        ICoreDispatcher { contract_address: self.perpetuals_contract }
+            .multi_trade(:operator_nonce, :trades);
+
+        self
+            .validate_collateral_balance(
+                position_id: FEE_POSITION,
+                expected_balance: fee_position_balance_before + total_fee.into(),
+            );
+
+        for position_id in cached_positions {
+            let balance = positions_dict.get(position_id.value.into());
+            let position_data = match match_nullable(balance) {
+                FromNullableResult::Null => panic!("Position not found"),
+                FromNullableResult::NotNull(value) => value.unbox(),
+            };
+
+            self
+                .validate_collateral_balance(
+                    :position_id, expected_balance: position_data.collateral_balance,
+                );
+
+            for synthetic in position_data.synthetics {
+                self
+                    .validate_synthetic_balance(
+                        :position_id, asset_id: *synthetic.id, expected_balance: *synthetic.balance,
+                    );
+            }
+        }
     }
 
     fn liquidate(
