@@ -92,7 +92,7 @@ pub const ADA_ASSET: felt252 = 'ADA';
 pub impl FlowTestImpl of FlowTestExtendedTrait {
     fn new(fee_percentage: u8) -> FlowTestExtended {
         let risk_factor_tiers = RiskFactorTiers {
-            tiers: array![10, 20, 50].span(), first_tier_boundary: 10_000, tier_size: 10_000,
+            tiers: array![100, 200, 500].span(), first_tier_boundary: 10_000, tier_size: 10_000,
         };
         let mut synthetics = Default::default();
         let mut flow_test_base = FlowTestBaseTrait::new();

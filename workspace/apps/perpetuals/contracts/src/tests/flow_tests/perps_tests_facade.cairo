@@ -233,7 +233,7 @@ pub struct SyntheticInfo {
 
 #[derive(Drop, Copy)]
 pub struct RiskFactorTiers {
-    pub tiers: Span<u8>,
+    pub tiers: Span<u16>,
     pub first_tier_boundary: u128,
     pub tier_size: u128,
 }
