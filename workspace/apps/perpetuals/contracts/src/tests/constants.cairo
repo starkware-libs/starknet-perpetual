@@ -74,7 +74,7 @@ pub const ORACLE_A_NAME: felt252 = 'ORCLA';
 pub const ORACLE_B_NAME: felt252 = 'ORCLB';
 
 /// Risk factors
-pub const RISK_FACTOR: u8 = 50;
+pub const RISK_FACTOR: u16 = 500;
 
 /// Prices
 pub const ORACLE_PRICE: u128 = 10_u128.pow(23);

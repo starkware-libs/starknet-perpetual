@@ -8,7 +8,7 @@ use starkware_utils::constants::MAX_U128;
 fn test_deleverage_after_funding_tick() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {
-        tiers: array![1].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
     let synthetic_info = SyntheticInfoTrait::new(
@@ -182,7 +182,7 @@ fn test_deleverage_after_funding_tick() {
 fn test_deleverage_after_price_tick() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {
-        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+        tiers: array![100].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
     let synthetic_info = SyntheticInfoTrait::new(
@@ -313,7 +313,7 @@ fn test_deleverage_after_price_tick() {
 fn test_deleverage_by_recieving_asset() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {
-        tiers: array![1].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     let synthetic_info = SyntheticInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
@@ -457,7 +457,7 @@ fn test_deleverage_by_recieving_asset() {
 fn test_liquidate_after_funding_tick() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {
-        tiers: array![1].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
     let synthetic_info = SyntheticInfoTrait::new(
@@ -656,7 +656,7 @@ fn test_liquidate_after_funding_tick() {
 fn test_liquidate_after_price_tick() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {
-        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+        tiers: array![100].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
     let synthetic_info = SyntheticInfoTrait::new(
@@ -846,7 +846,7 @@ fn test_liquidate_after_price_tick() {
 fn test_flow_get_risk_factor() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {
-        tiers: array![1, 50, 100].span(), first_tier_boundary: 2001, tier_size: 1000,
+        tiers: array![10, 500, 1000].span(), first_tier_boundary: 2001, tier_size: 1000,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
     let synthetic_info = SyntheticInfoTrait::new(
@@ -1025,7 +1025,7 @@ fn test_transfer() {
 fn test_transfer_withdraw_with_negative_collateral() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {
-        tiers: array![1].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
     let synthetic_info = SyntheticInfoTrait::new(
@@ -1101,7 +1101,7 @@ fn test_transfer_withdraw_with_negative_collateral() {
 fn test_reduce_synthetic() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {
-        tiers: array![3].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+        tiers: array![30].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
     let synthetic_info = SyntheticInfoTrait::new(
@@ -1204,7 +1204,7 @@ fn test_reduce_synthetic() {
 fn test_status_change_healthy_liquidatable_deleveragable() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {
-        tiers: array![1].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
     let synthetic_info = SyntheticInfoTrait::new(
@@ -1454,7 +1454,7 @@ fn test_status_change_healthy_liquidatable_deleveragable() {
 fn test_status_change_by_deposit() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {
-        tiers: array![1].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     let synthetic_info = SyntheticInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
@@ -1630,7 +1630,7 @@ fn test_status_change_by_deposit() {
 fn test_status_change_by_transfer() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {
-        tiers: array![1].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     let synthetic_info = SyntheticInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
@@ -1786,7 +1786,7 @@ fn test_status_change_by_transfer() {
 fn test_status_change_by_trade() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {
-        tiers: array![1].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     let synthetic_info = SyntheticInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
@@ -2071,7 +2071,7 @@ fn test_status_change_by_trade() {
 fn test_late_funding() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {
-        tiers: array![1].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
     let synthetic_info = SyntheticInfoTrait::new(
@@ -2100,7 +2100,7 @@ fn test_late_funding() {
 fn test_liquidate_change_sign() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {
-        tiers: array![1].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     let synthetic_info = SyntheticInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
@@ -2197,7 +2197,7 @@ fn test_liquidate_change_sign() {
 #[test]
 fn test_funding_index_rounding() {
     let risk_factor_data = RiskFactorTiers {
-        tiers: array![1].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     let synthetic_info = SyntheticInfoTrait::new(
         asset_name: 'BTC', :risk_factor_data, oracles_len: 1,

@@ -360,10 +360,10 @@ For each synthetic asset, the risk factor is a value between 0 and 100.
 The risk factor is determined by the asset value in the position.
 
 ```rust
-// Fixed-point decimal with 2 decimal places.
-// Example: 0.75 is represented as 75.
+// Fixed-point decimal with 3 decimal places.
+// Example: 0.752 is represented as 752.
 pub struct RiskFactor {
-    pub value: u8 // Stores number * 100
+    pub value: u16 // Stores number * 1000
 }
 ```
 

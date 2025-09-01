@@ -17,7 +17,7 @@ pub struct OracleAdded {
 pub struct SyntheticAdded {
     #[key]
     pub asset_id: AssetId,
-    pub risk_factor_tiers: Span<u8>,
+    pub risk_factor_tiers: Span<u16>,
     pub risk_factor_first_tier_boundary: u128,
     pub risk_factor_tier_size: u128,
     pub resolution_factor: u64,

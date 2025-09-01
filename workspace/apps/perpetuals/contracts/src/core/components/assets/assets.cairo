@@ -176,7 +176,7 @@ pub mod AssetsComponent {
         fn add_synthetic_asset(
             ref self: ComponentState<TContractState>,
             asset_id: AssetId,
-            risk_factor_tiers: Span<u8>,
+            risk_factor_tiers: Span<u16>,
             risk_factor_first_tier_boundary: u128,
             risk_factor_tier_size: u128,
             quorum: u8,
@@ -216,7 +216,7 @@ pub mod AssetsComponent {
             );
             self.synthetic_timely_data.write(asset_id, synthetic_timely_data);
 
-            let mut prev_risk_factor = 0_u8;
+            let mut prev_risk_factor = 0_u16;
             for risk_factor in risk_factor_tiers {
                 assert(prev_risk_factor < *risk_factor, UNSORTED_RISK_FACTOR_TIERS);
                 self

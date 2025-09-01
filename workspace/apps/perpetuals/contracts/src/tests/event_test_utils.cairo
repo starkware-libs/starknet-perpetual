@@ -407,7 +407,7 @@ pub fn assert_asset_activated_event_with_expected(
 pub fn assert_add_synthetic_event_with_expected(
     spied_event: @(ContractAddress, Event),
     asset_id: AssetId,
-    risk_factor_tiers: Span<u8>,
+    risk_factor_tiers: Span<u16>,
     risk_factor_first_tier_boundary: u128,
     risk_factor_tier_size: u128,
     resolution_factor: u64,
