@@ -1206,6 +1206,7 @@ fn test_successful_withdraw() {
             .positions
             .get_collateral_provisional_balance(
                 position: state.positions.get_position_snapshot(position_id: user.position_id),
+                provisional_delta: Option::None,
             ) == COLLATERAL_BALANCE_AMOUNT
             .into()
             - WITHDRAW_AMOUNT.into(),
@@ -1741,7 +1742,7 @@ fn test_successful_trade() {
     let position_a = state.positions.get_position_snapshot(position_id: user_a.position_id);
     let user_a_collateral_balance = state
         .positions
-        .get_collateral_provisional_balance(position: position_a);
+        .get_collateral_provisional_balance(position: position_a, provisional_delta: Option::None);
     let user_a_synthetic_balance = state
         .positions
         .get_synthetic_balance(position: position_a, :synthetic_id);
@@ -1753,7 +1754,7 @@ fn test_successful_trade() {
     let position_b = state.positions.get_position_snapshot(position_id: user_b.position_id);
     let user_b_collateral_balance = state
         .positions
-        .get_collateral_provisional_balance(position: position_b);
+        .get_collateral_provisional_balance(position: position_b, provisional_delta: Option::None);
     let user_b_synthetic_balance = state
         .positions
         .get_synthetic_balance(position: position_b, :synthetic_id);
@@ -1763,7 +1764,9 @@ fn test_successful_trade() {
     assert!(user_b_synthetic_balance == (-BASE).into());
 
     let position = state.positions.get_position_snapshot(position_id: FEE_POSITION);
-    let fee_position_balance = state.positions.get_collateral_provisional_balance(:position);
+    let fee_position_balance = state
+        .positions
+        .get_collateral_provisional_balance(:position, provisional_delta: Option::None);
     assert!(fee_position_balance == (FEE + FEE).into());
 }
 
@@ -2007,7 +2010,9 @@ fn test_successful_deleverage() {
 
     let deleveraged_collateral_balance = state
         .positions
-        .get_collateral_provisional_balance(position: deleveraged_position);
+        .get_collateral_provisional_balance(
+            position: deleveraged_position, provisional_delta: Option::None,
+        );
     let deleveraged_synthetic_balance = state
         .positions
         .get_synthetic_balance(position: deleveraged_position, :synthetic_id);
@@ -2016,7 +2021,9 @@ fn test_successful_deleverage() {
 
     let deleverager_collateral_balance = state
         .positions
-        .get_collateral_provisional_balance(position: deleverager_position);
+        .get_collateral_provisional_balance(
+            position: deleverager_position, provisional_delta: Option::None,
+        );
     let deleverager_synthetic_balance = state
         .positions
         .get_synthetic_balance(position: deleverager_position, :synthetic_id);
@@ -2169,7 +2176,9 @@ fn test_successful_liquidate() {
 
     let liquidated_collateral_balance = state
         .positions
-        .get_collateral_provisional_balance(position: liquidated_position);
+        .get_collateral_provisional_balance(
+            position: liquidated_position, provisional_delta: Option::None,
+        );
     let liquidated_synthetic_balance = state
         .positions
         .get_synthetic_balance(position: liquidated_position, :synthetic_id);
@@ -2182,7 +2191,9 @@ fn test_successful_liquidate() {
 
     let liquidator_collateral_balance = state
         .positions
-        .get_collateral_provisional_balance(position: liquidator_position);
+        .get_collateral_provisional_balance(
+            position: liquidator_position, provisional_delta: Option::None,
+        );
     let liquidator_synthetic_balance = state
         .positions
         .get_synthetic_balance(position: liquidator_position, :synthetic_id);
@@ -2196,7 +2207,9 @@ fn test_successful_liquidate() {
     let fee_position = state.positions.get_position_snapshot(position_id: FEE_POSITION);
     let fee_position_balance = state
         .positions
-        .get_collateral_provisional_balance(position: fee_position);
+        .get_collateral_provisional_balance(
+            position: fee_position, provisional_delta: Option::None,
+        );
     assert!(fee_position_balance == FEE.into());
 
     let insurance_fund_position = state
@@ -2204,7 +2217,9 @@ fn test_successful_liquidate() {
         .get_position_snapshot(position_id: INSURANCE_FUND_POSITION);
     let insurance_position_balance = state
         .positions
-        .get_collateral_provisional_balance(position: insurance_fund_position);
+        .get_collateral_provisional_balance(
+            position: insurance_fund_position, provisional_delta: Option::None,
+        );
     assert!(insurance_position_balance == INSURANCE_FEE.into());
 }
 
@@ -2593,7 +2608,9 @@ fn test_successful_transfer() {
     let sender_position = state.positions.get_position_snapshot(position_id: sender.position_id);
     let sender_collateral_balance = state
         .positions
-        .get_collateral_provisional_balance(position: sender_position);
+        .get_collateral_provisional_balance(
+            position: sender_position, provisional_delta: Option::None,
+        );
     assert_eq!(sender_collateral_balance, 0_i64.into());
 
     let recipient_position = state
@@ -2601,7 +2618,9 @@ fn test_successful_transfer() {
         .get_position_snapshot(position_id: recipient.position_id);
     let recipient_collateral_balance = state
         .positions
-        .get_collateral_provisional_balance(position: recipient_position);
+        .get_collateral_provisional_balance(
+            position: recipient_position, provisional_delta: Option::None,
+        );
     assert_eq!(recipient_collateral_balance, (2 * COLLATERAL_BALANCE_AMOUNT).into());
 }
 

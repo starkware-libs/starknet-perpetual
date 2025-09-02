@@ -1224,14 +1224,16 @@ pub mod Core {
             tvtr_before: Nullable<PositionTVTR>,
         ) -> PositionTVTR {
             let synthetic_enriched_position_diff = self.enrich_synthetic(:position, :position_diff);
-            let tvtr_before: PositionTVTR = match match_nullable(tvtr_before) {
+            let tvtr_before = match match_nullable(tvtr_before) {
                 FromNullableResult::Null => {
-                    let unchanged_synthetics = self
+                    let (provisional_delta, unchanged_synthetics) = self
                         .positions
-                        .get_position_unchanged_synthetics(:position, :position_diff);
+                        .derive_funding_delta_and_unchanged_synthetics(:position, :position_diff);
                     let position_diff_enriched = self
                         .enrich_collateral(
-                            :position, position_diff: synthetic_enriched_position_diff,
+                            :position,
+                            position_diff: synthetic_enriched_position_diff,
+                            provisional_delta: Option::Some(provisional_delta),
                         );
 
                     calculate_position_tvtr_before(:unchanged_synthetics, :position_diff_enriched)
@@ -1262,12 +1264,16 @@ pub mod Core {
                 ._validate_synthetic_shrinks(
                     :position, asset_id: synthetic_diff_id, amount: synthetic_diff_balance.into(),
                 );
-            let unchanged_synthetics = self
+            let (provisional_delta, unchanged_synthetics) = self
                 .positions
-                .get_position_unchanged_synthetics(:position, :position_diff);
+                .derive_funding_delta_and_unchanged_synthetics(:position, :position_diff);
             let synthetic_enriched_position_diff = self.enrich_synthetic(:position, :position_diff);
             let position_diff_enriched = self
-                .enrich_collateral(:position, position_diff: synthetic_enriched_position_diff);
+                .enrich_collateral(
+                    :position,
+                    position_diff: synthetic_enriched_position_diff,
+                    provisional_delta: Option::Some(provisional_delta),
+                );
 
             liquidated_position_validations(
                 :position_id, :unchanged_synthetics, :position_diff_enriched,
@@ -1280,13 +1286,17 @@ pub mod Core {
             position: StoragePath<Position>,
             position_diff: PositionDiff,
         ) {
-            let unchanged_synthetics = self
+            let (provisional_delta, unchanged_synthetics) = self
                 .positions
-                .get_position_unchanged_synthetics(:position, :position_diff);
+                .derive_funding_delta_and_unchanged_synthetics(:position, :position_diff);
 
             let synthetic_enriched_position_diff = self.enrich_synthetic(:position, :position_diff);
             let position_diff_enriched = self
-                .enrich_collateral(:position, position_diff: synthetic_enriched_position_diff);
+                .enrich_collateral(
+                    :position,
+                    position_diff: synthetic_enriched_position_diff,
+                    provisional_delta: Option::Some(provisional_delta),
+                );
 
             deleveraged_position_validations(
                 :position_id, :unchanged_synthetics, :position_diff_enriched,
@@ -1301,8 +1311,11 @@ pub mod Core {
             self: @ContractState,
             position: StoragePath<Position>,
             position_diff: SyntheticEnrichedPositionDiff,
+            provisional_delta: Option<Balance>,
         ) -> PositionDiffEnriched {
-            let before = self.positions.get_collateral_provisional_balance(:position);
+            let before = self
+                .positions
+                .get_collateral_provisional_balance(:position, :provisional_delta);
             let after = before + position_diff.collateral_diff;
             let collateral_enriched = BalanceDiff { before: before, after };
 
