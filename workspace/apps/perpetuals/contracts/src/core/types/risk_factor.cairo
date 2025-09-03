@@ -8,7 +8,7 @@ pub struct RiskFactor {
     value: u16 // Stores number * 1000
 }
 
-const DENOMINATOR: u16 = 1000_u16;
+pub const DENOMINATOR: u16 = 1000_u16;
 
 #[generate_trait]
 pub impl RiskFactorImpl of RiskFactorTrait {

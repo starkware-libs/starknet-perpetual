@@ -1,15 +1,19 @@
 use core::cmp::min;
 use core::dict::{Felt252Dict, Felt252DictTrait};
 use core::num::traits::{Pow, Zero};
+use perpetuals::core::components::positions::interface::{
+    IPositionsDispatcher, IPositionsDispatcherTrait,
+};
 use perpetuals::core::interface::Settlement;
 use perpetuals::core::types::balance::Balance;
 use perpetuals::core::types::funding::FundingTick;
-use perpetuals::core::types::position::PositionId;
+use perpetuals::core::types::position::{PositionData, PositionId};
+use perpetuals::core::types::price::PriceTrait;
 use perpetuals::tests::flow_tests::perps_tests_facade::*;
 use starkware_utils::constants::HOUR;
 use starkware_utils::math::abs::Abs;
 use crate::core::types::funding::{FUNDING_SCALE, FundingIndex};
-use crate::core::types::price::PriceMulTrait;
+use crate::core::types::price::{PRICE_SCALE, PriceMulTrait};
 use crate::tests::test_utils::create_token_state;
 
 
@@ -425,6 +429,45 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
                 :base_amount_a,
             );
     }
+
+    fn get_asset_price(ref self: FlowTestExtended, asset: felt252) -> u128 {
+        let synthetic_info = self.synthetics.get(asset).deref();
+        self.flow_test_base.facade.get_synthetic_price(synthetic_info.asset_id).value().into()
+            / PRICE_SCALE.into()
+    }
+
+    fn get_asset_risk_factor(ref self: FlowTestExtended, asset: felt252, balance: i64) -> u16 {
+        let synthetic_info = self.synthetics.get(asset).deref();
+        let price = self
+            .flow_test_base
+            .facade
+            .get_synthetic_price(synthetic_info.asset_id)
+            .value()
+            .into()
+            / PRICE_SCALE.into();
+        let balance: u64 = balance.abs().try_into().expect('Value should not overflow');
+        let value: u128 = (balance * price).into();
+        let first_tier_boundary = synthetic_info.risk_factor_data.first_tier_boundary;
+        let tier_size = synthetic_info.risk_factor_data.tier_size;
+        let index = if value < first_tier_boundary {
+            0_u128
+        } else {
+            min(
+                1_u128 + (value - first_tier_boundary) / tier_size,
+                synthetic_info.risk_factor_data.tiers.len().into() - 1,
+            )
+        };
+        let index: u32 = index.try_into().expect('Value should not overflow');
+        let risk_factor = *synthetic_info.risk_factor_data.tiers.at(index);
+        risk_factor
+    }
+
+    fn get_position_data(self: @FlowTestExtended, user: User) -> @PositionData {
+        let dispatcher = IPositionsDispatcher {
+            contract_address: *self.flow_test_base.facade.perpetuals_contract,
+        };
+        @dispatcher.get_position_assets(position_id: user.position_id)
+    }
 }
 
 #[generate_trait]
@@ -447,3 +490,17 @@ pub impl FlowTestValidationsImpl of FlowTestExtendedValidationsTrait {
             );
     }
 }
+
+pub fn validate_equal_positions(position_a: @PositionData, position_b: @PositionData) {
+    assert_eq!(position_a.synthetics.len(), position_b.synthetics.len());
+    for i in 0_u32..position_a.synthetics.len() {
+        let synthetic_a = position_a.synthetics.at(i);
+        let synthetic_b = position_b.synthetics.at(i);
+        assert_eq!(synthetic_a.id, synthetic_b.id);
+        assert_eq!(synthetic_a.balance, synthetic_b.balance);
+        assert_eq!(synthetic_a.price, synthetic_b.price);
+        assert_eq!(synthetic_a.risk_factor, synthetic_b.risk_factor);
+    }
+    assert_eq!(position_a.collateral_balance, position_b.collateral_balance);
+}
+
