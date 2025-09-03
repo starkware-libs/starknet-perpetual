@@ -1,10 +1,13 @@
 use core::cmp::min;
 use core::dict::{Felt252Dict, Felt252DictTrait};
 use core::num::traits::{Pow, Zero};
+use perpetuals::core::components::positions::interface::{
+    IPositionsDispatcher, IPositionsDispatcherTrait,
+};
 use perpetuals::core::interface::Settlement;
 use perpetuals::core::types::balance::Balance;
 use perpetuals::core::types::funding::FundingTick;
-use perpetuals::core::types::position::PositionId;
+use perpetuals::core::types::position::{PositionData, PositionId};
 use perpetuals::tests::flow_tests::perps_tests_facade::*;
 use starkware_utils::constants::HOUR;
 use starkware_utils::math::abs::Abs;
@@ -422,6 +425,13 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
                 base_asset_id: synthetic_info.asset_id,
                 :base_amount_a,
             );
+    }
+
+    fn get_position_data(self: @FlowTestExtended, user: User) -> @PositionData {
+        let dispatcher = IPositionsDispatcher {
+            contract_address: *self.flow_test_base.facade.perpetuals_contract,
+        };
+        @dispatcher.get_position_assets(position_id: user.position_id)
     }
 }
 
