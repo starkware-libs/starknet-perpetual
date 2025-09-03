@@ -28,7 +28,7 @@ pub struct SyntheticTimelyData {
     pub funding_index: FundingIndex,
 }
 
-#[derive(Copy, Debug, Drop, Serde)]
+#[derive(Copy, Debug, Drop, Serde, PartialEq)]
 pub struct SyntheticAsset {
     pub id: AssetId,
     pub balance: Balance,
