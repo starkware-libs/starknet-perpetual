@@ -113,3 +113,39 @@ pub impl PositionMutableImpl of PositionMutableTrait {
         self.version.read()
     }
 }
+
+pub impl PartialEqImpl of PartialEq<PositionData> {
+    fn eq(lhs: @PositionData, rhs: @PositionData) -> bool {
+        if lhs.synthetics.len() != rhs.synthetics.len()
+            || lhs.collateral_balance != rhs.collateral_balance {
+            return false;
+        }
+
+        let mut result = true;
+
+        for i in 0..lhs.synthetics.len() {
+            let synthetic_lhs = lhs.synthetics.at(i);
+            let mut found = false;
+
+            for j in 0..rhs.synthetics.len() {
+                let synthetic_rhs = rhs.synthetics.at(j);
+                if synthetic_lhs.id == synthetic_rhs.id {
+                    if synthetic_lhs.balance == synthetic_rhs.balance
+                        && synthetic_lhs.price == synthetic_rhs.price
+                        && synthetic_lhs.risk_factor == synthetic_rhs.risk_factor {
+                        found = true;
+                        break;
+                    }
+                    return false;
+                }
+            }
+
+            if !found {
+                result = false;
+                break;
+            }
+        }
+
+        result
+    }
+}
