@@ -1,10 +1,13 @@
 use core::cmp::min;
 use core::dict::{Felt252Dict, Felt252DictTrait};
 use core::num::traits::{Pow, Zero};
+use perpetuals::core::components::positions::interface::{
+    IPositionsDispatcher, IPositionsDispatcherTrait,
+};
 use perpetuals::core::interface::Settlement;
 use perpetuals::core::types::balance::Balance;
 use perpetuals::core::types::funding::FundingTick;
-use perpetuals::core::types::position::PositionId;
+use perpetuals::core::types::position::{PositionData, PositionId};
 use perpetuals::tests::flow_tests::perps_tests_facade::*;
 use starkware_utils::constants::HOUR;
 use starkware_utils::math::abs::Abs;
@@ -425,6 +428,13 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
                 :base_amount_a,
             );
     }
+
+    fn get_position_data(self: @FlowTestExtended, user: User) -> @PositionData {
+        let dispatcher = IPositionsDispatcher {
+            contract_address: *self.flow_test_base.facade.perpetuals_contract,
+        };
+        @dispatcher.get_position_assets(position_id: user.position_id)
+    }
 }
 
 #[generate_trait]
@@ -447,3 +457,17 @@ pub impl FlowTestValidationsImpl of FlowTestExtendedValidationsTrait {
             );
     }
 }
+
+pub fn validate_equal_positions(position_a: @PositionData, position_b: @PositionData) {
+    assert_eq!(position_a.synthetics.len(), position_b.synthetics.len());
+    for i in 0_u32..position_a.synthetics.len() {
+        let synthetic_a = position_a.synthetics.at(i);
+        let synthetic_b = position_b.synthetics.at(i);
+        assert_eq!(synthetic_a.id, synthetic_b.id);
+        assert_eq!(synthetic_a.balance, synthetic_b.balance);
+        assert_eq!(synthetic_a.price, synthetic_b.price);
+        assert_eq!(synthetic_a.risk_factor, synthetic_b.risk_factor);
+    }
+    assert_eq!(position_a.collateral_balance, position_b.collateral_balance);
+}
+
