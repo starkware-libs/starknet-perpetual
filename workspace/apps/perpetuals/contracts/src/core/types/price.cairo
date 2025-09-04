@@ -27,7 +27,7 @@ const MAX_PRICE_ERROR: felt252 = 'Value must be < 2^56';
 pub struct Price {
     // Unsigned 28-bit fixed point decimal precision.
     // 28-bit for the integer part and 28-bit for the fractional part.
-    value: u64,
+    pub value: u64,
 }
 
 
