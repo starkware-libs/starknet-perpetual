@@ -209,9 +209,7 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
             .flow_test_base
             .facade
             .get_synthetic_price(synthetic_id: synthetic_info.asset_id);
-        let quote: i64 = PriceMulTrait::<
-            Balance,
-        >::mul_and_div_price_scale(@synthetic_price, -base.into())
+        let quote: i64 = PriceMulTrait::<Balance>::mul(@synthetic_price, -base.into())
             .try_into()
             .expect('Value should not overflow');
         let order_info = self
