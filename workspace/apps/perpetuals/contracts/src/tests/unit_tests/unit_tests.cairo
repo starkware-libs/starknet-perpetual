@@ -24,7 +24,7 @@ use perpetuals::core::types::asset::AssetStatus;
 use perpetuals::core::types::funding::{FUNDING_SCALE, FundingIndex, FundingTick};
 use perpetuals::core::types::order::Order;
 use perpetuals::core::types::position::{POSITION_VERSION, PositionMutableTrait};
-use perpetuals::core::types::price::{PRICE_SCALE, PriceTrait, SignedPrice};
+use perpetuals::core::types::price::{PriceTrait, SignedPrice};
 use perpetuals::core::types::set_owner_account::SetOwnerAccountArgs;
 use perpetuals::core::types::set_public_key::SetPublicKeyArgs;
 use perpetuals::core::types::transfer::TransferArgs;
@@ -3057,7 +3057,7 @@ fn test_price_tick_basic() {
 
     let data = state.assets.get_synthetic_timely_data(synthetic_id);
     assert!(data.last_price_update == new_time);
-    assert!(data.price.value() == 100 * PRICE_SCALE);
+    assert!(data.price.value() == 100);
 }
 
 #[test]
@@ -3126,7 +3126,7 @@ fn test_price_tick_odd() {
     assert!(state.assets.get_num_of_active_synthetic_assets() == 1);
     let data = state.assets.get_synthetic_timely_data(synthetic_id);
     assert!(data.last_price_update == new_time);
-    assert!(data.price.value() == 100 * PRICE_SCALE);
+    assert!(data.price.value() == 100);
 }
 
 #[test]
@@ -3185,7 +3185,7 @@ fn test_price_tick_even() {
 
     let data = state.assets.get_synthetic_timely_data(synthetic_id);
     assert!(data.last_price_update == new_time);
-    assert!(data.price.value() == 100 * PRICE_SCALE);
+    assert!(data.price.value() == 100);
 }
 
 #[test]

@@ -146,10 +146,10 @@ fn test_two_users_ten_synthetics_flow() {
     test.trade(buy_ada_a, sell_ada_b);
 
     test.validate_total_value(user_a, 1_999_900); // 2_000_000 - 100 (fees)
-    test.validate_total_risk(user_a, 1_023);
+    test.validate_total_risk(user_a, 1_020);
 
     test.validate_total_value(user_b, 1_999_900); // 2_000_000 - 100 (fees)
-    test.validate_total_risk(user_b, 1_023);
+    test.validate_total_risk(user_b, 1_020);
 
     test
         .price_tick(
@@ -187,11 +187,11 @@ fn test_two_users_ten_synthetics_flow() {
 
     // user_a total value: 2_000_000 - 100(fees) + 96100(price tick) + 363(funding_tick)
     test.validate_total_value(user_a, 2_096_363);
-    test.validate_total_risk(user_a, 44_175);
+    test.validate_total_risk(user_a, 44_172);
 
     // user_b total value: 2_000_000 - 100(fees) - 96100(price tick) - 363(funding_tick)
     test.validate_total_value(user_b, 1_903_437);
-    test.validate_total_risk(user_b, 44_175);
+    test.validate_total_risk(user_b, 44_172);
 
     test.withdraw(test.withdraw_request(user_a, 1_000_000));
     test.withdraw(test.withdraw_request(user_b, 1_000_000));
@@ -200,11 +200,11 @@ fn test_two_users_ten_synthetics_flow() {
 
     // user_a total value: 2_096_363 - 1_000_000(withdraw) - 1_000_000(transfer) = 96_363
     test.validate_total_value(user_a, 96_363);
-    test.validate_total_risk(user_a, 44_175);
+    test.validate_total_risk(user_a, 44_172);
 
     // user_b total value: 1_903_437 - 1_000_000(withdraw) + 1_000_000(transfer) = 1_903_437
     test.validate_total_value(user_b, 1_903_437);
-    test.validate_total_risk(user_b, 44_175);
+    test.validate_total_risk(user_b, 44_172);
 }
 
 #[test]
