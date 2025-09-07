@@ -50,29 +50,20 @@ pub trait PriceMulTrait<T> {
     /// The result type of the multiplication.
     type Target;
     fn mul(self: @Price, rhs: T) -> Self::Target;
-    fn mul_and_div_price_scale(self: @Price, rhs: T) -> Self::Target;
 }
 
 
 impl PriceMulU32 of PriceMulTrait<u32> {
     type Target = u128;
-    fn mul_and_div_price_scale(self: @Price, rhs: u32) -> Self::Target {
-        (*self.value).into() * rhs.into() / PRICE_SCALE.into()
-    }
-
     fn mul(self: @Price, rhs: u32) -> Self::Target {
-        (*self.value).into() * rhs.into()
+        (*self.value).into() * rhs.into() / PRICE_SCALE.into()
     }
 }
 
 impl PriceMulBalance of PriceMulTrait<Balance> {
     type Target = i128;
-    fn mul_and_div_price_scale(self: @Price, rhs: Balance) -> Self::Target {
-        (*self.value).into() * rhs.into() / PRICE_SCALE.into()
-    }
-
     fn mul(self: @Price, rhs: Balance) -> Self::Target {
-        (*self.value).into() * rhs.into()
+        (*self.value).into() * rhs.into() / PRICE_SCALE.into()
     }
 }
 
@@ -148,21 +139,16 @@ mod tests {
     #[test]
     fn test_price_mul_u32() {
         let price = PriceTrait::new(value: 100);
-        let result = price.mul_and_div_price_scale(2_u32);
-        assert!(result == 200_u128);
         let result = price.mul(2_u32);
-        assert!(result == 200_u128 * PRICE_SCALE.into());
+        assert!(result == 200_u128);
     }
 
     #[test]
     fn test_price_mul_balance() {
         let price = PriceTrait::new(value: 100);
         let balance = BalanceTrait::new(value: 2);
-        let result = price.mul_and_div_price_scale(balance);
-        assert!(result == 200);
-
         let result = price.mul(balance);
-        assert!(result == 200 * PRICE_SCALE.into());
+        assert!(result == 200);
     }
 
     #[test]
