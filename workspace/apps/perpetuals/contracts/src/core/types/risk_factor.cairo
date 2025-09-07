@@ -22,6 +22,7 @@ pub impl RiskFactorImpl of RiskFactorTrait {
     ///
     /// Example: RiskFactorTrait::new(750).mul(300) == 225
     /// Example: RiskFactorTrait::new(750).mul(301) == 225
+    /// delete the following line
     /// Example: RiskFactorTrait::new(750).mul(-5) == -3
     fn mul(self: @RiskFactor, other: u128) -> u128 {
         ((*self.value).into() * other) / DENOMINATOR.into()

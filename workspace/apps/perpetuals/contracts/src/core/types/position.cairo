@@ -49,6 +49,7 @@ pub struct SyntheticEnrichedPositionDiff {
     pub synthetic_enriched: Option<SyntheticDiffEnriched>,
 }
 
+// split the struct.
 /// Diff where both collateral and synthetic are enriched.
 #[derive(Copy, Debug, Drop, Serde, Default)]
 pub struct PositionDiffEnriched {

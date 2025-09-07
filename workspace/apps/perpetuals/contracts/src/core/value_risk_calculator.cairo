@@ -207,8 +207,10 @@ pub fn calculate_position_tvtr_change(
     // Collateral price is always "One" in Perps - "One" is 10^-6 USD which means 2^28 same as the
     // PRICE_SCALE.
     let price: Price = One::one();
+    // maybe remove the price product for usdc.
 
     // asset_value is in units of 10^-6 USD.
+    // change comment.
     total_value_after += price.mul(rhs: synthetic_enriched_position_diff.collateral_diff);
 
     TVTRChange {
@@ -238,6 +240,7 @@ pub fn calculate_position_tvtr_before(
 
     // Collateral price is always "One" in Perps - "One" is 10^-6 USD which means 2^28 same as the
     // PRICE_SCALE.
+    // see the comment above
     let price: Price = One::one();
     total_value += price.mul(rhs: position_diff_enriched.collateral_enriched.before);
 

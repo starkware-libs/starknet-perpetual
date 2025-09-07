@@ -1240,6 +1240,7 @@ pub mod Core {
                 },
                 FromNullableResult::NotNull(value) => value.unbox(),
             };
+            // consider renaimng.
             let tvtr = calculate_position_tvtr_change(
                 :tvtr_before, :synthetic_enriched_position_diff,
             );

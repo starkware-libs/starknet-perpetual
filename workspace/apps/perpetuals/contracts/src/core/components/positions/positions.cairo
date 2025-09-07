@@ -443,6 +443,7 @@ pub(crate) mod Positions {
             }
         }
 
+        // add doc for the function.
         fn get_collateral_provisional_balance(
             self: @ComponentState<TContractState>,
             position: StoragePath<Position>,
@@ -455,6 +456,7 @@ pub(crate) mod Positions {
             }
 
             for (synthetic_id, synthetic) in position.synthetic_balance {
+                // consider extract to a function(the entire body loop).
                 if synthetic.balance.is_zero() {
                     continue;
                 }
@@ -471,6 +473,7 @@ pub(crate) mod Positions {
         /// Returns all assets from the position, excluding assets with zero balance
         /// and those included in `position_diff`.
         /// Also calculates the provisional funding delta for the position.
+        /// edit the comment.
         fn derive_funding_delta_and_unchanged_synthetics(
             self: @ComponentState<TContractState>,
             position: StoragePath<Position>,
@@ -479,6 +482,7 @@ pub(crate) mod Positions {
             let assets = get_dep_component!(self, Assets);
             let mut unchanged_synthetics = array![];
 
+            // consider making position_diff.synthetic_diff non optional(use deafult instead of none).
             let synthetic_diff_id = if let Option::Some((id, _)) = position_diff.synthetic_diff {
                 id
             } else {
@@ -487,6 +491,7 @@ pub(crate) mod Positions {
             let mut provisional_delta: Balance = 0_i64.into();
 
             for (synthetic_id, synthetic) in position.synthetic_balance {
+                /// remove the variable/ use the variable.
                 let balance = synthetic.balance;
                 if balance.is_zero() {
                     continue;
