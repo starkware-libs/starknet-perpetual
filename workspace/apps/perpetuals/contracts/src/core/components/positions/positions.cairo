@@ -443,6 +443,9 @@ pub(crate) mod Positions {
             }
         }
 
+        /// Calculates the collateral balance including funding adjustments.
+        /// If a provisional_delta is provided, returns base balance + delta.
+        /// Otherwise, calculates funding for all synthetic positions and adds to base balance.
         fn get_collateral_provisional_balance(
             self: @ComponentState<TContractState>,
             position: StoragePath<Position>,
@@ -454,20 +457,11 @@ pub(crate) mod Positions {
                 return collateral_provisional_balance + provisional_delta;
             }
 
-            for (synthetic_id, synthetic) in position.synthetic_balance {
-                if synthetic.balance.is_zero() {
-                    continue;
-                }
-                let global_funding_index = assets.get_funding_index(synthetic_id);
-                collateral_provisional_balance +=
-                    calculate_funding(
-                        old_funding_index: synthetic.funding_index,
-                        new_funding_index: global_funding_index,
-                        balance: synthetic.balance,
-                    );
-            }
+            collateral_provisional_balance += self
+                ._calculate_total_funding_adjustment(:assets, :position);
             collateral_provisional_balance
         }
+
         /// Returns all assets from the position, excluding assets with zero balance
         /// and those included in `position_diff`.
         /// Also calculates the provisional funding delta for the position.
@@ -581,6 +575,29 @@ pub(crate) mod Positions {
                 funding_index: global_funding_index,
             };
             position.synthetic_balance.write(synthetic_id, synthetic_asset);
+        }
+
+        /// Calculates total funding adjustments for all synthetic positions.
+        fn _calculate_total_funding_adjustment(
+            self: @ComponentState<TContractState>,
+            assets: @AssetsComponent::ComponentState<TContractState>,
+            position: StoragePath<Position>,
+        ) -> Balance {
+            let mut total_funding_adjustment = Zero::zero();
+
+            for (synthetic_id, synthetic) in position.synthetic_balance {
+                if synthetic.balance.is_zero() {
+                    continue;
+                }
+                let global_funding_index = assets.get_funding_index(synthetic_id);
+                total_funding_adjustment +=
+                    calculate_funding(
+                        old_funding_index: synthetic.funding_index,
+                        new_funding_index: global_funding_index,
+                        balance: synthetic.balance,
+                    );
+            }
+            total_funding_adjustment
         }
 
         fn _get_position_state(
