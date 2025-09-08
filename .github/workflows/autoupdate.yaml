@@ -5,7 +5,7 @@ permissions:
 
 on:
   push:
-    branches: [dev]
+    branches: [vault]
 
 jobs:
   autoupdate:
@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: peter-evans/rebase@v3
         with:
-          base: dev
+          base: vault
           include-labels: |
             autoupdate-rebase
           exclude-labels: |
