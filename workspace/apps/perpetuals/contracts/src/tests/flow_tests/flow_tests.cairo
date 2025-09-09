@@ -674,30 +674,14 @@ fn test_multi_trade_single_market_maker_many_users() {
     let mut trades: Array<(OrderRequest, OrderRequest)> = ArrayTrait::new();
 
     let asset_names = array![
-        BTC_ASSET,
-        ETH_ASSET,
-        STRK_ASSET,
-        SOL_ASSET,
-        DOGE_ASSET,
-        PEPE_ASSET,
-        ETC_ASSET,
-        TAO_ASSET,
-        XRP_ASSET,
-        ADA_ASSET,
+        BTC_ASSET, ETH_ASSET, STRK_ASSET, SOL_ASSET, DOGE_ASSET, PEPE_ASSET, ETC_ASSET, TAO_ASSET,
+        XRP_ASSET, ADA_ASSET,
     ];
 
     // TV and TR for regular users
     let tvtrs: Array<(i128, u128)> = array![
-        (19488, 2048),
-        (19744, 512),
-        (19872, 256),
-        (19936, 128),
-        (19968, 64),
-        (19984, 32),
-        (19992, 16),
-        (19996, 8),
-        (19998, 4),
-        (19999, 2),
+        (19488, 2048), (19744, 512), (19872, 256), (19936, 128), (19968, 64), (19984, 32),
+        (19992, 16), (19996, 8), (19998, 4), (19999, 2),
     ];
 
     // TV and TR for market maker
@@ -822,16 +806,8 @@ fn test_multi_trade_vs_trade() {
     trade_test.process_deposit(trade_test.deposit(trade_user_2, INITIAL_BALANCE));
 
     for asset_name in array![
-        BTC_ASSET,
-        ETH_ASSET,
-        STRK_ASSET,
-        SOL_ASSET,
-        DOGE_ASSET,
-        PEPE_ASSET,
-        ETC_ASSET,
-        TAO_ASSET,
-        XRP_ASSET,
-        ADA_ASSET,
+        BTC_ASSET, ETH_ASSET, STRK_ASSET, SOL_ASSET, DOGE_ASSET, PEPE_ASSET, ETC_ASSET, TAO_ASSET,
+        XRP_ASSET, ADA_ASSET,
     ] {
         // Multi trade:
         let multi_trade_order_1 = multi_trade_test

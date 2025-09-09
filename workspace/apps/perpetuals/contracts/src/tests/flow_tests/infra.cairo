@@ -104,16 +104,8 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
 
         let mut initial_price = 2_u128.pow(10);
         for asset_name in array![
-            BTC_ASSET,
-            ETH_ASSET,
-            STRK_ASSET,
-            SOL_ASSET,
-            DOGE_ASSET,
-            PEPE_ASSET,
-            ETC_ASSET,
-            TAO_ASSET,
-            XRP_ASSET,
-            ADA_ASSET,
+            BTC_ASSET, ETH_ASSET, STRK_ASSET, SOL_ASSET, DOGE_ASSET, PEPE_ASSET, ETC_ASSET,
+            TAO_ASSET, XRP_ASSET, ADA_ASSET,
         ] {
             let synthetic_info = SyntheticInfoTrait::new(
                 :asset_name, risk_factor_data: risk_factor_tiers, oracles_len: 1,
@@ -172,16 +164,8 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
         let mut funding_ticks = array![];
 
         for asset in array![
-            ADA_ASSET,
-            BTC_ASSET,
-            ETC_ASSET,
-            ETH_ASSET,
-            SOL_ASSET,
-            TAO_ASSET,
-            XRP_ASSET,
-            DOGE_ASSET,
-            PEPE_ASSET,
-            STRK_ASSET,
+            ADA_ASSET, BTC_ASSET, ETC_ASSET, ETH_ASSET, SOL_ASSET, TAO_ASSET, XRP_ASSET, DOGE_ASSET,
+            PEPE_ASSET, STRK_ASSET,
         ] {
             let asset_id = self.synthetics.get(asset).asset_id;
             let index_ptr = funding_indexes_dict.get(asset);
