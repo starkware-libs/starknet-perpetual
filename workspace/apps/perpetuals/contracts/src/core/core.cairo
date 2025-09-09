@@ -67,7 +67,8 @@ pub mod Core {
         HashType, PublicKey, Signature, validate_stark_signature,
     };
     use starkware_utils::storage::iterable_map::{
-        IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
+        IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapTrait,
+        IterableMapWriteAccessImpl,
     };
     use starkware_utils::time::time::{Time, TimeDelta, Timestamp, validate_expiration};
 
@@ -918,12 +919,33 @@ pub mod Core {
             order: RedeemFromVault,
         ) {}
 
+        /// Converts a position to a vault position.
+        // TODO : add doc, add to the spec
         fn convert_position_to_vault(
             ref self: ContractState,
             operator_nonce: u64,
             signature: Signature,
             order: ConvertPositionToVault,
-        ) {}
+        ) {
+            /// Validations:
+            self.pausable.assert_not_paused();
+            self.operator_nonce.use_checked_nonce(:operator_nonce);
+            // Vault position should not hold any vault assets.
+            let vault = self.positions.get_position_snapshot(order.position_to_convert);
+            assert(vault.vault_balance.len() == 0, 'TODO');
+
+            // TODO : validate the vault doesnt already exist
+
+            // validate position_receiving_shares exists
+            let recipient = self.positions.get_position_snapshot(order.position_receiving_shares);
+
+            assert(order.initial_shares.is_non_zero(), 'TODO');
+            validate_expiration(order.expiration, err: 'TODO');
+            // TODO: validate signature
+
+            // TODO: create vault position, and update initial shares.
+        // TODO : emit event.
+        }
     }
 
     #[generate_trait]
