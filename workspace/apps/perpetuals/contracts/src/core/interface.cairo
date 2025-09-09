@@ -96,4 +96,6 @@ pub trait ICore<TContractState> {
         base_asset_id: AssetId,
         base_amount_a: i64,
     );
+    // fn redeem_from_vault
+// invest_in_vault
 }
