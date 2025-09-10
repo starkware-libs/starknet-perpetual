@@ -18,8 +18,8 @@ pub mod AssetsComponent {
         ORACLE_NAME_TOO_LONG, ORACLE_NOT_EXISTS, ORACLE_PUBLIC_KEY_NOT_REGISTERED,
         QUORUM_NOT_REACHED, SIGNED_PRICES_UNSORTED, SYNTHETIC_ALREADY_EXISTS,
         SYNTHETIC_EXPIRED_PRICE, SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS,
-        UNSORTED_RISK_FACTOR_TIERS, ZERO_MAX_FUNDING_INTERVAL, ZERO_MAX_FUNDING_RATE,
-        ZERO_MAX_ORACLE_PRICE, ZERO_MAX_PRICE_INTERVAL,
+        UNSORTED_RISK_FACTOR_TIERS, VAULT_NOT_ACTIVE, ZERO_MAX_FUNDING_INTERVAL,
+        ZERO_MAX_FUNDING_RATE, ZERO_MAX_ORACLE_PRICE, ZERO_MAX_PRICE_INTERVAL,
     };
     use perpetuals::core::components::assets::events;
     use perpetuals::core::components::assets::interface::IAssets;
@@ -28,7 +28,7 @@ pub mod AssetsComponent {
     use perpetuals::core::types::asset::synthetic::{
         SyntheticConfig, SyntheticTimelyData, SyntheticTrait,
     };
-    use perpetuals::core::types::asset::vault::VaultData;
+    use perpetuals::core::types::asset::vault::{VaultData, VaultStatus};
     use perpetuals::core::types::asset::{AssetId, AssetStatus};
     use perpetuals::core::types::balance::Balance;
     use perpetuals::core::types::funding::{FundingIndex, FundingTick, validate_funding_rate};
@@ -571,6 +571,11 @@ pub mod AssetsComponent {
             } else {
                 panic_with_felt252(NOT_SYNTHETIC);
             }
+        }
+
+        fn validate_vault_active(self: @ComponentState<TContractState>, vault_id: PositionId) {
+            let vault_data = self.vaults.read(vault_id);
+            assert(vault_data.status == VaultStatus::ACTIVE, VAULT_NOT_ACTIVE);
         }
 
         /// Validates assets integrity prerequisites:
