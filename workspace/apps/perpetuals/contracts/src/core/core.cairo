@@ -943,7 +943,8 @@ pub mod Core {
             validate_expiration(order.expiration, err: 'TODO');
             // TODO: validate signature
 
-            // TODO: create vault position, and update initial shares.
+            // TODO: update initial shares. send shares.
+            self.assets.add_vault(order.position_to_convert);
         // TODO : emit event.
         }
     }

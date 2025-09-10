@@ -1,7 +1,8 @@
+use core::num::traits::Zero;
 use starkware_utils::time::time::Timestamp;
 
 
-const VERSION: u8 = 1;
+pub const VERSION: u8 = 1;
 
 
 #[derive(Copy, Drop, Serde, starknet::Store)]

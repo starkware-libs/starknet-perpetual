@@ -28,7 +28,7 @@ pub mod AssetsComponent {
     use perpetuals::core::types::asset::synthetic::{
         SyntheticConfig, SyntheticTimelyData, SyntheticTrait,
     };
-    use perpetuals::core::types::asset::vault::VaultData;
+    use perpetuals::core::types::asset::vault::{VaultData, VaultStatus};
     use perpetuals::core::types::asset::{AssetId, AssetStatus};
     use perpetuals::core::types::balance::Balance;
     use perpetuals::core::types::funding::{FundingIndex, FundingTick, validate_funding_rate};
@@ -584,6 +584,15 @@ pub mod AssetsComponent {
                 FUNDING_EXPIRED,
             );
             self._validate_price_interval_integrity(:current_time);
+        }
+
+        fn add_vault(
+            ref self: ComponentState<TContractState>,
+            vault_id: PositionId,
+        ) {
+            let vault_data = self.vaults.entry(vault_id);
+            assert!(vault_data.status.read() == VaultStatus::NON_EXISTENT, "TODO")
+            vault_data.status.write(VaultStatus::ACTIVE);
         }
     }
 
