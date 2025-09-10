@@ -905,12 +905,55 @@ pub mod Core {
                     },
                 )
         }
+
+        /// Executes an investment in a vault position.
+        ///
+        /// Validations:
+        /// - The contract must not be paused.
+        /// - It should be called by operator.
+        /// - The `operator_nonce` must be valid.
+        /// - The funding validation interval has not passed since the last funding tick.
+        /// - The prices of all assets in the system are valid.
+        /// - Validates both from_position_id and vault_id exist.
+        /// - Ensures from_position_id and vault_id are different.
+        /// - Ensures the amount is non-zero.
+        /// - Validates the expiration time.
+        /// - Validates the signature for the InvestInVault order.
+        /// - Validates that vault_id is actually a vault position.
+        ///
+        /// Execution:
+        /// - Transfer collateral from from_position_id to vault_id.
+        /// - Transfer shares to from_position_id.
+        /// - Validates the from_position is healthy or healthier after the transfer.
         fn invest_in_vault(
             ref self: ContractState,
             operator_nonce: u64,
             signature: Signature,
             order: InvestInVault,
-        ) {}
+        ) {
+            /// Validations - System State:
+            self.pausable.assert_not_paused();
+            self.operator_nonce.use_checked_nonce(:operator_nonce);
+            self.assets.validate_assets_integrity();
+
+            /// Validations - Order Parameters:
+            assert(order.amount.is_non_zero(), INVALID_ZERO_AMOUNT);
+            validate_expiration(expiration: order.expiration, err: TRANSFER_EXPIRED);
+            assert(order.from_position_id != order.vault_id, INVALID_SAME_POSITIONS);
+
+            /// Validations - Position Existence:
+            let from_position = self.positions.get_position_snapshot(order.from_position_id);
+            let vault_position = self.positions.get_position_snapshot(order.vault_id);
+            // TODO(Mohammad): validate vault_id is a vault position.
+
+            // TODO(Mohammad): validate signature.
+
+            /// Execution:
+        // TODO(Mohammad): execute InvestInVault.
+
+            /// Event:
+        // TODO(Mohammad): emit InvestInVault event.
+        }
 
         fn redeem_from_vault(
             ref self: ContractState,
