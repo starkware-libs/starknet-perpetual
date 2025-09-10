@@ -620,7 +620,7 @@ pub mod Core {
 
             // Signatures validation:
             let liquidator_order_hash = self
-                ._validate_order_signature(
+                ._validate_signature(
                     public_key: liquidator_position.get_owner_public_key(),
                     order: liquidator_order,
                     signature: liquidator_signature,
@@ -948,10 +948,12 @@ pub mod Core {
             let from_position = self.positions.get_position_snapshot(order.from_position_id);
             let vault_position = self.positions.get_position_snapshot(order.vault_id);
             // TODO(Mohammad): validate vault_id is a vault position.
-        // TODO(Mohammad): validate from_position_id is a non-vault position.
+            // TODO(Mohammad): validate from_position_id is a non-vault position.
 
-            // TODO(Mohammad): validate signature.
-
+            self
+                ._validate_signature(
+                    public_key: from_position.get_owner_public_key(), :order, :signature,
+                );
             /// Execution:
         // TODO(Mohammad): execute InvestInVault.
 
@@ -988,8 +990,8 @@ pub mod Core {
 
             assert(order.initial_shares.is_non_zero(), 'TODO');
             validate_expiration(order.expiration, err: 'TODO');
-            // TODO: validate signature
 
+            self._validate_signature(public_key: vault.get_owner_public_key(), :order, :signature);
             // TODO: create vault position, and update initial shares.
         // TODO : emit event.
         }
@@ -1027,13 +1029,13 @@ pub mod Core {
             let position_b = self.positions.get_position_snapshot(position_id_b);
             // Signatures validation:
             let hash_a = self
-                ._validate_order_signature(
+                ._validate_signature(
                     public_key: position_a.get_owner_public_key(),
                     order: order_a,
                     signature: signature_a,
                 );
             let hash_b = self
-                ._validate_order_signature(
+                ._validate_signature(
                     public_key: position_b.get_owner_public_key(),
                     order: order_b,
                     signature: signature_b,
@@ -1298,8 +1300,8 @@ pub mod Core {
                 );
         }
 
-        fn _validate_order_signature(
-            self: @ContractState, public_key: PublicKey, order: Order, signature: Signature,
+        fn _validate_signature<T, +Drop<T>, +Copy<T>, +OffchainMessageHash<T>>(
+            self: @ContractState, public_key: PublicKey, order: T, signature: Signature,
         ) -> HashType {
             let msg_hash = order.get_message_hash(:public_key);
             validate_stark_signature(:public_key, :msg_hash, :signature);
