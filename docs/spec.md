@@ -59,7 +59,7 @@ classDiagram
         collateral_token_contract: IERC20Dispatcher,
         collateral_quantum: u64,
         num_of_active_synthetic_assets: usize,
-        pub synthetic_config: Map< AssetId, Option [SyntheticConfig]>,
+        pub synthetic_config: Map< AssetId, Option [AssetConfig]>,
         pub synthetic_timely_data: IterableMap< AssetId, SyntheticTimelyData>,
         pub risk_factor_tiers: Map<AssetId, Vec [FixedTwoDecimal] >,
         asset_oracle: Map< AssetId, Map [PublicKey, felt252 ]>,
@@ -85,7 +85,7 @@ classDiagram
         get_num_of_active_synthetic_assets() -> usize
         get_collateral_id() -> AssetId
         get_max_price_interval() -> TimeDelta
-        get_synthetic_config() -> SyntheticConfig
+        get_asset_config() -> AssetConfig
         get_synthetic_timely_data() -> SyntheticTimelyData
         get_risk_factor_tiers() -> Span< FixedTwoDecimal>
     }
@@ -161,7 +161,7 @@ classDiagram
         funding_index: FundingIndex
     }
 
-    class SyntheticConfig{
+    class AssetConfig{
         version: u8
         status: AssetStatus
         risk_factor_first_tier_boundary: u128
@@ -184,7 +184,7 @@ classDiagram
     CoreContract o-- Pausable
     CoreContract o-- Roles
     CoreContract o-- ReplaceabilityComponent
-    Assets o-- SyntheticConfig
+    Assets o-- AssetConfig
     Assets o-- SyntheticTimelyData
     Positions o-- Position
     Position o-- SyntheticAsset
@@ -204,6 +204,19 @@ The *total risk* is a measurement that includes the total value of all synthetic
 Example:
 
 ### Structs
+
+#### AssetType
+
+The asset type
+
+```rust
+pub enum AssetType {
+    #[default]
+    SYNTHETIC,
+    SPOT_COLLATERAL,
+    VAULT_SHARE_COLLATERAL
+}
+```
 
 #### PositionTVTR
 
@@ -478,10 +491,10 @@ pub enum AssetStatus {
 }
 ```
 
-### SyntheticConfig
+### AssetConfig
 
 ```rust
-struct SyntheticConfig {
+struct AssetConfig {
     version: u8,
     pub status: AssetStatus,
     pub risk_factor_first_tier_boundary: u128,
@@ -1139,7 +1152,7 @@ pub struct Storage {
     collateral_token_contract: IERC20Dispatcher,
     collateral_quantum: u64,
     num_of_active_synthetic_assets: usize,
-    pub synthetic_config: Map<AssetId, Option<SyntheticConfig>>,
+    pub synthetic_config: Map<AssetId, Option<AssetConfig>>,
     pub synthetic_timely_data: IterableMap<AssetId, SyntheticTimelyData>,
     pub risk_factor_tiers: Map<AssetId, Vec<FixedTwoDecimal>>,
     asset_oracle: Map<AssetId, Map<PublicKey, felt252>>,

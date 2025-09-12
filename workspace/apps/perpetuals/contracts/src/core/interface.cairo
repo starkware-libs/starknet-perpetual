@@ -47,6 +47,7 @@ pub trait ICore<TContractState> {
         expiration: Timestamp,
         salt: felt252,
     );
+
     fn transfer(
         ref self: TContractState,
         operator_nonce: u64,
@@ -56,6 +57,29 @@ pub trait ICore<TContractState> {
         expiration: Timestamp,
         salt: felt252,
     );
+
+    fn transfer_spot(
+        ref self: TContractState,
+        operator_nonce: u64,
+        recipient: PositionId,
+        asset_id: AssetId,
+        position_id: PositionId,
+        amount: u64,
+        expiration: Timestamp,
+        salt: felt252,
+    );
+
+    fn transfer_spot_request(
+        ref self: TContractState,
+        signature: Signature,
+        recipient: PositionId,
+        asset_id: AssetId,
+        position_id: PositionId,
+        amount: u64,
+        expiration: Timestamp,
+        salt: felt252,
+    );    
+
     fn trade(
         ref self: TContractState,
         operator_nonce: u64,

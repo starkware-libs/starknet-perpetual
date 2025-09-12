@@ -59,6 +59,7 @@ pub struct SyntheticEnrichedPositionDiff {
 pub struct PositionDiffEnriched {
     pub collateral_enriched: BalanceDiff,
     pub synthetic_enriched: Option<SyntheticDiffEnriched>,
+    pub spot_collaterals_enriched: Option<SyntheticDiffEnriched>,
 }
 
 pub impl PositionDiffEnrichedIntoSyntheticEnrichedPositionDiff of Into<

@@ -22,6 +22,7 @@ pub trait IDeposit<TContractState> {
     fn process_deposit(
         ref self: TContractState,
         operator_nonce: u64,
+        asset_id: AssetId,
         depositor: ContractAddress,
         position_id: PositionId,
         quantized_amount: u64,

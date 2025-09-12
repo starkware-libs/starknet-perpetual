@@ -8,11 +8,19 @@ use starkware_utils::time::time::Timestamp;
 
 const VERSION: u8 = 1;
 
+#[derive(Copy, Drop, Serde, starknet::Store, PartialEq)]
+pub enum AssetType {
+    #[default]
+    SYNTHETIC,
+    SPOT_COLLATERAL,
+    VAULT_SHARE_COLLATERAL
+}
+
 #[derive(Copy, Drop, Serde, starknet::Store)]
 // probably need to change name to AssetConfig or something similar as it will be used also for non
 // PnL collateral assets
-pub struct SyntheticConfig {
-    version: u8,
+pub struct AssetConfig {
+    pub version: u8,
     // Configurable
     pub status: AssetStatus,
     pub risk_factor_first_tier_boundary: u128,
@@ -20,6 +28,8 @@ pub struct SyntheticConfig {
     pub quorum: u8,
     // Smallest unit of a synthetic asset in the system.
     pub resolution_factor: u64,
+    pub quantum: u64,
+    pub asset_type: AssetType,
 }
 
 // this is for non PnL collateral assets (or maybe use the SyntheticTimelyData struct for all assets
@@ -68,14 +78,16 @@ pub impl SyntheticImpl of SyntheticTrait {
         risk_factor_tier_size: u128,
         quorum: u8,
         resolution_factor: u64,
-    ) -> SyntheticConfig {
-        SyntheticConfig {
+    ) -> AssetConfig {
+        AssetConfig {
             version: VERSION,
             status,
             risk_factor_first_tier_boundary,
             risk_factor_tier_size,
             quorum,
             resolution_factor,
+            quantum: 0,
+            asset_type: AssetType::SYNTHETIC,
         }
     }
     fn timely_data(
