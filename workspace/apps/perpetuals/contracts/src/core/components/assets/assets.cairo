@@ -150,7 +150,7 @@ pub mod AssetsComponent {
         /// Validations:
         /// - Only the app_governor can call this function.
         /// - The asset does not exists.
-        /// - Each risk factor in risk_factor_tiers is less or equal to 100.
+        /// - Each risk factor in risk_factor_tiers is less or equal to 1000.
         /// - The quorum is greater than 0.
         ///
         /// Execution:
@@ -221,7 +221,7 @@ pub mod AssetsComponent {
                 assert(prev_risk_factor < *risk_factor, UNSORTED_RISK_FACTOR_TIERS);
                 self
                     .risk_factor_tiers
-                    .entry(asset_id) // New function checks that `risk_factor` is lower than 100.
+                    .entry(asset_id) // New function checks that `risk_factor` is lower than 1000.
                     .push(RiskFactorTrait::new(*risk_factor));
                 prev_risk_factor = *risk_factor;
             }
