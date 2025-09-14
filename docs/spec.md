@@ -356,7 +356,7 @@ pub struct Balance {
 ### RiskFactor
 
 Risk factor is a value that represents the risk of a synthetic asset.
-For each synthetic asset, the risk factor is a value between 0 and 100.
+For each synthetic asset, the risk factor is a value between 0 and 1000.
 The risk factor is determined by the asset value in the position.
 
 ```rust
