@@ -16,9 +16,9 @@ pub mod AssetsComponent {
         INVALID_ZERO_RESOLUTION_FACTOR, INVALID_ZERO_RF_FIRST_BOUNDRY, INVALID_ZERO_RF_TIERS_LEN,
         INVALID_ZERO_RF_TIER_SIZE, INVALID_ZERO_TOKEN_ADDRESS, NOT_SYNTHETIC, NOT_VAULT,
         ORACLE_ALREADY_EXISTS, ORACLE_NAME_TOO_LONG, ORACLE_NOT_EXISTS,
-        ORACLE_PUBLIC_KEY_NOT_REGISTERED, QUORUM_NOT_REACHED, SIGNED_PRICES_UNSORTED,
-        SYNTHETIC_ALREADY_EXISTS, SYNTHETIC_EXPIRED_PRICE, SYNTHETIC_NOT_ACTIVE,
-        SYNTHETIC_NOT_EXISTS, UNSORTED_RISK_FACTOR_TIERS, VAULT_NOT_ACTIVE,
+        ORACLE_PUBLIC_KEY_NOT_REGISTERED, POSITION_IS_VAULT, QUORUM_NOT_REACHED,
+        SIGNED_PRICES_UNSORTED, SYNTHETIC_ALREADY_EXISTS, SYNTHETIC_EXPIRED_PRICE,
+        SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS, UNSORTED_RISK_FACTOR_TIERS, VAULT_NOT_ACTIVE,
         ZERO_MAX_FUNDING_INTERVAL, ZERO_MAX_FUNDING_RATE, ZERO_MAX_ORACLE_PRICE,
         ZERO_MAX_PRICE_INTERVAL,
     };
@@ -580,6 +580,16 @@ pub mod AssetsComponent {
                 VaultStatus::ACTIVE => (),
                 VaultStatus::INACTIVE => panic_with_felt252(VAULT_NOT_ACTIVE),
                 VaultStatus::NON_EXISTENT => panic_with_felt252(NOT_VAULT),
+            }
+        }
+
+        fn validate_position_not_vault(
+            self: @ComponentState<TContractState>, position_id: PositionId,
+        ) {
+            let status = self.vaults.entry(position_id).status.read();
+            match status {
+                VaultStatus::NON_EXISTENT => (),
+                _ => panic_with_felt252(POSITION_IS_VAULT),
             }
         }
 

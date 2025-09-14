@@ -946,9 +946,10 @@ pub mod Core {
 
             // Position Existence:
             let from_position = self.positions.get_position_snapshot(order.from_position_id);
+            self.assets.validate_position_not_vault(position_id: order.from_position_id);
+
             let vault_position = self.positions.get_position_snapshot(order.vault_id);
-            // TODO(Mohammad): validate vault_id is a vault position.
-            // TODO(Mohammad): validate from_position_id is a non-vault position.
+            self.assets.validate_vault_active(vault_id: order.vault_id);
 
             self
                 ._validate_signature(
