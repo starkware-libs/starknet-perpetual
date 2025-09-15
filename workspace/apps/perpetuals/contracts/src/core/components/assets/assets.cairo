@@ -28,11 +28,9 @@ pub mod AssetsComponent {
     use perpetuals::core::types::asset::synthetic::{
         SyntheticConfig, SyntheticTimelyData, SyntheticTrait,
     };
-    use perpetuals::core::types::asset::vault::VaultData;
     use perpetuals::core::types::asset::{AssetId, AssetStatus};
     use perpetuals::core::types::balance::Balance;
     use perpetuals::core::types::funding::{FundingIndex, FundingTick, validate_funding_rate};
-    use perpetuals::core::types::position::PositionId;
     use perpetuals::core::types::price::{
         Price, PriceMulTrait, SignedPrice, convert_oracle_to_perps_price,
     };
@@ -73,7 +71,6 @@ pub mod AssetsComponent {
         asset_oracle: Map<AssetId, Map<PublicKey, felt252>>,
         max_oracle_price_validity: TimeDelta,
         collateral_id: Option<AssetId>,
-        pub vaults: Map<PositionId, VaultData>,
     }
 
     #[event]
