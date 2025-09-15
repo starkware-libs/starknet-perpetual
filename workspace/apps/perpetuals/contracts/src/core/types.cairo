@@ -8,5 +8,4 @@ pub(crate) mod risk_factor;
 pub(crate) mod set_owner_account;
 pub(crate) mod set_public_key;
 pub(crate) mod transfer;
-pub(crate) mod vault;
 pub(crate) mod withdraw;
