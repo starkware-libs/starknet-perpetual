@@ -1411,7 +1411,7 @@ $median\\_price = \frac{price*2^{28}}{asset\\_id.resolution\\_factor *10^{12} }$
 Adds a synthetic asset.
 
 Risk factor tiers example:
-**risk\_factor\_tiers \= \[1, 2, 3, 5, 10, 20, 40\]**
+**risk\_factor\_tiers \= \[10, 20, 30, 50, 100, 200, 400\]**
 **risk\_factor\_first\_tier\_boundary \= 10,000**
 **risk\_factor\_tier\_size \= 20,000**
 which means:

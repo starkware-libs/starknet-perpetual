@@ -162,7 +162,7 @@ pub mod AssetsComponent {
         ///     - Set the `last_price_update` to zero.
         ///
         /// Risk factor tiers example:
-        /// - risk_factor_tiers = [1, 2, 3, 5, 10, 20, 40]
+        /// - risk_factor_tiers = [10, 20, 30, 50, 100, 200, 400]
         /// - risk_factor_first_tier_boundary = 10,000
         /// - risk_factor_tier_size = 20,000
         /// which means:
