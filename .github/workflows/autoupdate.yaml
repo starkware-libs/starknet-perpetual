@@ -5,7 +5,7 @@ permissions:
 
 on:
   push:
-    branches: [dev]
+    branches: [dev, perp-v0.3.0]
 
 jobs:
   autoupdate:
@@ -22,13 +22,17 @@ jobs:
           MERGE_CONFLICT_ACTION: "ignore"
           MERGE_MSG: "Branch was auto-updated."
           EXCLUDED_LABELS: "autoupdate-rebase"
+          # Only update PRs whose base matches the branch that triggered the workflow
+          PR_BASE: ${{ github.ref_name }}
+
   autoupdate-rebase:
     name: autoupdate-rebase
     runs-on: ubuntu-latest
     steps:
       - uses: peter-evans/rebase@v3
         with:
-          base: dev
+          # Rebase only PRs whose base matches the branch that triggered the workflow
+          base: ${{ github.ref_name }}
           include-labels: |
             autoupdate-rebase
           exclude-labels: |
