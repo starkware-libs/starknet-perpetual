@@ -5,7 +5,7 @@ permissions:
 
 on:
   push:
-    branches: [perp-v0.3.0]
+    branches: [dev, perp-v0.3.0]
 
 jobs:
   autoupdate:
@@ -13,22 +13,25 @@ jobs:
     runs-on: ubuntu-22.04
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      PR_FILTER: "labelled"
+      PR_LABELS: "autoupdate"
+      PR_READY_STATE: "ready_for_review"
+      MERGE_CONFLICT_ACTION: "ignore"
+      MERGE_MSG: "Branch was auto-updated."
+      EXCLUDED_LABELS: "autoupdate-rebase"
+      # Only update PRs whose base matches the branch that triggered the workflow
+      PR_BASE: ${{ github.ref_name }}
     steps:
       - uses: docker://chinthakagodawita/autoupdate-action:v1
-        env:
-          PR_FILTER: "labelled"
-          PR_LABELS: "autoupdate"
-          PR_READY_STATE: "ready_for_review"
-          MERGE_CONFLICT_ACTION: "ignore"
-          MERGE_MSG: "Branch was auto-updated."
-          EXCLUDED_LABELS: "autoupdate-rebase"
+
   autoupdate-rebase:
     name: autoupdate-rebase
     runs-on: ubuntu-latest
     steps:
       - uses: peter-evans/rebase@v3
         with:
-          base: perp-v0.3.0
+          # Rebase only PRs whose base matches the branch that triggered the workflow
+          base: ${{ github.ref_name }}
           include-labels: |
             autoupdate-rebase
           exclude-labels: |
