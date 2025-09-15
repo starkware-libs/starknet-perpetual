@@ -38,7 +38,6 @@ pub mod Core {
     };
     use perpetuals::core::types::price::PriceMulTrait;
     use perpetuals::core::types::transfer::TransferArgs;
-    use perpetuals::core::types::vault::{ConvertPositionToVault, InvestInVault, RedeemFromVault};
     use perpetuals::core::types::withdraw::WithdrawArgs;
     use perpetuals::core::value_risk_calculator::{
         PositionTVTR, assert_healthy_or_healthier, calculate_position_tvtr_before,
@@ -904,26 +903,6 @@ pub mod Core {
                     },
                 )
         }
-        fn invest_in_vault(
-            ref self: ContractState,
-            operator_nonce: u64,
-            signature: Signature,
-            order: InvestInVault,
-        ) {}
-
-        fn redeem_from_vault(
-            ref self: ContractState,
-            operator_nonce: u64,
-            signature: Signature,
-            order: RedeemFromVault,
-        ) {}
-
-        fn convert_position_to_vault(
-            ref self: ContractState,
-            operator_nonce: u64,
-            signature: Signature,
-            order: ConvertPositionToVault,
-        ) {}
     }
 
     #[generate_trait]
