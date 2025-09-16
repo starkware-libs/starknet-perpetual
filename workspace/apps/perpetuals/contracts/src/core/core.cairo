@@ -23,8 +23,9 @@ pub mod Core {
         ASSET_ID_NOT_COLLATERAL, CANT_LIQUIDATE_IF_POSITION, CANT_TRADE_WITH_FEE_POSITION,
         DIFFERENT_BASE_ASSET_IDS, INVALID_ACTUAL_BASE_SIGN, INVALID_ACTUAL_QUOTE_SIGN,
         INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE, INVALID_QUOTE_AMOUNT_SIGN,
-        INVALID_QUOTE_FEE_AMOUNT, INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT, SYNTHETIC_IS_ACTIVE,
-        TRANSFER_EXPIRED, WITHDRAW_EXPIRED, fulfillment_exceeded_err, order_expired_err,
+        INVALID_QUOTE_FEE_AMOUNT, INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT,
+        POSITION_IS_VAULT_POSITION, SYNTHETIC_IS_ACTIVE, TRANSFER_EXPIRED,
+        VAULT_POSITION_NOT_EXISTS, WITHDRAW_EXPIRED, fulfillment_exceeded_err, order_expired_err,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
@@ -127,6 +128,8 @@ pub mod Core {
     struct Storage {
         // Order hash to fulfilled absolute base amount.
         fulfillment: Map<HashType, u64>,
+        // vault position id to vault ContractAddress and AssetId
+        vault_positions: Map<PositionId, (ContractAddress, AssetId)>,
         // --- Components ---
         #[substorage(v0)]
         accesscontrol: AccessControlComponent::Storage,
@@ -617,12 +620,11 @@ pub mod Core {
                 .get_position_snapshot(position_id: liquidated_position_id);
 
             // Signatures validation:
-            let liquidator_order_hash = self
-                ._validate_order_signature(
-                    public_key: liquidator_position.get_owner_public_key(),
-                    order: liquidator_order,
-                    signature: liquidator_signature,
-                );
+            let liquidator_order_hash = _validate_signature(
+                public_key: liquidator_position.get_owner_public_key(),
+                order: liquidator_order,
+                signature: liquidator_signature,
+            );
 
             // Validate and update fulfillment.
             self
@@ -903,6 +905,45 @@ pub mod Core {
                     },
                 )
         }
+
+        fn deposit_into_vault(
+            ref self: ContractState,
+            operator_nonce: u64,
+            position_id: PositionId,
+            vault_position_id: PositionId,
+            collateral_id: AssetId,
+            quantized_amount: u64,
+            expiration: Timestamp,
+            salt: felt252,
+            signature: Signature,
+        ) {
+            /// Validations:
+            self.pausable.assert_not_paused();
+            self.operator_nonce.use_checked_nonce(:operator_nonce);
+            self.assets.validate_assets_integrity();
+            validate_expiration(expiration: expiration, err: WITHDRAW_EXPIRED);
+
+            // Vault position id is a vault position
+            let (vault_address, _) = self.vault_positions.read(vault_position_id);
+            assert(vault_address.is_non_zero(), VAULT_POSITION_NOT_EXISTS);
+
+            // Deposit position id is exists and it is not a vault position.
+            self.positions.get_position_snapshot(:position_id);
+            let (deposit_vault_address, _) = self.vault_positions.read(position_id);
+            assert(deposit_vault_address.is_zero(), POSITION_IS_VAULT_POSITION);
+
+            // Amount is non zero
+            assert(quantized_amount.is_non_zero(), INVALID_ZERO_AMOUNT);
+
+            // Collateral asset validation
+            assert(collateral_id == self.assets.get_collateral_id(), ASSET_ID_NOT_COLLATERAL);
+            // Signature validation
+        // TODO(Mohammad): calculate msg_hash and check fulfillment.
+        // TODO(Mohammad): add signature validation.
+
+            /// Executions:
+        // TODO(Mohammad): execute deposit.
+        }
     }
 
     #[generate_trait]
@@ -936,18 +977,16 @@ pub mod Core {
             let position_a = self.positions.get_position_snapshot(position_id_a);
             let position_b = self.positions.get_position_snapshot(position_id_b);
             // Signatures validation:
-            let hash_a = self
-                ._validate_order_signature(
-                    public_key: position_a.get_owner_public_key(),
-                    order: order_a,
-                    signature: signature_a,
-                );
-            let hash_b = self
-                ._validate_order_signature(
-                    public_key: position_b.get_owner_public_key(),
-                    order: order_b,
-                    signature: signature_b,
-                );
+            let hash_a = _validate_signature(
+                public_key: position_a.get_owner_public_key(),
+                order: order_a,
+                signature: signature_a,
+            );
+            let hash_b = _validate_signature(
+                public_key: position_b.get_owner_public_key(),
+                order: order_b,
+                signature: signature_b,
+            );
 
             // Validate and update fulfillments.
             self
@@ -1208,14 +1247,6 @@ pub mod Core {
                 );
         }
 
-        fn _validate_order_signature(
-            self: @ContractState, public_key: PublicKey, order: Order, signature: Signature,
-        ) -> HashType {
-            let msg_hash = order.get_message_hash(:public_key);
-            validate_stark_signature(:public_key, :msg_hash, :signature);
-            msg_hash
-        }
-
         fn _validate_healthy_or_healthier_position(
             self: @ContractState,
             position_id: PositionId,
@@ -1358,5 +1389,13 @@ pub mod Core {
                 synthetic_enriched: synthetic_enriched,
             }
         }
+    }
+
+    fn _validate_signature<T, +Drop<T>, +Copy<T>, +OffchainMessageHash<T>>(
+        public_key: PublicKey, order: T, signature: Signature,
+    ) -> HashType {
+        let msg_hash = order.get_message_hash(:public_key);
+        validate_stark_signature(:public_key, :msg_hash, :signature);
+        msg_hash
     }
 }
