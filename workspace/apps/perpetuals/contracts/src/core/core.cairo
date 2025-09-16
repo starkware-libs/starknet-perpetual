@@ -21,16 +21,19 @@ pub mod Core {
     };
     use perpetuals::core::errors::{
         ASSET_ID_NOT_COLLATERAL, CANT_LIQUIDATE_IF_POSITION, CANT_TRADE_WITH_FEE_POSITION,
-        DIFFERENT_BASE_ASSET_IDS, INVALID_ACTUAL_BASE_SIGN, INVALID_ACTUAL_QUOTE_SIGN,
-        INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE, INVALID_QUOTE_AMOUNT_SIGN,
-        INVALID_QUOTE_FEE_AMOUNT, INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT, SYNTHETIC_IS_ACTIVE,
-        TRANSFER_EXPIRED, WITHDRAW_EXPIRED, fulfillment_exceeded_err, order_expired_err,
+        DEPOSIT_INTO_VAULT_EXPIRED, DIFFERENT_BASE_ASSET_IDS, INVALID_ACTUAL_BASE_SIGN,
+        INVALID_ACTUAL_QUOTE_SIGN, INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE,
+        INVALID_QUOTE_AMOUNT_SIGN, INVALID_QUOTE_FEE_AMOUNT, INVALID_SAME_POSITIONS,
+        INVALID_ZERO_AMOUNT, OPERATION_ALREADY_DONE, POSITION_IS_VAULT_POSITION,
+        SYNTHETIC_IS_ACTIVE, TRANSFER_EXPIRED, WITHDRAW_EXPIRED, fulfillment_exceeded_err,
+        order_expired_err,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
     use perpetuals::core::types::asset::synthetic::SyntheticDiffEnriched;
     use perpetuals::core::types::asset::{AssetId, AssetStatus};
     use perpetuals::core::types::balance::{Balance, BalanceDiff};
+    use perpetuals::core::types::deposit_into_vault::VaultDepositArgs;
     use perpetuals::core::types::order::{Order, OrderTrait};
     use perpetuals::core::types::position::{
         Position, PositionDiff, PositionDiffEnriched, PositionId, PositionTrait,
@@ -127,6 +130,9 @@ pub mod Core {
     struct Storage {
         // Order hash to fulfilled absolute base amount.
         fulfillment: Map<HashType, u64>,
+        // vault position id to vault ContractAddress and AssetId
+        vault_positions_to_addresses: Map<PositionId, ContractAddress>,
+        vault_positions_to_assets: Map<PositionId, AssetId>,
         // --- Components ---
         #[substorage(v0)]
         accesscontrol: AccessControlComponent::Storage,
@@ -617,12 +623,11 @@ pub mod Core {
                 .get_position_snapshot(position_id: liquidated_position_id);
 
             // Signatures validation:
-            let liquidator_order_hash = self
-                ._validate_order_signature(
-                    public_key: liquidator_position.get_owner_public_key(),
-                    order: liquidator_order,
-                    signature: liquidator_signature,
-                );
+            let liquidator_order_hash = _validate_signature(
+                public_key: liquidator_position.get_owner_public_key(),
+                order: liquidator_order,
+                signature: liquidator_signature,
+            );
 
             // Validate and update fulfillment.
             self
@@ -754,7 +759,7 @@ pub mod Core {
                 .positions
                 .get_position_snapshot(position_id: deleverager_position_id);
 
-            self.assets.validate_synthetic_active(synthetic_id: base_asset_id);
+            self.assets.validate_active_asset(asset_id: base_asset_id);
             self
                 ._validate_imposed_reduction_trade(
                     position_id_a: deleveraged_position_id,
@@ -903,6 +908,38 @@ pub mod Core {
                     },
                 )
         }
+
+        fn deposit_into_vault(
+            ref self: ContractState,
+            operator_nonce: u64,
+            position_id: PositionId,
+            vault_position_id: PositionId,
+            collateral_id: AssetId,
+            quantized_amount: u64,
+            expiration: Timestamp,
+            salt: felt252,
+            signature: Signature,
+        ) {
+            /// Validations:
+            self.pausable.assert_not_paused();
+            self.operator_nonce.use_checked_nonce(:operator_nonce);
+            self.assets.validate_assets_integrity();
+
+            let share_id = self.vault_positions_to_assets.read(vault_position_id);
+            self
+                ._validate_deposit_into_vault(
+                    :position_id,
+                    :vault_position_id,
+                    :collateral_id,
+                    :quantized_amount,
+                    :expiration,
+                    :salt,
+                    :signature,
+                    :share_id,
+                );
+            /// Executions:
+        // TODO(Mohammad): impl execute deposit.
+        }
     }
 
     #[generate_trait]
@@ -936,18 +973,16 @@ pub mod Core {
             let position_a = self.positions.get_position_snapshot(position_id_a);
             let position_b = self.positions.get_position_snapshot(position_id_b);
             // Signatures validation:
-            let hash_a = self
-                ._validate_order_signature(
-                    public_key: position_a.get_owner_public_key(),
-                    order: order_a,
-                    signature: signature_a,
-                );
-            let hash_b = self
-                ._validate_order_signature(
-                    public_key: position_b.get_owner_public_key(),
-                    order: order_b,
-                    signature: signature_b,
-                );
+            let hash_a = _validate_signature(
+                public_key: position_a.get_owner_public_key(),
+                order: order_a,
+                signature: signature_a,
+            );
+            let hash_b = _validate_signature(
+                public_key: position_b.get_owner_public_key(),
+                order: order_b,
+                signature: signature_b,
+            );
 
             // Validate and update fulfillments.
             self
@@ -1123,7 +1158,7 @@ pub mod Core {
         ) {
             // Base asset check.
             assert(order_a.base_asset_id == order_b.base_asset_id, DIFFERENT_BASE_ASSET_IDS);
-            self.assets.validate_synthetic_active(synthetic_id: order_a.base_asset_id);
+            self.assets.validate_active_asset(asset_id: order_a.base_asset_id);
 
             assert(order_a.position_id != order_b.position_id, INVALID_SAME_POSITIONS);
 
@@ -1160,6 +1195,53 @@ pub mod Core {
                     actual_amount_quote: -actual_amount_quote_a,
                     actual_fee: actual_fee_b,
                 );
+        }
+
+        fn _validate_deposit_into_vault(
+            ref self: ContractState,
+            position_id: PositionId,
+            vault_position_id: PositionId,
+            collateral_id: AssetId,
+            quantized_amount: u64,
+            expiration: Timestamp,
+            salt: felt252,
+            signature: Signature,
+            share_id: AssetId,
+        ) {
+            validate_expiration(expiration: expiration, err: DEPOSIT_INTO_VAULT_EXPIRED);
+
+            // Vault position id is a vault position, and the asset is active.
+            self.assets.validate_active_asset(asset_id: share_id);
+
+            // position id is exists and it is not a vault position.
+            let position = self.positions.get_position_snapshot(:position_id);
+            let position_address = self.vault_positions_to_addresses.read(position_id);
+            assert(position_address.is_zero(), POSITION_IS_VAULT_POSITION);
+
+            // Amount is non zero
+            assert(quantized_amount.is_non_zero(), INVALID_ZERO_AMOUNT);
+
+            // Collateral asset validation
+            assert(collateral_id == self.assets.get_collateral_id(), ASSET_ID_NOT_COLLATERAL);
+
+            // Signature validation
+            let hash = _validate_signature(
+                public_key: position.get_owner_public_key(),
+                order: VaultDepositArgs {
+                    position_id,
+                    vault_position_id,
+                    collateral_id,
+                    quantized_amount,
+                    expiration,
+                    salt,
+                },
+                signature: signature,
+            );
+
+            // Update fulfillment:
+            let fulfillment_entry = self.fulfillment.entry(hash);
+            assert(fulfillment_entry.read().is_zero(), OPERATION_ALREADY_DONE);
+            fulfillment_entry.write(quantized_amount.into());
         }
 
         fn _validate_synthetic_shrinks(
@@ -1206,14 +1288,6 @@ pub mod Core {
                 ._validate_synthetic_shrinks(
                     position: position_b, asset_id: base_asset_id, amount: -base_amount_a,
                 );
-        }
-
-        fn _validate_order_signature(
-            self: @ContractState, public_key: PublicKey, order: Order, signature: Signature,
-        ) -> HashType {
-            let msg_hash = order.get_message_hash(:public_key);
-            validate_stark_signature(:public_key, :msg_hash, :signature);
-            msg_hash
         }
 
         fn _validate_healthy_or_healthier_position(
@@ -1358,5 +1432,13 @@ pub mod Core {
                 synthetic_enriched: synthetic_enriched,
             }
         }
+    }
+
+    fn _validate_signature<T, +Drop<T>, +Copy<T>, +OffchainMessageHash<T>>(
+        public_key: PublicKey, order: T, signature: Signature,
+    ) -> HashType {
+        let msg_hash = order.get_message_hash(:public_key);
+        validate_stark_signature(:public_key, :msg_hash, :signature);
+        msg_hash
     }
 }
