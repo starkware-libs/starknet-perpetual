@@ -1,6 +1,7 @@
 use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::order::Order;
 use perpetuals::core::types::position::PositionId;
+use perpetuals::core::types::vault::{ConvertPositionToVault, InvestInVault, RedeemFromVault};
 use starknet::ContractAddress;
 use starkware_utils::signature::stark::Signature;
 use starkware_utils::time::time::Timestamp;
@@ -95,5 +96,20 @@ pub trait ICore<TContractState> {
         position_id_b: PositionId,
         base_asset_id: AssetId,
         base_amount_a: i64,
+    );
+
+    fn invest_in_vault(
+        ref self: TContractState, operator_nonce: u64, signature: Signature, order: InvestInVault,
+    );
+
+    fn redeem_from_vault(
+        ref self: TContractState, operator_nonce: u64, signature: Signature, order: RedeemFromVault,
+    );
+
+    fn convert_position_to_vault(
+        ref self: TContractState,
+        operator_nonce: u64,
+        signature: Signature,
+        order: ConvertPositionToVault,
     );
 }

@@ -38,6 +38,7 @@ pub mod Core {
     };
     use perpetuals::core::types::price::PriceMulTrait;
     use perpetuals::core::types::transfer::TransferArgs;
+    use perpetuals::core::types::vault::{ConvertPositionToVault, InvestInVault, RedeemFromVault};
     use perpetuals::core::types::withdraw::WithdrawArgs;
     use perpetuals::core::value_risk_calculator::{
         PositionTVTR, assert_healthy_or_healthier, calculate_position_tvtr_before,
@@ -66,7 +67,8 @@ pub mod Core {
         HashType, PublicKey, Signature, validate_stark_signature,
     };
     use starkware_utils::storage::iterable_map::{
-        IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
+        IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapTrait,
+        IterableMapWriteAccessImpl,
     };
     use starkware_utils::time::time::{Time, TimeDelta, Timestamp, validate_expiration};
 
@@ -618,7 +620,7 @@ pub mod Core {
 
             // Signatures validation:
             let liquidator_order_hash = self
-                ._validate_order_signature(
+                ._validate_signature(
                     public_key: liquidator_position.get_owner_public_key(),
                     order: liquidator_order,
                     signature: liquidator_signature,
@@ -903,6 +905,96 @@ pub mod Core {
                     },
                 )
         }
+
+        /// Executes an investment in a vault position.
+        ///
+        /// Validations:
+        /// - The contract must not be paused.
+        /// - It should be called by operator.
+        /// - The `operator_nonce` must be valid.
+        /// - The funding validation interval has not passed since the last funding tick.
+        /// - The prices of all assets in the system are valid.
+        /// - Validates both from_position_id and vault_id exist.
+        /// - Validates that vault_id is actually a vault position.
+        /// - Validates that from_position_id is not a vault position./
+        /// - Ensures the amount is non-zero.
+        /// - Validates the expiration time.
+        /// - Validates the signature for the InvestInVault order.
+        ///
+        /// Execution:
+        /// - Transfer collateral from from_position_id to vault_id.
+        /// - Transfer shares to from_position_id.
+        /// - Validates the from_position is healthy or healthier after the transfer.
+        fn invest_in_vault(
+            ref self: ContractState,
+            operator_nonce: u64,
+            signature: Signature,
+            order: InvestInVault,
+        ) {
+            /// Validations - System State:
+            self.pausable.assert_not_paused();
+            self.operator_nonce.use_checked_nonce(:operator_nonce);
+            self.assets.validate_assets_integrity();
+
+            /// Validations - Order Parameters:
+            assert(order.amount.is_non_zero(), INVALID_ZERO_AMOUNT);
+            // Expiration check.
+            let now = Time::now();
+            assert_with_byte_array(
+                now <= order.expiration, order_expired_err(order.from_position_id),
+            );
+
+            // Position Existence:
+            let from_position = self.positions.get_position_snapshot(order.from_position_id);
+            let vault_position = self.positions.get_position_snapshot(order.vault_id);
+            // TODO(Mohammad): validate vault_id is a vault position.
+            // TODO(Mohammad): validate from_position_id is a non-vault position.
+
+            self
+                ._validate_signature(
+                    public_key: from_position.get_owner_public_key(), :order, :signature,
+                );
+            /// Execution:
+        // TODO(Mohammad): execute InvestInVault.
+
+            /// Event:
+        // TODO(Mohammad): emit InvestInVault event.
+        }
+
+        fn redeem_from_vault(
+            ref self: ContractState,
+            operator_nonce: u64,
+            signature: Signature,
+            order: RedeemFromVault,
+        ) {}
+
+        /// Converts a position to a vault position.
+        // TODO : add doc, add to the spec
+        fn convert_position_to_vault(
+            ref self: ContractState,
+            operator_nonce: u64,
+            signature: Signature,
+            order: ConvertPositionToVault,
+        ) {
+            /// Validations:
+            self.pausable.assert_not_paused();
+            self.operator_nonce.use_checked_nonce(:operator_nonce);
+            // Vault position should not hold any vault assets.
+            let vault = self.positions.get_position_snapshot(order.position_to_convert);
+            assert(vault.vault_balance.len() == 0, 'TODO');
+
+            // TODO : validate the vault doesnt already exist
+
+            // validate position_receiving_shares exists
+            let recipient = self.positions.get_position_snapshot(order.position_receiving_shares);
+
+            assert(order.initial_shares.is_non_zero(), 'TODO');
+            validate_expiration(order.expiration, err: 'TODO');
+
+            self._validate_signature(public_key: vault.get_owner_public_key(), :order, :signature);
+            // TODO: create vault position, and update initial shares.
+        // TODO : emit event.
+        }
     }
 
     #[generate_trait]
@@ -937,13 +1029,13 @@ pub mod Core {
             let position_b = self.positions.get_position_snapshot(position_id_b);
             // Signatures validation:
             let hash_a = self
-                ._validate_order_signature(
+                ._validate_signature(
                     public_key: position_a.get_owner_public_key(),
                     order: order_a,
                     signature: signature_a,
                 );
             let hash_b = self
-                ._validate_order_signature(
+                ._validate_signature(
                     public_key: position_b.get_owner_public_key(),
                     order: order_b,
                     signature: signature_b,
@@ -1208,8 +1300,8 @@ pub mod Core {
                 );
         }
 
-        fn _validate_order_signature(
-            self: @ContractState, public_key: PublicKey, order: Order, signature: Signature,
+        fn _validate_signature<T, +Drop<T>, +Copy<T>, +OffchainMessageHash<T>>(
+            self: @ContractState, public_key: PublicKey, order: T, signature: Signature,
         ) -> HashType {
             let msg_hash = order.get_message_hash(:public_key);
             validate_stark_signature(:public_key, :msg_hash, :signature);
