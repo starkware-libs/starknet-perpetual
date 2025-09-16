@@ -25,8 +25,13 @@ pub mod Core {
         INVALID_ACTUAL_QUOTE_SIGN, INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE,
         INVALID_QUOTE_AMOUNT_SIGN, INVALID_QUOTE_FEE_AMOUNT, INVALID_SAME_POSITIONS,
         INVALID_ZERO_AMOUNT, OPERATION_ALREADY_DONE, POSITION_IS_VAULT_POSITION,
+<<<<<<< HEAD
         SYNTHETIC_IS_ACTIVE, TRANSFER_EXPIRED, WITHDRAW_EXPIRED, fulfillment_exceeded_err,
         order_expired_err,
+=======
+        SYNTHETIC_IS_ACTIVE, TRANSFER_EXPIRED, VAULT_POSITION_NOT_EXISTS, WITHDRAW_EXPIRED,
+        fulfillment_exceeded_err, order_expired_err,
+>>>>>>> bbd6f88 (feat(perp-vault): add validations for deposit into vault)
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
@@ -131,8 +136,12 @@ pub mod Core {
         // Order hash to fulfilled absolute base amount.
         fulfillment: Map<HashType, u64>,
         // vault position id to vault ContractAddress and AssetId
+<<<<<<< HEAD
         vault_positions_to_addresses: Map<PositionId, ContractAddress>,
         vault_positions_to_assets: Map<PositionId, AssetId>,
+=======
+        vault_positions: Map<PositionId, (ContractAddress, AssetId)>,
+>>>>>>> bbd6f88 (feat(perp-vault): add validations for deposit into vault)
         // --- Components ---
         #[substorage(v0)]
         accesscontrol: AccessControlComponent::Storage,
@@ -925,7 +934,10 @@ pub mod Core {
             self.operator_nonce.use_checked_nonce(:operator_nonce);
             self.assets.validate_assets_integrity();
 
+<<<<<<< HEAD
             let share_id = self.vault_positions_to_assets.read(vault_position_id);
+=======
+>>>>>>> bbd6f88 (feat(perp-vault): add validations for deposit into vault)
             self
                 ._validate_deposit_into_vault(
                     :position_id,
@@ -935,7 +947,10 @@ pub mod Core {
                     :expiration,
                     :salt,
                     :signature,
+<<<<<<< HEAD
                     :share_id,
+=======
+>>>>>>> bbd6f88 (feat(perp-vault): add validations for deposit into vault)
                 );
             /// Executions:
         // TODO(Mohammad): impl execute deposit.
@@ -1206,16 +1221,29 @@ pub mod Core {
             expiration: Timestamp,
             salt: felt252,
             signature: Signature,
+<<<<<<< HEAD
             share_id: AssetId,
         ) {
             validate_expiration(expiration: expiration, err: DEPOSIT_INTO_VAULT_EXPIRED);
 
             // Vault position id is a vault position, and the asset is active.
+=======
+        ) {
+            validate_expiration(expiration: expiration, err: DEPOSIT_INTO_VAULT_EXPIRED);
+
+            // Vault position id is a vault position
+            let (vault_address, share_id) = self.vault_positions.read(vault_position_id);
+            assert(vault_address.is_non_zero(), VAULT_POSITION_NOT_EXISTS);
+>>>>>>> bbd6f88 (feat(perp-vault): add validations for deposit into vault)
             self.assets.validate_active_asset(asset_id: share_id);
 
             // position id is exists and it is not a vault position.
             let position = self.positions.get_position_snapshot(:position_id);
+<<<<<<< HEAD
             let position_address = self.vault_positions_to_addresses.read(position_id);
+=======
+            let (position_address, _) = self.vault_positions.read(position_id);
+>>>>>>> bbd6f88 (feat(perp-vault): add validations for deposit into vault)
             assert(position_address.is_zero(), POSITION_IS_VAULT_POSITION);
 
             // Amount is non zero
@@ -1241,7 +1269,11 @@ pub mod Core {
             // Update fulfillment:
             let fulfillment_entry = self.fulfillment.entry(hash);
             assert(fulfillment_entry.read().is_zero(), OPERATION_ALREADY_DONE);
+<<<<<<< HEAD
             fulfillment_entry.write(quantized_amount.into());
+=======
+            fulfillment_entry.write(1);
+>>>>>>> bbd6f88 (feat(perp-vault): add validations for deposit into vault)
         }
 
         fn _validate_synthetic_shrinks(
