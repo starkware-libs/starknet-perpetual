@@ -5,7 +5,7 @@ permissions:
 
 on:
   push:
-    branches: [perp-v0.3.0]
+    branches: [dev]
 
 jobs:
   autoupdate:
@@ -28,7 +28,7 @@ jobs:
     steps:
       - uses: peter-evans/rebase@v3
         with:
-          base: perp-v0.3.0
+          base: dev
           include-labels: |
             autoupdate-rebase
           exclude-labels: |
