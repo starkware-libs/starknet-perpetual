@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
     branches:
-      - dev
+      - perp-v0.3.0
 
 jobs:
   CI:

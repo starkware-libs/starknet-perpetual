@@ -889,10 +889,10 @@ impl StructHashImpl of StructHash<DepositIntoVaultArgs> {
 }
 ```
 
-##### WithdrawFromVaultUser
+##### WithdrawFromVaultUserArgs
 
 ```rust
-pub struct WithdrawFromVaultUser {
+pub struct WithdrawFromVaultUserArgs {
     pub position_id: PositionId,
     pub vault_position_id: PositionId,
     pub collateral_id: AssetId, 
@@ -903,7 +903,7 @@ pub struct WithdrawFromVaultUser {
 }
 
 /// selector!(
-///   "\"WithdrawFromVaultUser\"(
+///   "\"WithdrawFromVaultUserArgs\"(
 ///    \"position_id\":\"PositionId\",
 ///    \"vault_position_id\":\"PositionId\",
 ///    \"collateral_id\":\"AssetId\",
@@ -925,25 +925,24 @@ pub struct WithdrawFromVaultUser {
 
 const WITHDRAW_FROM_VAULT_USER_ARGS_TYPE_HASH: HashType = XXX;
 
-impl StructHashImpl of StructHash<WithdrawFromVaultUser> {
-    fn hash_struct(self: @WithdrawFromVaultUser) -> HashType {
+impl StructHashImpl of StructHash<WithdrawFromVaultUserArgs> {
+    fn hash_struct(self: @WithdrawFromVaultUserArgs) -> HashType {
         let hash_state = PoseidonTrait::new();
         hash_state.update_with(WITHDRAW_FROM_VAULT_USER_ARGS_TYPE_HASH).update_with(*self).finalize()
     }
 }
 ```
 
-
-##### WithdrawFromVaultOwner
+##### WithdrawFromVaultOwnerArgs
 
 ```rust
-pub struct WithdrawFromVaultOwner {
+pub struct WithdrawFromVaultOwnerArgs {
     user_hash: HashType, 
     vault_share_execution_price: Price
 }
 
 /// selector!(
-///   "\"WithdrawFromVaultOwner\"(
+///   "\"WithdrawFromVaultOwnerArgs\"(
 ///    \"user_hash\":\"HashType\",
 ///    \"vault_share_execution_price\":\"Price\",
 ///    )
@@ -957,10 +956,55 @@ pub struct WithdrawFromVaultOwner {
 
 const WITHDRAW_FROM_VAULT_OWNER_ARGS_TYPE_HASH: HashType = XXX;
 
-impl StructHashImpl of StructHash<WithdrawFromVaultOwner> {
-    fn hash_struct(self: @WithdrawFromVaultOwner) -> HashType {
+impl StructHashImpl of StructHash<WithdrawFromVaultOwnerArgs> {
+    fn hash_struct(self: @WithdrawFromVaultOwnerArgs) -> HashType {
         let hash_state = PoseidonTrait::new();
         hash_state.update_with(WITHDRAW_FROM_VAULT_OWNER_ARGS_TYPE_HASH).update_with(*self).finalize()
+    }
+}
+```
+
+##### LiquidateVaultSharesArgs
+
+```rust
+pub struct LiquidateVaultSharesArgs {
+    vault_share_execution_price: Price,
+    vault_position_id: PositionId,
+    collateral_id: AssetId,
+    number_of_shares: u64,
+    expiration: Timestamp,
+    salt: felt252,
+}
+
+/// selector!(
+///   "\"LiquidateVaultSharesArgs\"(
+///    \"vault_share_execution_price\":\"Price\",
+///    \"vault_position_id\":\"PositionId\",
+///    \"collateral_id\":\"AssetId\",
+///    \"number_of_shares\":\"u64\",
+///    \"expiration\":\"Timestamp\",
+///    \"salt\":\"felt\"
+///    )
+///    \"PositionId\"(
+///    \"value\":\"u32\"
+///    )"
+///    \"AssetId\"(
+///    \"value\":\"felt\"
+///    )"
+///    \"Timestamp\"(
+///    \"seconds\":\"u64\"
+///    )"
+///    \"Price\"(
+///    \"value\":\"u64\"
+///    )"
+/// );
+
+const LIQUIDATE_VAULT_SHARES_ARGS_TYPE_HASH: HashType = XXX;
+
+impl StructHashImpl of StructHash<LiquidateVaultSharesArgs> {
+    fn hash_struct(self: @LiquidateVaultSharesArgs) -> HashType {
+        let hash_state = PoseidonTrait::new();
+        hash_state.update_with(LIQUIDATE_VAULT_SHARES_ARGS_TYPE_HASH).update_with(*self).finalize()
     }
 }
 ```
@@ -1828,6 +1872,7 @@ Only the Operator can execute.
 
 1. Run validations
 2. Register the vault position id to the vault contract address and asset id in the vault_positions map
+3. add the option to deposit vault share asset_id into the system
 
 **Emits:**
 
@@ -2753,8 +2798,30 @@ pub struct DepositedIntoVault {
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
 pub struct WithdrawnFromVault {
+    #[key]
     pub position_id: PositionId,
+    #[key]
     pub vault_position_id: PositionId,
+    #[key]
+    pub collateral_id: AssetId,
+    pub number_of_shares: u64,
+    pub minimum_quantized_amount: u64,
+    pub vault_share_execution_price: Price,
+    pub expiration: Timestamp,
+    pub salt: felt252,
+}
+```
+
+##### LiquidatedFromVault
+
+```rust
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct LiquidatedFromVault {
+    #[key]
+    pub position_id: PositionId,
+    #[key]
+    pub vault_position_id: PositionId,
+    #[key]
     pub collateral_id: AssetId,
     pub number_of_shares: u64,
     pub minimum_quantized_amount: u64,
@@ -3445,7 +3512,6 @@ Only the Operator can execute.
 
 **Errors:**
 
-
 #### WithdrawFromVault
 
 Withdraw from vault is called by the operator to let the user "cash out" his vault shares from the vault position into his position
@@ -3473,9 +3539,9 @@ Only the Operator can execute.
 
 **Hash:**
 
-[get\_message\_hash](#get-message-hash) on [WithdrawFromVaultUser](#withdrawfromvaultuser) with `position_id` public_key.
+[get\_message\_hash](#get-message-hash) on [WithdrawFromVaultUserArgs](#withdrawfromvaultuserargs) with `position_id` public_key.
 
-[get\_message\_hash](#get-message-hash) on [WithdrawFromVaultOwner](#withdrawfromvaultowner) with `vault_position_id` public_key.
+[get\_message\_hash](#get-message-hash) on [WithdrawFromVaultOwnerArgs](#withdrawfromvaultownerargs) with `vault_position_id` public_key.
 
 **Validations:**
 
@@ -3492,6 +3558,7 @@ Only the Operator can execute.
 11. vault_share_execution_price is non zero.
 12. Caller is the operator.
 13. Request is new (check user payload hash not exists in the fulfillment map).
+14. `number_of_shares * vault_share_execution_price >= minimum_quantized_amount`
 
 **Logic:**
 
@@ -3509,13 +3576,8 @@ Only the Operator can execute.
 
 **Errors:**
 
+#### LiquidateVaultShares
 
-
-
-
-### LiquidateVaultShares
-
-#### Description
 Withdraw from vault is called by the operator to let the user "cash out" his vault shares from the vault position into his position
 
 ```rust
@@ -3533,21 +3595,15 @@ fn liquidate_vault_shares(
 );
 ```
 
-#### Access Control
+**Access Control:**
 
 Only the Operator can execute.
 
-#### Hash
+**Hash:**
 
-vault owner signature:
-vault_position_id
-collateral_id
-number_of_shares
-vault_share_execution_price
-expiration
-salt
+[get\_message\_hash](#get-message-hash) on [LiquidateVaultSharesArgs](#liquidatevaultsharesargs) with `vault_position_id` public_key.
 
-#### Validations
+**Validations:**
 
 1. [signature validation](#signature) for vault owner signature
 2. [Pausable check](#pausable)
@@ -3562,8 +3618,7 @@ salt
 11. vault_share_execution_price is non zero.
 12. Caller is the operator.
 
-
-#### Logic
+**Logic:**
 
 1. Run validations
 2. transfer vault_asset_id: number_of_shares from the perps contract to the vault contract (for burning the vault shares)
@@ -3574,8 +3629,8 @@ salt
 7. reduce the vault_position_id collateral_id balance by vault_share_execution_price*number_of_shares
 8. position id is healthier
 
-#### Emits
+**Emits:**
 
-[LiquidateVaultShares](#liquidate-vault-shares)
+[LiquidatedFromVault](#liquidatedfromvault)
 
-#### Errors
+**Errors:**
