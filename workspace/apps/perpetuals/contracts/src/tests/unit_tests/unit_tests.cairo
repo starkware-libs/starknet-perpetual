@@ -1,4 +1,3 @@
-use crate::core::types::asset::synthetic::SyntheticConfig;
 use core::num::traits::Zero;
 use perpetuals::core::components::assets::interface::{
     IAssets, IAssetsDispatcher, IAssetsDispatcherTrait, IAssetsSafeDispatcher,
@@ -66,6 +65,7 @@ use starkware_utils_testing::test_utils::{
     Deployable, TokenTrait, assert_panic_with_error, assert_panic_with_felt_error,
     cheat_caller_address_once,
 };
+use crate::core::types::asset::synthetic::SyntheticConfig;
 
 
 #[test]
@@ -1074,15 +1074,9 @@ fn test_successful_deactivate_synthetic_asset() {
 
     // Setup parameters:
     let synthetic_id = cfg.synthetic_cfg.synthetic_id;
-    let x = state
-    .assets
-    .synthetic_config
-    .entry(synthetic_id)
-    .read();
-    let y : Option<SyntheticConfig> = x.into();
-    assert!(
-        y.unwrap().status == AssetStatus::ACTIVE,
-    );
+    let x = state.assets.synthetic_config.entry(synthetic_id).read();
+    let y: Option<SyntheticConfig> = x.into();
+    assert!(y.unwrap().status == AssetStatus::ACTIVE);
 
     // Test:
     cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.app_governor);
@@ -1095,15 +1089,9 @@ fn test_successful_deactivate_synthetic_asset() {
     );
 
     // Check:
-    let x = state
-    .assets
-    .synthetic_config
-    .entry(synthetic_id)
-    .read();
-    let y : Option<SyntheticConfig> = x.into();
-    assert!(
-        y.unwrap().status == AssetStatus::INACTIVE,
-    );
+    let x = state.assets.synthetic_config.entry(synthetic_id).read();
+    let y: Option<SyntheticConfig> = x.into();
+    assert!(y.unwrap().status == AssetStatus::INACTIVE);
 }
 
 #[test]
