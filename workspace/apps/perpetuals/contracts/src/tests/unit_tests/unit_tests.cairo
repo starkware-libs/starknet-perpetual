@@ -1,3 +1,4 @@
+use crate::core::types::asset::synthetic::SyntheticConfig;
 use core::num::traits::Zero;
 use perpetuals::core::components::assets::interface::{
     IAssets, IAssetsDispatcher, IAssetsDispatcherTrait, IAssetsSafeDispatcher,
@@ -1073,14 +1074,14 @@ fn test_successful_deactivate_synthetic_asset() {
 
     // Setup parameters:
     let synthetic_id = cfg.synthetic_cfg.synthetic_id;
+    let x = state
+    .assets
+    .synthetic_config
+    .entry(synthetic_id)
+    .read();
+    let y : Option<SyntheticConfig> = x.into();
     assert!(
-        state
-            .assets
-            .synthetic_config
-            .entry(synthetic_id)
-            .read()
-            .unwrap()
-            .status == AssetStatus::ACTIVE,
+        y.unwrap().status == AssetStatus::ACTIVE,
     );
 
     // Test:
@@ -1094,14 +1095,14 @@ fn test_successful_deactivate_synthetic_asset() {
     );
 
     // Check:
+    let x = state
+    .assets
+    .synthetic_config
+    .entry(synthetic_id)
+    .read();
+    let y : Option<SyntheticConfig> = x.into();
     assert!(
-        state
-            .assets
-            .synthetic_config
-            .entry(synthetic_id)
-            .read()
-            .unwrap()
-            .status == AssetStatus::INACTIVE,
+        y.unwrap().status == AssetStatus::INACTIVE,
     );
 }
 

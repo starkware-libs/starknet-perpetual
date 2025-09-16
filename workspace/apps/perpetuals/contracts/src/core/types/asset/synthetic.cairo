@@ -21,6 +21,52 @@ pub struct SyntheticConfig {
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store)]
+pub struct OptionSyntheticConfig {
+    pub option: felt252,
+    version: u8,
+    // Configurable
+    pub status: AssetStatus,
+    pub risk_factor_first_tier_boundary: u128,
+    pub risk_factor_tier_size: u128,
+    pub quorum: u8,
+    // Smallest unit of a synthetic asset in the system.
+    pub resolution_factor: u64,
+}
+
+pub impl OptionSyntheticConfigIntoOptionSyntheticConfig of Into<OptionSyntheticConfig, Option<SyntheticConfig>> {
+    fn into(self: OptionSyntheticConfig) -> Option<SyntheticConfig> {
+        if self.option == 1 {
+            Option::Some(SyntheticConfig {
+                version: self.version,
+                status: self.status,
+                risk_factor_first_tier_boundary: self.risk_factor_first_tier_boundary,
+                risk_factor_tier_size: self.risk_factor_tier_size,
+                quorum: self.quorum,
+                resolution_factor: self.resolution_factor,
+            })
+        } else {
+            Option::None
+        }
+    }
+}
+
+pub impl SyntheticConfigIntoOptionSyntheticConfig of Into<SyntheticConfig, OptionSyntheticConfig> {
+    fn into(self: SyntheticConfig) -> OptionSyntheticConfig {
+        OptionSyntheticConfig {
+            option: 0,
+            version: self.version,
+            status: self.status,
+            risk_factor_first_tier_boundary: self.risk_factor_first_tier_boundary,
+            risk_factor_tier_size: self.risk_factor_tier_size,
+            quorum: self.quorum,
+            resolution_factor: self.resolution_factor,
+        }
+    }
+}
+
+
+
+#[derive(Copy, Drop, Serde, starknet::Store)]
 pub struct SyntheticTimelyData {
     version: u8,
     pub price: Price,

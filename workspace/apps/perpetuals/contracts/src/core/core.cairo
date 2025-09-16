@@ -1,6 +1,7 @@
 #[starknet::contract]
 pub mod Core {
-    use core::dict::{Felt252Dict, Felt252DictTrait};
+    use crate::core::types::asset::synthetic::SyntheticConfig;
+use core::dict::{Felt252Dict, Felt252DictTrait};
     use core::nullable::{FromNullableResult, match_nullable};
     use core::num::traits::Zero;
     use core::panic_with_felt252;
@@ -857,7 +858,10 @@ pub mod Core {
             let position_b = self.positions.get_position_snapshot(position_id: position_id_b);
 
             // Validate base asset is inactive synthetic.
-            if let Option::Some(config) = self.assets.synthetic_config.read(base_asset_id) {
+            let x = self.assets.synthetic_config.read(base_asset_id);
+
+            let y : Option<SyntheticConfig> = x.into();
+            if let Option::Some(config) = y {
                 assert(config.status == AssetStatus::INACTIVE, SYNTHETIC_IS_ACTIVE);
             } else {
                 panic_with_felt252(NOT_SYNTHETIC);
