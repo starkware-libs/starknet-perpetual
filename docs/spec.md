@@ -356,7 +356,7 @@ pub struct Balance {
 ### RiskFactor
 
 Risk factor is a value that represents the risk of a synthetic asset.
-For each synthetic asset, the risk factor is a value between 0 and 1000.
+For each synthetic asset, the risk factor is a value between 0 and 100.
 The risk factor is determined by the asset value in the position.
 
 ```rust
@@ -1411,7 +1411,7 @@ $median\\_price = \frac{price*2^{28}}{asset\\_id.resolution\\_factor *10^{12} }$
 Adds a synthetic asset.
 
 Risk factor tiers example:
-**risk\_factor\_tiers \= \[10, 20, 30, 50, 100, 200, 400\]**
+**risk\_factor\_tiers \= \[1, 2, 3, 5, 10, 20, 40\]**
 **risk\_factor\_first\_tier\_boundary \= 10,000**
 **risk\_factor\_tier\_size \= 20,000**
 which means:
@@ -1780,6 +1780,7 @@ The user registers a deposit request using the [Deposit component](#deposit) \- 
 fn deposit(
 	ref self: ContractState,
     position_id: PositionId,
+    asset_id: AssetId,
     quantized_amount: u64,
     salt: felt252,
 )
@@ -1796,12 +1797,14 @@ pub fn deposit_hash(
     token_address: ContractAddress,
     depositor: ContractAddress,
     position_id: PositionId,
+    asset_id: AssetId,
     quantized_amount: u64,
     salt: felt252,
 ) -> HashType {
     PedersenTrait::new(base: token_address.into())
         .update_with(value: depositor)
         .update_with(value: position_id)
+        .update_with(value: asset_id)
         .update_with(value: quantized_amount)
         .update_with(value: salt)
         .finalize()
@@ -1813,6 +1816,7 @@ pub fn deposit_hash(
 
 1. `quantized_amount` is non zero.
 2. `deposit_hash` is not registered in `registered_deposits`.
+3. if `asset_id` is a vault asset then `position_id` is not a vault position.
 
 ###### Logic
 
@@ -3155,3 +3159,267 @@ Only the Operator can execute.
 - ACTIVE_SYNTHETIC
 - POSITION_IS_NOT_HEALTHIER
 - POSITION_NOT_HEALTHY_NOR_HEALTHIER
+
+
+
+
+
+### DepositIntoVault
+
+#### Description
+Transfer into vault is called by the operator after a user deposited an amount he want to deposit into the vault.
+
+
+```rust
+fn deposit_into_vault(
+    ref self: TContractState,
+    operator_nonce: u64,
+    position_id: PositionId,
+    vault_position_id: PositionId,
+    collateral_id: AssetId,
+    quantized_amount: u64,
+    expiration: Timestamp,
+    salt: felt252,
+    signature: Signature,
+);
+```
+
+#### Access Control
+
+Only the Operator can execute.
+
+#### Hash
+
+position_id
+vault_position_id
+collateral_id
+quantized_amount
+expiration
+salt
+
+#### Validations
+
+1. [signature validation](#signature)
+2. [Pausable check](#pausable)
+3. [Operator Nonce check](#operator-nonce)
+3. [Price validation](#price)
+4. [Position check](#position) for `position_id` and `vault_position_id`
+5. [Expiration validation](#expiration)
+6. vault position id is a vault position.
+7. deposit position id is not a vault position and exists.
+8. Amount is non zero.
+9. Caller is the operator.
+10. Request is new (check not exists in the fulfillment).
+
+
+#### Logic
+
+1. Run validations
+2. operator calls deposit of the vault contract.
+3. vault contract calculates the amount of shares to mint (total assets (=TV of the vault position) / # of shares) and mints the vault shares to the perps contract and transfers the underlying asset to the perps contract as well.
+4. decrease the position_id collateral_id balance by quantized_amount.
+5. increase the vault_position_id collateral_id balance by quantized_amount.
+6. calls the perps deposit function to deposit the vault shares to the user
+
+#### Emits
+
+[DepositIntoVault](#deposit-into-vault)
+
+#### Errors
+
+
+
+### WithdrawFromVault
+
+#### Description
+Withdraw from vault is called by the operator to let the user "cash out" his vault shares from the vault position into his position
+
+```rust
+    fn withdraw_from_vault(
+        ref self: TContractState,
+        operator_nonce: u64,
+        position_id: PositionId,
+        vault_position_id: PositionId,
+        collateral_id: AssetId,
+        number_of_shares: u64,
+        minimum_quantized_amount: u64,
+        vault_share_execution_price: Price,
+        expiration: Timestamp,
+        salt: felt252,
+        user_signature: Signature,
+        vault_owner_signature: Signature,
+    );
+```
+
+#### Access Control
+
+Only the Operator can execute.
+
+#### Hash
+
+user signature:
+position_id
+vault_position_id
+collateral_id
+number_of_shares
+minimum_quantized_amount
+expiration
+salt
+
+
+vault owner signature:
+the hash of the user signature payload
+vault_share_execution_price
+
+#### Validations
+
+1. [signature validation](#signature) for user signature and vault owner signature
+2. [Pausable check](#pausable)
+3. [Operator Nonce check](#operator-nonce)
+3. [Price validation](#price)
+4. [Position check](#position) for `position_id` and `vault_position_id`
+5. [Expiration validation](#expiration)
+6. vault position id is a vault position.
+7. position id is not a vault position and exists.
+8. number_of_shares is non zero.
+9. minimum_quantized_amount is non zero.
+10. vault_share_execution_price is non zero.
+11. Caller is the operator.
+12. Request is new (check user payload hash not exists in the fulfillment map).
+
+
+#### Logic
+
+1. Run validations
+2. transfer vault_asset_id: number_of_shares from the perps contract to the vault contract (for burning the vault shares)
+3. reduce the position id vault share balance by number_of_shares
+4. transfer collateral_id: vault_share_execution_price*number_of_shares from the perps contract to the vault contract (for transferring back the shares value)
+5. call the new redeem function of the vault contract (a version where the price of a vault share is dicateded by the operator) which burns the vault shares and transfers the assets from the vault contract to the perps contract
+6. increase the position_id collateral_id balance by vault_share_execution_price*number_of_shares
+7. reduce the vault_position_id collateral_id balance by vault_share_execution_price*number_of_shares
+
+#### Emits
+
+[WithdrawFromVault](#withdraw-from-vault)
+
+#### Errors
+
+### RegisterVault
+
+#### Description
+Register vault is called by the operator to register a vault position
+
+
+```rust
+    fn register_vault(
+        ref self: TContractState,
+        vault_position_id: PositionId,
+        vault_contract_address: ContractAddress,
+        vault_asset_id: AssetId,
+    );
+```
+
+#### Access Control
+
+Only the Operator can execute.
+
+#### Hash
+
+vault_position_id
+vault_contract_address
+vault_asset_id
+
+
+#### Validations
+
+1. [signature validation](#signature) for vault register request by the vault_position_id public key
+2. [Pausable check](#pausable)
+3. [Operator Nonce check](#operator-nonce)
+4. [Position check](#position) for `vault_position_id`
+5. Caller is the operator.
+6. vault position id is not a vault position.
+7. vault contract address is not zero.
+8. vault asset id is not zero.
+
+
+#### Logic
+
+1. Run validations
+2. Register the vault position id to the vault contract address and asset id in the vault_positions map
+
+#### Emits
+
+[RegisterVault](#register-vault)
+
+#### Errors
+
+
+
+
+
+### LiquidateVaultShares
+
+#### Description
+Withdraw from vault is called by the operator to let the user "cash out" his vault shares from the vault position into his position
+
+```rust
+fn liquidate_vault_shares(
+    ref self: TContractState,
+    operator_nonce: u64,
+    position_id: PositionId,
+    vault_position_id: PositionId,
+    collateral_id: AssetId,
+    number_of_shares: u64,
+    vault_share_execution_price: Price,
+    expiration: Timestamp,
+    salt: felt252,
+    vault_owner_signature: Signature,
+);
+```
+
+#### Access Control
+
+Only the Operator can execute.
+
+#### Hash
+
+vault owner signature:
+vault_position_id
+collateral_id
+number_of_shares
+vault_share_execution_price
+expiration
+salt
+
+#### Validations
+
+1. [signature validation](#signature) for vault owner signature
+2. [Pausable check](#pausable)
+3. [Price validation](#price)
+4. [Operator Nonce check](#operator-nonce)
+5. [Position check](#position) for `position_id` and `vault_position_id`
+6. [Expiration validation](#expiration)
+7. vault position id is a vault position.
+8. position id is not a vault position and exists.
+9. number_of_shares is non zero.
+10. position id is liquidatable.
+11. vault_share_execution_price is non zero.
+12. Caller is the operator.
+
+
+#### Logic
+
+1. Run validations
+2. transfer vault_asset_id: number_of_shares from the perps contract to the vault contract (for burning the vault shares)
+3. reduce the position id vault share balance by number_of_shares
+4. transfer collateral_id: vault_share_execution_price*number_of_shares from the perps contract to the vault contract (for transferring back the shares value)
+5. call the new redeem function of the vault contract (a version where the price of a vault share is dicateded by the operator) which burns the vault shares and transfers the assets from the vault contract to the perps contract
+6. increase the position_id collateral_id balance by vault_share_execution_price*number_of_shares
+7. reduce the vault_position_id collateral_id balance by vault_share_execution_price*number_of_shares
+8. position id is healthier
+
+#### Emits
+
+[LiquidateVaultShares](#liquidate-vault-shares)
+
+#### Errors
