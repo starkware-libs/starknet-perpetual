@@ -14,12 +14,13 @@ pub mod AssetsComponent {
         INVALID_ZERO_ASSET_ID, INVALID_ZERO_ASSET_NAME, INVALID_ZERO_ORACLE_NAME,
         INVALID_ZERO_PUBLIC_KEY, INVALID_ZERO_QUANTUM, INVALID_ZERO_QUORUM,
         INVALID_ZERO_RESOLUTION_FACTOR, INVALID_ZERO_RF_FIRST_BOUNDRY, INVALID_ZERO_RF_TIERS_LEN,
-        INVALID_ZERO_RF_TIER_SIZE, INVALID_ZERO_TOKEN_ADDRESS, NOT_SYNTHETIC, ORACLE_ALREADY_EXISTS,
-        ORACLE_NAME_TOO_LONG, ORACLE_NOT_EXISTS, ORACLE_PUBLIC_KEY_NOT_REGISTERED,
-        QUORUM_NOT_REACHED, SIGNED_PRICES_UNSORTED, SYNTHETIC_ALREADY_EXISTS,
-        SYNTHETIC_EXPIRED_PRICE, SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS,
-        UNSORTED_RISK_FACTOR_TIERS, ZERO_MAX_FUNDING_INTERVAL, ZERO_MAX_FUNDING_RATE,
-        ZERO_MAX_ORACLE_PRICE, ZERO_MAX_PRICE_INTERVAL,
+        INVALID_ZERO_RF_TIER_SIZE, INVALID_ZERO_TOKEN_ADDRESS, NOT_SYNTHETIC, NOT_VAULT,
+        ORACLE_ALREADY_EXISTS, ORACLE_NAME_TOO_LONG, ORACLE_NOT_EXISTS,
+        ORACLE_PUBLIC_KEY_NOT_REGISTERED, QUORUM_NOT_REACHED, SIGNED_PRICES_UNSORTED,
+        SYNTHETIC_ALREADY_EXISTS, SYNTHETIC_EXPIRED_PRICE, SYNTHETIC_NOT_ACTIVE,
+        SYNTHETIC_NOT_EXISTS, UNSORTED_RISK_FACTOR_TIERS, VAULT_NOT_ACTIVE,
+        ZERO_MAX_FUNDING_INTERVAL, ZERO_MAX_FUNDING_RATE, ZERO_MAX_ORACLE_PRICE,
+        ZERO_MAX_PRICE_INTERVAL,
     };
     use perpetuals::core::components::assets::events;
     use perpetuals::core::components::assets::interface::IAssets;
@@ -28,9 +29,11 @@ pub mod AssetsComponent {
     use perpetuals::core::types::asset::synthetic::{
         SyntheticConfig, SyntheticTimelyData, SyntheticTrait,
     };
+    use perpetuals::core::types::asset::vault::{VaultData, VaultStatus};
     use perpetuals::core::types::asset::{AssetId, AssetStatus};
     use perpetuals::core::types::balance::Balance;
     use perpetuals::core::types::funding::{FundingIndex, FundingTick, validate_funding_rate};
+    use perpetuals::core::types::position::PositionId;
     use perpetuals::core::types::price::{
         Price, PriceMulTrait, SignedPrice, convert_oracle_to_perps_price,
     };
@@ -71,6 +74,7 @@ pub mod AssetsComponent {
         asset_oracle: Map<AssetId, Map<PublicKey, felt252>>,
         max_oracle_price_validity: TimeDelta,
         collateral_id: Option<AssetId>,
+        pub vaults: Map<PositionId, VaultData>,
     }
 
     #[event]
@@ -567,6 +571,15 @@ pub mod AssetsComponent {
                 assert(config.status == AssetStatus::ACTIVE, SYNTHETIC_NOT_ACTIVE);
             } else {
                 panic_with_felt252(NOT_SYNTHETIC);
+            }
+        }
+
+        fn validate_vault_active(self: @ComponentState<TContractState>, vault_id: PositionId) {
+            let status = self.vaults.entry(vault_id).status.read();
+            match status {
+                VaultStatus::ACTIVE => (),
+                VaultStatus::INACTIVE => panic_with_felt252(VAULT_NOT_ACTIVE),
+                VaultStatus::NON_EXISTENT => panic_with_felt252(NOT_VAULT),
             }
         }
 
