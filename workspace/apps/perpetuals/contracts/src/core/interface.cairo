@@ -96,4 +96,15 @@ pub trait ICore<TContractState> {
         base_asset_id: AssetId,
         base_amount_a: i64,
     );
+    fn deposit_into_vault(
+        ref self: TContractState,
+        operator_nonce: u64,
+        position_id: PositionId,
+        vault_position_id: PositionId,
+        collateral_id: AssetId,
+        quantized_amount: u64,
+        expiration: Timestamp,
+        salt: felt252,
+        signature: Signature,
+    );
 }
