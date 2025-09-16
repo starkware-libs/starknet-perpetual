@@ -18,6 +18,5 @@ pub enum VaultStatus {
     #[default]
     NON_EXISTENT,
     ACTIVE,
-    INACTIVE,
 }
 
