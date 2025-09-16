@@ -154,7 +154,7 @@ pub mod AssetsComponent {
         /// Validations:
         /// - Only the app_governor can call this function.
         /// - The asset does not exists.
-        /// - Each risk factor in risk_factor_tiers is less or equal to 100.
+        /// - Each risk factor in risk_factor_tiers is less or equal to 1000.
         /// - The quorum is greater than 0.
         ///
         /// Execution:
@@ -166,7 +166,7 @@ pub mod AssetsComponent {
         ///     - Set the `last_price_update` to zero.
         ///
         /// Risk factor tiers example:
-        /// - risk_factor_tiers = [1, 2, 3, 5, 10, 20, 40]
+        /// - risk_factor_tiers = [10, 20, 30, 50, 100, 200, 400]
         /// - risk_factor_first_tier_boundary = 10,000
         /// - risk_factor_tier_size = 20,000
         /// which means:
@@ -225,7 +225,7 @@ pub mod AssetsComponent {
                 assert(prev_risk_factor < *risk_factor, UNSORTED_RISK_FACTOR_TIERS);
                 self
                     .risk_factor_tiers
-                    .entry(asset_id) // New function checks that `risk_factor` is lower than 100.
+                    .entry(asset_id) // New function checks that `risk_factor` is lower than 1000.
                     .push(RiskFactorTrait::new(*risk_factor));
                 prev_risk_factor = *risk_factor;
             }
