@@ -130,7 +130,7 @@ checksum = "sha256:bf799c794139837f397975ffdf6a7ed5032d198bbf70e87a8f44f144a9dfc
 
 [[package]]
 name = "perpetuals"
-version = "0.1.0"
+version = "0.3.0"
 dependencies = [
  "openzeppelin",
  "openzeppelin_testing",

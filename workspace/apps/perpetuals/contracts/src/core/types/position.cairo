@@ -18,6 +18,7 @@ pub struct Position {
     pub owner_public_key: PublicKey,
     pub collateral_balance: Balance,
     pub synthetic_balance: IterableMap<AssetId, SyntheticBalance>,
+    pub vault_balance: IterableMap<PositionId, Balance>,
 }
 
 /// Synthetic asset in a position.
