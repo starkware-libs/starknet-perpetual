@@ -562,8 +562,8 @@ pub mod AssetsComponent {
             }
         }
 
-        fn validate_synthetic_active(self: @ComponentState<TContractState>, synthetic_id: AssetId) {
-            if let Option::Some(config) = self.synthetic_config.read(synthetic_id) {
+        fn validate_active_asset(self: @ComponentState<TContractState>, asset_id: AssetId) {
+            if let Option::Some(config) = self.synthetic_config.read(asset_id) {
                 assert(config.status == AssetStatus::ACTIVE, SYNTHETIC_NOT_ACTIVE);
             } else {
                 panic_with_felt252(NOT_SYNTHETIC);
