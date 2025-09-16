@@ -1,9 +1,13 @@
 #[starknet::component]
 pub mod AssetsComponent {
-    use RolesComponent::InternalTrait as RolesInternalTrait;
+    use starknet::SyscallResultTrait;
+use RolesComponent::InternalTrait as RolesInternalTrait;
     use core::cmp::min;
+    use core::hash::Hash;
+    use core::iter::{IntoIterator, Iterator};
     use core::num::traits::Zero;
     use core::panic_with_felt252;
+    use core::pedersen::HashState;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::token::erc20::interface::IERC20Dispatcher;
@@ -21,6 +25,11 @@ pub mod AssetsComponent {
         UNSORTED_RISK_FACTOR_TIERS, ZERO_MAX_FUNDING_INTERVAL, ZERO_MAX_FUNDING_RATE,
         ZERO_MAX_ORACLE_PRICE, ZERO_MAX_PRICE_INTERVAL,
     };
+    use starknet::storage_access::{
+        StorageBaseAddress, Store, storage_address_from_base, storage_address_from_base_and_offset,
+    };
+    use starknet::syscalls::{storage_read_syscall, storage_write_syscall};
+    use starknet::{ContractAddress, SyscallResult};
     use perpetuals::core::components::assets::events;
     use perpetuals::core::components::assets::interface::IAssets;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
@@ -35,10 +44,14 @@ pub mod AssetsComponent {
         Price, PriceMulTrait, SignedPrice, convert_oracle_to_perps_price,
     };
     use perpetuals::core::types::risk_factor::{RiskFactor, RiskFactorTrait};
-    use starknet::ContractAddress;
     use starknet::storage::{
-        Map, MutableVecTrait, StorageMapReadAccess, StoragePathEntry, StoragePointerReadAccess,
-        StoragePointerWriteAccess, Vec, VecTrait,
+        Map, Mutable, MutableVecTrait, StorageAsPath, StorageAsPointer, StorageMapReadAccess,
+        StorageMapWriteAccess, StoragePath, StoragePathEntry, StoragePointer0Offset,
+        StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait, StorableStoragePointerReadAccess, StoragePathUpdateTrait
+    };
+    use starknet::storage::{
+        IntoIterRange,
+        StoragePathMutableConversion
     };
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
@@ -47,7 +60,7 @@ pub mod AssetsComponent {
     use starkware_utils::math::abs::Abs;
     use starkware_utils::signature::stark::{PublicKey, validate_stark_signature};
     use starkware_utils::storage::iterable_map::{
-        IterableMap, IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
+        IterableMap, IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl, IterableMapTrait,
     };
     use starkware_utils::storage::utils::{AddToStorage, SubFromStorage};
     use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
@@ -511,11 +524,10 @@ pub mod AssetsComponent {
         fn get_synthetic_price(
             self: @ComponentState<TContractState>, synthetic_id: AssetId,
         ) -> Price {
-            if let Option::Some(data) = self.synthetic_timely_data.read(synthetic_id) {
-                data.price
-            } else {
-                panic_with_felt252(NOT_SYNTHETIC)
-            }
+            let entry = self.synthetic_timely_data.pointer(key: synthetic_id);
+            let price = storage_read_syscall(0, storage_address_from_base_and_offset(entry.__storage_pointer_address__ , 2)).unwrap_syscall();
+            let x: u64 = price.try_into().unwrap();
+            x.into()
         }
 
         /// Get the risk factor of a synthetic asset.
@@ -533,39 +545,32 @@ pub mod AssetsComponent {
             price: Price,
         ) -> RiskFactor {
             let entry = self.synthetic_config.entry(synthetic_id);
-
-            if entry.option.read() == 2 {
-                panic_with_felt252(NOT_SYNTHETIC);
-            }
-            let risk_factor_first_tier_boundary = entry.risk_factor_first_tier_boundary.read();
-            let risk_factor_tier_size = entry.risk_factor_tier_size.read();
+            let risk_factor_first_tier_boundary = entry.risk_factor_first_tier_boundary.read(); // read 1
 
             let asset_risk_factor_tiers = self.risk_factor_tiers.entry(synthetic_id);
             let synthetic_value: u128 = price.mul(rhs: balance).abs();
             let index = if synthetic_value < risk_factor_first_tier_boundary {
-                    0_u128
-                } else {
-                    let tier_size = risk_factor_tier_size;
-                    let first_tier_offset = synthetic_value
-                        - risk_factor_first_tier_boundary;
-                    min(
-                        1_u128 + (first_tier_offset / tier_size),
-                        asset_risk_factor_tiers.len().into() - 1,
-                    )
-                };
-                asset_risk_factor_tiers
-                    .at(index.try_into().expect('INDEX_SHOULD_NEVER_OVERFLOW'))
-                    .read()
+                0_u128
+            } else {
+                let risk_factor_tier_size = entry.risk_factor_tier_size.read(); //  read 2
+                let first_tier_offset = synthetic_value - risk_factor_first_tier_boundary;
+                min(
+                    1_u128 + (first_tier_offset / risk_factor_tier_size),
+                    asset_risk_factor_tiers.len().into() - 1,
+                )
+            };
+            let con_index: u64 = index.try_into().expect('INDEX_SHOULD_NEVER_OVERFLOW');
+            let risk_factor_entry: StoragePath<RiskFactor> = asset_risk_factor_tiers.update(con_index);
+            risk_factor_entry.read()
         }
 
         fn get_funding_index(
             self: @ComponentState<TContractState>, synthetic_id: AssetId,
         ) -> FundingIndex {
-            if let Option::Some(data) = self.synthetic_timely_data.read(synthetic_id) {
-                data.funding_index
-            } else {
-                panic_with_felt252(NOT_SYNTHETIC)
-            }
+            let entry = self.synthetic_timely_data.pointer(key: synthetic_id);
+            let funding_index = storage_read_syscall(0, storage_address_from_base_and_offset(entry.__storage_pointer_address__ , 4)).unwrap_syscall();
+            let x: i64 = funding_index.try_into().unwrap();
+            x.into()
         }
 
 
@@ -695,7 +700,7 @@ pub mod AssetsComponent {
                     let current: u256 = (*signed_price.signer_public_key).into();
                     assert(prev < current, SIGNED_PRICES_UNSORTED);
                 }
-                previous_public_key_opt = Option::Some(*signed_price.signer_public_key);
+                previous_public_key_opt = Option::Some((*signed_price.signer_public_key));
             }
 
             assert(2 * (lower_amount + equal_amount) >= signed_prices_len, INVALID_MEDIAN);

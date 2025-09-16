@@ -1,7 +1,6 @@
 #[starknet::contract]
 pub mod Core {
-    use crate::core::types::asset::synthetic::SyntheticConfig;
-use core::dict::{Felt252Dict, Felt252DictTrait};
+    use core::dict::{Felt252Dict, Felt252DictTrait};
     use core::nullable::{FromNullableResult, match_nullable};
     use core::num::traits::Zero;
     use core::panic_with_felt252;
@@ -73,6 +72,7 @@ use core::dict::{Felt252Dict, Felt252DictTrait};
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
     use starkware_utils::time::time::{Time, TimeDelta, Timestamp, validate_expiration};
+    use crate::core::types::asset::synthetic::SyntheticConfig;
 
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
     component!(path: OperatorNonceComponent, storage: operator_nonce, event: OperatorNonceEvent);
@@ -860,7 +860,7 @@ use core::dict::{Felt252Dict, Felt252DictTrait};
             // Validate base asset is inactive synthetic.
             let x = self.assets.synthetic_config.read(base_asset_id);
 
-            let y : Option<SyntheticConfig> = x.into();
+            let y: Option<SyntheticConfig> = x.into();
             if let Option::Some(config) = y {
                 assert(config.status == AssetStatus::INACTIVE, SYNTHETIC_IS_ACTIVE);
             } else {

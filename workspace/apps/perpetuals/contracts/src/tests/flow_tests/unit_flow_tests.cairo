@@ -2283,9 +2283,6 @@ fn test_funding_index_rounding() {
     state.facade.validate_collateral_balance(user_1.position_id, 1000_i64.into());
     state.facade.validate_collateral_balance(user_2.position_id, 999_i64.into());
 }
-
-
-
 use perpetuals::core::core::Core::{InternalCoreFunctions, SNIP12MetadataImpl};
 use perpetuals::core::interface::{ICoreDispatcher, ICoreDispatcherTrait, Settlement};
 use perpetuals::core::types::order::Order;
@@ -2307,7 +2304,7 @@ use starkware_utils_testing::test_utils::cheat_caller_address_once;
 
 #[test]
 #[fork(
-    url: "https://starknet-mainnet.blastapi.io/22f0d577-04d4-49c0-ad0d-77dd531b0351/rpc/v0_8",
+    url: "https://rpc.starknet.lava.build/",
     block_number: 1844544,
 )]
 fn test_profile() {
@@ -2908,40 +2905,32 @@ fn test_profile() {
     //         actual_fee_b: trade_2.actual_fee_b,
     //     );
 
-    let trades: Span<Settlement> = array![trade_1,
-    trade_2,
-    trade_3,
-    trade_4,
-    trade_5,
-    trade_6,
-    trade_7,
-    trade_8,
-    trade_9,
-    trade_10,
-    trade_11,
-    trade_12,
-    ].span();
+    let trades: Span<Settlement> = array![
+        trade_1, trade_2, trade_3, trade_4, trade_5, trade_6, trade_7, trade_8, trade_9, trade_10,
+        trade_11, trade_12,
+    ]
+        .span();
 
     dispatcher.multi_trade(:operator_nonce, trades: trades);
     // let mut index = 0;
 
     // for _trade in trades {
-    // cheat_caller_address_once(:contract_address, :caller_address);
-    // let trade = *_trade;
-    // let x = dispatcher.get_position_tv_tr(position_id: trade.order_a.position_id);
-    // let y = dispatcher.get_position_tv_tr(position_id: trade.order_b.position_id);
-    // let trade_result = dispatcher
-    //     .trade(
-    //         operator_nonce: operator_nonce + index,
-    //         signature_a: trade.signature_a,
-    //         signature_b: trade.signature_b,
-    //         order_a: trade.order_a,
-    //         order_b: trade.order_b,
-    //         actual_amount_base_a: trade.actual_amount_base_a,
-    //         actual_amount_quote_a: trade.actual_amount_quote_a,
-    //         actual_fee_a: trade.actual_fee_a,
-    //         actual_fee_b: trade.actual_fee_b,
-    //     );
-    // index = index + 1;
+// cheat_caller_address_once(:contract_address, :caller_address);
+// let trade = *_trade;
+// let x = dispatcher.get_position_tv_tr(position_id: trade.order_a.position_id);
+// let y = dispatcher.get_position_tv_tr(position_id: trade.order_b.position_id);
+// let trade_result = dispatcher
+//     .trade(
+//         operator_nonce: operator_nonce + index,
+//         signature_a: trade.signature_a,
+//         signature_b: trade.signature_b,
+//         order_a: trade.order_a,
+//         order_b: trade.order_b,
+//         actual_amount_base_a: trade.actual_amount_base_a,
+//         actual_amount_quote_a: trade.actual_amount_quote_a,
+//         actual_fee_a: trade.actual_fee_a,
+//         actual_fee_b: trade.actual_fee_b,
+//     );
+// index = index + 1;
 // }
 }

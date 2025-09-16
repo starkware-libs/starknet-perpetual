@@ -33,17 +33,21 @@ pub struct OptionSyntheticConfig {
     pub resolution_factor: u64,
 }
 
-pub impl OptionSyntheticConfigIntoOptionSyntheticConfig of Into<OptionSyntheticConfig, Option<SyntheticConfig>> {
+pub impl OptionSyntheticConfigIntoOptionSyntheticConfig of Into<
+    OptionSyntheticConfig, Option<SyntheticConfig>,
+> {
     fn into(self: OptionSyntheticConfig) -> Option<SyntheticConfig> {
         if self.option == 1 {
-            Option::Some(SyntheticConfig {
-                version: self.version,
-                status: self.status,
-                risk_factor_first_tier_boundary: self.risk_factor_first_tier_boundary,
-                risk_factor_tier_size: self.risk_factor_tier_size,
-                quorum: self.quorum,
-                resolution_factor: self.resolution_factor,
-            })
+            Option::Some(
+                SyntheticConfig {
+                    version: self.version,
+                    status: self.status,
+                    risk_factor_first_tier_boundary: self.risk_factor_first_tier_boundary,
+                    risk_factor_tier_size: self.risk_factor_tier_size,
+                    quorum: self.quorum,
+                    resolution_factor: self.resolution_factor,
+                },
+            )
         } else {
             Option::None
         }
@@ -53,7 +57,7 @@ pub impl OptionSyntheticConfigIntoOptionSyntheticConfig of Into<OptionSyntheticC
 pub impl SyntheticConfigIntoOptionSyntheticConfig of Into<SyntheticConfig, OptionSyntheticConfig> {
     fn into(self: SyntheticConfig) -> OptionSyntheticConfig {
         OptionSyntheticConfig {
-            option: 0,
+            option: 1,
             version: self.version,
             status: self.status,
             risk_factor_first_tier_boundary: self.risk_factor_first_tier_boundary,
@@ -63,7 +67,6 @@ pub impl SyntheticConfigIntoOptionSyntheticConfig of Into<SyntheticConfig, Optio
         }
     }
 }
-
 
 
 #[derive(Copy, Drop, Serde, starknet::Store)]
