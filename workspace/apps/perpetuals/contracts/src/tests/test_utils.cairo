@@ -313,6 +313,26 @@ pub fn create_token_state() -> TokenState {
     Deployable::deploy(@token_config)
 }
 
+pub fn create_vault_share_1_token_state() -> TokenState {
+    let token_config = TokenConfig {
+        name: VAULT_SHARE_COLLATERAL_1_NAME(),
+        symbol: VAULT_SHARE_COLLATERAL_1_SYMBOL(),
+        initial_supply: INITIAL_SUPPLY,
+        owner: COLLATERAL_OWNER(),
+    };
+    Deployable::deploy(@token_config)
+}
+
+pub fn create_vault_share_2_token_state() -> TokenState {
+    let token_config = TokenConfig {
+        name: VAULT_SHARE_COLLATERAL_2_NAME(),
+        symbol: VAULT_SHARE_COLLATERAL_2_SYMBOL(),
+        initial_supply: INITIAL_SUPPLY,
+        owner: COLLATERAL_OWNER(),
+    };
+    Deployable::deploy(@token_config)
+}
+
 pub fn init_position(cfg: @PerpetualsInitConfig, ref state: Core::ContractState, user: User) {
     cheat_caller_address_once(contract_address: test_address(), caller_address: *cfg.operator);
     let position_id = user.position_id;
@@ -324,7 +344,7 @@ pub fn init_position(cfg: @PerpetualsInitConfig, ref state: Core::ContractState,
             owner_account: Zero::zero(),
         );
     let position_diff = PositionDiff {
-        collateral_diff: COLLATERAL_BALANCE_AMOUNT.into(), synthetic_diff: Option::None,
+        base_collateral_diff: COLLATERAL_BALANCE_AMOUNT.into(), synthetic_diff: Option::None, non_base_collateral_diff: Option::None,
     };
 
     state.positions.apply_diff(:position_id, :position_diff);
@@ -342,8 +362,9 @@ pub fn add_synthetic_to_position(
     ref state: Core::ContractState, synthetic_id: AssetId, position_id: PositionId, balance: i64,
 ) {
     let position_diff = PositionDiff {
-        collateral_diff: Default::default(),
+        base_collateral_diff: Default::default(),
         synthetic_diff: Option::Some((synthetic_id, balance.into())),
+        non_base_collateral_diff: Option::None,
     };
     state.positions.apply_diff(:position_id, :position_diff);
 }
@@ -380,7 +401,7 @@ pub fn check_synthetic_config(
     quorum: u8,
     resolution_factor: u64,
 ) {
-    let synthetic_config = state.assets.get_synthetic_config(synthetic_id);
+    let synthetic_config = state.assets.get_asset_config(synthetic_id);
     assert!(synthetic_config.status == status);
     let tiers = state.assets.get_risk_factor_tiers(asset_id: synthetic_id);
     for i in 0..risk_factor_tiers.len() {
