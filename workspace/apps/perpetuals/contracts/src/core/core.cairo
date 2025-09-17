@@ -6,6 +6,9 @@ pub mod Core {
     use core::panic_with_felt252;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
+    use openzeppelin::token::erc20::extensions::erc4626::interface::{
+        IERC4626Dispatcher, IERC4626DispatcherTrait,
+    };
     use openzeppelin::token::erc20::interface::IERC20DispatcherTrait;
     use openzeppelin::utils::snip12::SNIP12Metadata;
     use perpetuals::core::components::assets::AssetsComponent;
@@ -47,12 +50,12 @@ pub mod Core {
         calculate_position_tvtr_change, deleveraged_position_validations,
         liquidated_position_validations,
     };
-    use starknet::ContractAddress;
     use starknet::event::EventEmitter;
     use starknet::storage::{
         Map, StorageMapReadAccess, StoragePath, StoragePathEntry, StoragePointerReadAccess,
         StoragePointerWriteAccess,
     };
+    use starknet::{ContractAddress, get_contract_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
@@ -187,6 +190,7 @@ pub mod Core {
         TransferRequest: events::TransferRequest,
         Withdraw: events::Withdraw,
         WithdrawRequest: events::WithdrawRequest,
+        DepositIntoVault: events::DepositIntoVault,
     }
 
     #[constructor]
@@ -937,8 +941,27 @@ pub mod Core {
                     :signature,
                     :share_id,
                 );
+
             /// Executions:
-        // TODO(Mohammad): impl execute deposit.
+            let vault_address = self.vault_positions_to_addresses.read(vault_position_id);
+            let quantized_shares_amount = self
+                ._execute_deposit_into_vault(
+                    :position_id, :vault_position_id, :quantized_amount, :vault_address, :share_id,
+                );
+
+            // Emit event.
+            self
+                .emit(
+                    events::DepositIntoVault {
+                        position_id,
+                        vault_position_id,
+                        collateral_id,
+                        quantized_amount,
+                        expiration,
+                        salt,
+                        quantized_shares_amount,
+                    },
+                );
         }
     }
 
@@ -1242,6 +1265,79 @@ pub mod Core {
             let fulfillment_entry = self.fulfillment.entry(hash);
             assert(fulfillment_entry.read().is_zero(), OPERATION_ALREADY_DONE);
             fulfillment_entry.write(quantized_amount.into());
+        }
+
+        /// Executes a deposit into vault by transferring collateral and receiving vault shares.
+        ///
+        /// - Converts quantized amount to unquantized amount using collateral quantum.
+        /// - Deposits collateral into the vault contract and receives shares (using deposit flow).
+        /// - Updates position balances: reduces collateral.
+        /// - adding synthetic shares is part of the deposit flow.
+        /// - Updates position diffs.
+        ///
+        /// Returns:
+        /// - The amount of vault shares received from the deposit.
+        fn _execute_deposit_into_vault(
+            ref self: ContractState,
+            position_id: PositionId,
+            vault_position_id: PositionId,
+            quantized_amount: u64,
+            vault_address: ContractAddress,
+            share_id: AssetId,
+        ) -> u64 {
+            let quantum = self.assets.get_collateral_quantum();
+            let unquantized_amount = quantized_amount * quantum.into();
+
+            // Deposit into vault.
+            let unquantized_shares_amount = self
+                ._deposit_to_vault_contract(:vault_address, :unquantized_amount, :share_id);
+
+            // Build position diffs.
+            // TODO(Mohammad): use shares quantom once added register_vault is added.
+            let quantized_shares_amount: u64 = (unquantized_shares_amount / quantum.into())
+                .try_into()
+                .expect('SHARES_AMOUNT_OVERFLOW');
+            let position_diff = PositionDiff {
+                collateral_diff: -quantized_amount.into(),
+                // TODO(Mohammad): add `shares_amount` to `vault_diff` once the relevant struct is
+                // added.
+                synthetic_diff: Option::Some((share_id, quantized_shares_amount.into())),
+            };
+            let vault_diff = PositionDiff {
+                collateral_diff: quantized_amount.into(), synthetic_diff: Option::None,
+            };
+
+            /// Validations - Fundamentals:
+            let position = self.positions.get_position_snapshot(:position_id);
+            self
+                ._validate_healthy_or_healthier_position(
+                    :position_id,
+                    :position,
+                    position_diff: position_diff,
+                    tvtr_before: Default::default(),
+                );
+
+            // Apply diffs.
+            // The share amount would be added through deposit flow.
+            let position_diff = PositionDiff {
+                collateral_diff: -quantized_amount.into(), synthetic_diff: None,
+            };
+            self.positions.apply_diff(:position_id, position_diff: position_diff);
+            self.positions.apply_diff(position_id: vault_position_id, position_diff: vault_diff);
+
+            quantized_shares_amount
+        }
+
+        fn _deposit_to_vault_contract(
+            ref self: ContractState,
+            vault_address: ContractAddress,
+            unquantized_amount: u64,
+            share_id: AssetId,
+        ) -> u256 {
+            let erc20_dispatcher = self.assets.get_collateral_token_contract();
+            erc20_dispatcher.approve(spender: vault_address, amount: unquantized_amount.into());
+            IERC4626Dispatcher { contract_address: vault_address }
+                .deposit(assets: unquantized_amount.into(), receiver: get_contract_address())
         }
 
         fn _validate_synthetic_shrinks(
