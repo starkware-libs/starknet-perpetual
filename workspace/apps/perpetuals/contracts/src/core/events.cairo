@@ -144,3 +144,14 @@ pub struct DepositIntoVault {
     pub salt: felt252,
     pub quantized_shares_amount: u64,
 }
+
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct VaultRegistered {
+    #[key]
+    pub vault_position_id: PositionId,
+    #[key]
+    pub vault_contract_address: ContractAddress,
+    #[key]
+    pub vault_asset_id: AssetId,
+    pub expiration: Timestamp,
+}
