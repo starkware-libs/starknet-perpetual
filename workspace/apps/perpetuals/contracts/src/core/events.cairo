@@ -131,3 +131,16 @@ pub struct Transfer {
     pub transfer_request_hash: felt252,
     pub salt: felt252,
 }
+
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct DepositIntoVault {
+    #[key]
+    pub position_id: PositionId,
+    #[key]
+    pub vault_position_id: PositionId,
+    pub collateral_id: AssetId,
+    pub quantized_amount: u64,
+    pub expiration: Timestamp,
+    pub salt: felt252,
+    pub quantized_shares_amount: u64,
+}
