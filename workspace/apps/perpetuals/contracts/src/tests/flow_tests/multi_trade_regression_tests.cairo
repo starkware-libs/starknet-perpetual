@@ -263,8 +263,6 @@ fn test_mainnet_data_three_trades_original_code() {
     let core_dispatcher = ICoreDispatcher { contract_address: CONTRACT_ADDRESS };
     let positions_dispatcher = IPositionsDispatcher { contract_address: CONTRACT_ADDRESS };
 
-    let position_data_a = positions_dispatcher.get_position_assets(position_id: POSITION_ID_1);
-    println!("MoNas: position data a: {:?}", position_data_a);
     let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_1);
     assert_eq!(tv_tr.total_value, INIT_TV_POSITION_A);
     assert_eq!(tv_tr.total_risk, INIT_TR_POSITION_A);
