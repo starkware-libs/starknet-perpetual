@@ -5,6 +5,7 @@ pub mod funding;
 pub mod order;
 pub mod position;
 pub mod price;
+pub mod register_vault;
 pub mod risk_factor;
 pub mod set_owner_account;
 pub mod set_public_key;
