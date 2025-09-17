@@ -10,7 +10,9 @@ pub mod Core {
     use openzeppelin::utils::snip12::SNIP12Metadata;
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::AssetsComponent::InternalTrait as AssetsInternal;
-    use perpetuals::core::components::assets::errors::{NOT_SYNTHETIC, SYNTHETIC_NOT_EXISTS};
+    use perpetuals::core::components::assets::errors::{
+        INVALID_ZERO_ASSET_ID, NOT_SYNTHETIC, SYNTHETIC_NOT_EXISTS,
+    };
     use perpetuals::core::components::deposit::Deposit;
     use perpetuals::core::components::deposit::Deposit::InternalTrait as DepositInternal;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
@@ -24,9 +26,10 @@ pub mod Core {
         DEPOSIT_INTO_VAULT_EXPIRED, DIFFERENT_BASE_ASSET_IDS, INVALID_ACTUAL_BASE_SIGN,
         INVALID_ACTUAL_QUOTE_SIGN, INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE,
         INVALID_QUOTE_AMOUNT_SIGN, INVALID_QUOTE_FEE_AMOUNT, INVALID_SAME_POSITIONS,
-        INVALID_ZERO_AMOUNT, OPERATION_ALREADY_DONE, POSITION_IS_VAULT_POSITION,
-        SYNTHETIC_IS_ACTIVE, TRANSFER_EXPIRED, WITHDRAW_EXPIRED, fulfillment_exceeded_err,
-        order_expired_err,
+        INVALID_VAULT_CONTRACT_ADDRESS, INVALID_ZERO_AMOUNT, OPERATION_ALREADY_DONE,
+        POSITION_IS_VAULT_POSITION, REGISTER_VAULT_EXPIRED, SYNTHETIC_IS_ACTIVE, TRANSFER_EXPIRED,
+        VAULT_CONTRACT_ALREADY_EXISTS, VAULT_POSITION_ALREADY_EXISTS, WITHDRAW_EXPIRED,
+        fulfillment_exceeded_err, order_expired_err,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
@@ -40,6 +43,7 @@ pub mod Core {
         SyntheticEnrichedPositionDiff,
     };
     use perpetuals::core::types::price::PriceMulTrait;
+    use perpetuals::core::types::register_vault::RegisterVaultArgs;
     use perpetuals::core::types::transfer::TransferArgs;
     use perpetuals::core::types::withdraw::WithdrawArgs;
     use perpetuals::core::value_risk_calculator::{
@@ -133,6 +137,7 @@ pub mod Core {
         // vault position id to vault ContractAddress and AssetId
         vault_positions_to_addresses: Map<PositionId, ContractAddress>,
         vault_positions_to_assets: Map<PositionId, AssetId>,
+        addresses_to_vault_positions: Map<ContractAddress, PositionId>,
         // --- Components ---
         #[substorage(v0)]
         accesscontrol: AccessControlComponent::Storage,
@@ -187,6 +192,7 @@ pub mod Core {
         TransferRequest: events::TransferRequest,
         Withdraw: events::Withdraw,
         WithdrawRequest: events::WithdrawRequest,
+        RegisterVault: events::RegisterVault,
     }
 
     #[constructor]
@@ -939,6 +945,53 @@ pub mod Core {
                 );
             /// Executions:
         // TODO(Mohammad): impl execute deposit.
+        }
+
+        fn register_vault(
+            ref self: ContractState,
+            operator_nonce: u64,
+            vault_position_id: PositionId,
+            vault_contract_address: ContractAddress,
+            vault_asset_id: AssetId,
+            expiration: Timestamp,
+            signature: Signature,
+        ) {
+            /// Validations:
+            self.operator_nonce.use_checked_nonce(:operator_nonce);
+            assert(vault_contract_address.is_non_zero(), INVALID_VAULT_CONTRACT_ADDRESS);
+            assert(vault_asset_id.is_non_zero(), INVALID_ZERO_ASSET_ID);
+            validate_expiration(expiration: expiration, err: REGISTER_VAULT_EXPIRED);
+
+            let vault_address = self.vault_positions_to_addresses.read(vault_position_id);
+            let vault_position = self.addresses_to_vault_positions.read(vault_contract_address);
+            assert(vault_address.is_zero(), VAULT_POSITION_ALREADY_EXISTS);
+            assert(vault_position.is_zero(), VAULT_CONTRACT_ALREADY_EXISTS);
+
+            // Validate signature + Position check
+            let vault_position = self
+                .positions
+                .get_position_snapshot(position_id: vault_position_id);
+            // TODO(Omri): Add check for share assets. Need to modify the position data to include
+            // share assets.
+
+            _validate_signature(
+                public_key: vault_position.get_owner_public_key(),
+                order: RegisterVaultArgs {
+                    vault_position_id, vault_contract_address, vault_asset_id, expiration,
+                },
+                :signature,
+            );
+
+            self.vault_positions_to_addresses.write(vault_position_id, vault_contract_address);
+            self.vault_positions_to_assets.write(vault_position_id, vault_asset_id);
+            self.addresses_to_vault_positions.write(vault_contract_address, vault_position_id);
+
+            self
+                .emit(
+                    events::RegisterVault {
+                        vault_position_id, vault_contract_address, vault_asset_id, expiration,
+                    },
+                )
         }
     }
 
