@@ -1936,11 +1936,13 @@ Register vault is called by the operator to register a vault position
 
 ```rust
 fn register_vault(
-    ref self: ContractState,
-    vault_position_id: PositionId,
-    vault_contract_address: ContractAddress,
-    vault_asset_id: AssetId,
-    vault_owner_signature: Signature,
+        ref self: TContractState,
+        operator_nonce: u64,
+        vault_position_id: PositionId,
+        vault_contract_address: ContractAddress,
+        vault_asset_id: AssetId,
+        expiration: Timestamp,
+        signature: Signature,
 );
 ```
 
@@ -1958,11 +1960,12 @@ Only the Operator can execute.
 2. [Pausable check](#pausable)
 3. [Operator Nonce check](#operator-nonce)
 4. [Position check](#position) for `vault_position_id`
-5. Caller is the operator.
-6. `vault_position_id` is not a registered position.
-7. `vault_position_id` is not a registered vault position.
-8. `vault_contract_address` is not zero.
-9. `vault_asset_id` is not zero and registered.
+5. [Expiration validation](#expiration)
+6. Caller is the operator.
+7. `vault_position_id` is not a registered position.
+8. `vault_position_id` is not a registered vault position.
+9. `vault_contract_address` is not zero.
+10. `vault_asset_id` is not zero and registered.
 
 **Logic:**
 

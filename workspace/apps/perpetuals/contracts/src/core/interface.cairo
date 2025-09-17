@@ -106,4 +106,14 @@ pub trait ICore<TContractState> {
         salt: felt252,
         signature: Signature,
     );
+
+    fn register_vault(
+        ref self: TContractState,
+        operator_nonce: u64,
+        vault_position_id: PositionId,
+        vault_contract_address: ContractAddress,
+        vault_asset_id: AssetId,
+        expiration: Timestamp,
+        signature: Signature,
+    );
 }
