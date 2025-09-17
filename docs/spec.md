@@ -1936,11 +1936,13 @@ Register vault is called by the operator to register a vault position
 
 ```rust
 fn register_vault(
-    ref self: ContractState,
-    vault_position_id: PositionId,
-    vault_contract_address: ContractAddress,
-    vault_asset_id: AssetId,
-    vault_owner_signature: Signature,
+        ref self: TContractState,
+        operator_nonce: u64,
+        vault_position_id: PositionId,
+        vault_contract_address: ContractAddress,
+        vault_asset_id: AssetId,
+        expiration: Timestamp,
+        signature: Signature,
 );
 ```
 

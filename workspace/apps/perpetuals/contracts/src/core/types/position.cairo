@@ -1,3 +1,4 @@
+use core::num::traits::Zero;
 use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::asset::synthetic::{SyntheticAsset, SyntheticDiffEnriched};
 use perpetuals::core::types::balance::{Balance, BalanceDiff};
@@ -30,9 +31,21 @@ pub struct SyntheticBalance {
     pub funding_index: FundingIndex,
 }
 
-#[derive(Copy, Debug, Drop, Hash, PartialEq, Serde)]
+#[derive(Copy, Debug, Drop, Hash, PartialEq, Serde, starknet::Store)]
 pub struct PositionId {
     pub value: u32,
+}
+
+pub impl PositionIdZeroImpl of Zero<PositionId> {
+    fn zero() -> PositionId {
+        PositionId { value: 0 }
+    }
+    fn is_zero(self: @PositionId) -> bool {
+        self.value.is_zero()
+    }
+    fn is_non_zero(self: @PositionId) -> bool {
+        self.value.is_non_zero()
+    }
 }
 
 /// Diff where both collateral and synthetic are raw (not enriched).
