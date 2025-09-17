@@ -6,6 +6,9 @@ pub mod Core {
     use core::panic_with_felt252;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
+    use openzeppelin::token::erc20::extensions::erc4626::interface::{
+        IERC4626Dispatcher, IERC4626DispatcherTrait,
+    };
     use openzeppelin::token::erc20::interface::IERC20DispatcherTrait;
     use openzeppelin::utils::snip12::SNIP12Metadata;
     use perpetuals::core::components::assets::AssetsComponent;
@@ -47,12 +50,12 @@ pub mod Core {
         calculate_position_tvtr_change, deleveraged_position_validations,
         liquidated_position_validations,
     };
-    use starknet::ContractAddress;
     use starknet::event::EventEmitter;
     use starknet::storage::{
         Map, StorageMapReadAccess, StoragePath, StoragePathEntry, StoragePointerReadAccess,
         StoragePointerWriteAccess,
     };
+    use starknet::{ContractAddress, get_contract_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
@@ -186,6 +189,7 @@ pub mod Core {
         TransferRequest: events::TransferRequest,
         Withdraw: events::Withdraw,
         WithdrawRequest: events::WithdrawRequest,
+        DepositIntoVault: events::DepositIntoVault,
     }
 
     #[constructor]
@@ -924,7 +928,7 @@ pub mod Core {
             self.operator_nonce.use_checked_nonce(:operator_nonce);
             self.assets.validate_assets_integrity();
 
-            self
+            let (vault_address, share_id) = self
                 ._validate_deposit_into_vault(
                     :position_id,
                     :vault_position_id,
@@ -934,8 +938,26 @@ pub mod Core {
                     :salt,
                     :signature,
                 );
+
             /// Executions:
-        // TODO(Mohammad): impl execute deposit.
+            let shares_amount = self
+                ._execute_deposit_into_vault(
+                    :position_id, :vault_position_id, :quantized_amount, :vault_address, :share_id,
+                );
+
+            // Emit event.
+            self
+                .emit(
+                    events::DepositIntoVault {
+                        position_id,
+                        vault_position_id,
+                        collateral_id,
+                        quantized_amount,
+                        expiration,
+                        salt,
+                        shares_amount,
+                    },
+                );
         }
     }
 
@@ -1203,7 +1225,7 @@ pub mod Core {
             expiration: Timestamp,
             salt: felt252,
             signature: Signature,
-        ) {
+        ) -> (ContractAddress, AssetId) {
             validate_expiration(expiration: expiration, err: DEPOSIT_INTO_VAULT_EXPIRED);
 
             // Vault position id is a vault position
@@ -1240,7 +1262,51 @@ pub mod Core {
             let fulfillment_entry = self.fulfillment.entry(hash);
             assert(fulfillment_entry.read().is_zero(), OPERATION_ALREADY_DONE);
             fulfillment_entry.write(1);
+
+            (vault_address, share_id)
         }
+
+        fn _execute_deposit_into_vault(
+            ref self: ContractState,
+            position_id: PositionId,
+            vault_position_id: PositionId,
+            quantized_amount: u64,
+            vault_address: ContractAddress,
+            share_id: AssetId,
+        ) -> u64 {
+            // Deposit into vault.
+            let erc20_dispatcher = self.assets.get_collateral_token_contract();
+            erc20_dispatcher.approve(spender: vault_address, amount: quantized_amount.into());
+            let shares_amount = IERC4626Dispatcher { contract_address: vault_address }
+                .deposit(assets: quantized_amount.into(), receiver: get_contract_address());
+
+            // Build position diffs.
+            let shares_amount: u64 = shares_amount.try_into().expect('SHARES_AMOUNT_OVERFLOW');
+            let position_diff = PositionDiff {
+                collateral_diff: -quantized_amount.into(),
+                synthetic_diff: Option::Some((share_id, shares_amount.into())),
+            };
+            let vault_diff = PositionDiff {
+                collateral_diff: quantized_amount.into(), synthetic_diff: Option::None,
+            };
+
+            /// Validations - Fundamentals:
+            let position = self.positions.get_position_snapshot(:position_id);
+            self
+                ._validate_healthy_or_healthier_position(
+                    :position_id,
+                    :position,
+                    position_diff: position_diff,
+                    tvtr_before: Default::default(),
+                );
+
+            // Apply diffs.
+            self.positions.apply_diff(:position_id, position_diff: position_diff);
+            self.positions.apply_diff(position_id: vault_position_id, position_diff: vault_diff);
+
+            shares_amount
+        }
+
 
         fn _validate_synthetic_shrinks(
             ref self: ContractState,
