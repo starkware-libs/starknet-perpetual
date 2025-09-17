@@ -15,6 +15,7 @@ pub(crate) mod Deposit {
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalTrait as NonceInternal;
     use perpetuals::core::components::positions::Positions as PositionsComponent;
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternalTrait;
+    use perpetuals::core::types::asset::synthetic::AssetType;
     use perpetuals::core::types::position::{PositionDiff, PositionId};
     use starknet::storage::{
         Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
@@ -27,6 +28,7 @@ pub(crate) mod Deposit {
     use starkware_utils::components::roles::RolesComponent;
     use starkware_utils::signature::stark::HashType;
     use starkware_utils::time::time::{Time, TimeDelta};
+    use crate::core::types::asset::AssetId;
 
     #[storage]
     pub struct Storage {
@@ -70,6 +72,7 @@ pub(crate) mod Deposit {
         /// - Emits a Deposit event.
         fn deposit(
             ref self: ComponentState<TContractState>,
+            asset_id: AssetId,
             position_id: PositionId,
             quantized_amount: u64,
             salt: felt252,
@@ -80,7 +83,14 @@ pub(crate) mod Deposit {
             assert(quantized_amount.is_non_zero(), errors::ZERO_AMOUNT);
             let caller_address = get_caller_address();
             let assets = get_dep_component!(@self, Assets);
-            let token_contract = assets.get_collateral_token_contract();
+
+            let (token_contract, quantum) = if (asset_id == assets.get_collateral_id()) {
+                (assets.get_collateral_token_contract(), assets.get_collateral_quantum())
+            } else {
+                let asset_config = assets.get_asset_config(asset_id);
+                (assets.get_asset_erc20_contract(asset_id), asset_config.quantum)
+            };
+
             let deposit_hash = deposit_hash(
                 token_address: token_contract.contract_address,
                 depositor: caller_address,
@@ -95,7 +105,6 @@ pub(crate) mod Deposit {
             self
                 .registered_deposits
                 .write(key: deposit_hash, value: DepositStatus::PENDING(Time::now()));
-            let quantum = assets.get_collateral_quantum();
             let unquantized_amount = quantized_amount * quantum.into();
             token_contract
                 .transfer_from(
@@ -108,7 +117,7 @@ pub(crate) mod Deposit {
                     events::Deposit {
                         position_id,
                         depositing_address: caller_address,
-                        collateral_id: get_dep_component!(@self, Assets).get_collateral_id(),
+                        collateral_id: asset_id,
                         quantized_amount,
                         unquantized_amount,
                         deposit_request_hash: deposit_hash,
@@ -197,6 +206,7 @@ pub(crate) mod Deposit {
         fn process_deposit(
             ref self: ComponentState<TContractState>,
             operator_nonce: u64,
+            asset_id: AssetId,
             depositor: ContractAddress,
             position_id: PositionId,
             quantized_amount: u64,
@@ -206,9 +216,24 @@ pub(crate) mod Deposit {
             get_dep_component!(@self, Pausable).assert_not_paused();
             let mut nonce = get_dep_component_mut!(ref self, OperatorNonce);
             nonce.use_checked_nonce(:operator_nonce);
-
             let assets = get_dep_component!(@self, Assets);
-            let token_contract = assets.get_collateral_token_contract();
+            let (token_contract, quantum, position_diff)= if (asset_id == assets.get_collateral_id()) {
+                let position_diff = PositionDiff {
+                    base_collateral_diff: quantized_amount.into(),
+                    synthetic_diff: Option::None,
+                    non_base_collateral_diff: Option::None,
+                };
+                (assets.get_collateral_token_contract(), assets.get_collateral_quantum(), position_diff)
+            } else {
+                let asset_config = assets.get_asset_config(asset_id);
+                let position_diff = PositionDiff {
+                    base_collateral_diff: 0_i64.into(),
+                    synthetic_diff: Option::None,
+                    non_base_collateral_diff: Option::Some((asset_id, quantized_amount.into())),
+                };
+                (assets.get_asset_erc20_contract(asset_id), asset_config.quantum, position_diff)
+            };
+
             let deposit_hash = deposit_hash(
                 token_address: token_contract.contract_address,
                 :depositor,
@@ -227,20 +252,16 @@ pub(crate) mod Deposit {
                 DepositStatus::CANCELED => { panic_with_felt252(errors::DEPOSIT_ALREADY_CANCELED) },
                 DepositStatus::PENDING(_) => {},
             }
-            let quantum = assets.get_collateral_quantum();
             let unquantized_amount = quantized_amount * quantum.into();
             self.registered_deposits.write(deposit_hash, DepositStatus::PROCESSED);
             let mut positions = get_dep_component_mut!(ref self, Positions);
-            let position_diff = PositionDiff {
-                collateral_diff: quantized_amount.into(), synthetic_diff: Option::None,
-            };
             positions.apply_diff(:position_id, :position_diff);
             self
                 .emit(
                     events::DepositProcessed {
                         position_id,
                         depositing_address: depositor,
-                        collateral_id: assets.get_collateral_id(),
+                        collateral_id: asset_id,
                         quantized_amount,
                         unquantized_amount,
                         deposit_request_hash: deposit_hash,

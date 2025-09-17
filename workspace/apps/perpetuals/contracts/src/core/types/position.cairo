@@ -16,8 +16,11 @@ pub struct Position {
     pub version: u8,
     pub owner_account: Option<ContractAddress>,
     pub owner_public_key: PublicKey,
+    // "PnL collateral"
     pub collateral_balance: Balance,
     pub synthetic_balance: IterableMap<AssetId, SyntheticBalance>,
+    //new one
+    pub collateral_balances: IterableMap<AssetId, Balance>,
 }
 
 /// Synthetic asset in a position.
@@ -38,7 +41,9 @@ pub struct PositionId {
 /// Diff where both collateral and synthetic are raw (not enriched).
 #[derive(Copy, Debug, Drop, Serde, Default)]
 pub struct PositionDiff {
-    pub collateral_diff: Balance,
+    pub base_collateral_diff: Balance,
+    // a diff for a non PnL collateral asset
+    pub non_base_collateral_diff: Option<(AssetId, Balance)>,
     pub synthetic_diff: Option<(AssetId, Balance)>,
 }
 
@@ -70,7 +75,10 @@ pub impl PositionDiffEnrichedIntoSyntheticEnrichedPositionDiff of Into<
 #[derive(Copy, Debug, Drop, Serde, PartialEq)]
 pub struct PositionData {
     pub synthetics: Span<SyntheticAsset>,
-    pub collateral_balance: Balance,
+    pub base_collateral_balance: Balance,
+    // a span of non PnL collateral assets (again the SyntheticAsset name should be changed to
+    // Asset)
+    pub other_collateral_balances: Span<SyntheticAsset>,
 }
 
 

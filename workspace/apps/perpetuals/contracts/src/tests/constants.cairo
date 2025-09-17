@@ -56,6 +56,10 @@ pub const CANCEL_DELAY: TimeDelta = TimeDelta { seconds: WEEK };
 pub const MAX_FUNDING_RATE: u32 = 35792; // Which is ~3% in an hour.
 pub const COLLATERAL_QUORUM: u8 = 0;
 pub const COLLATERAL_QUANTUM: u64 = 1_000;
+
+pub const VAULT_SHARE_1_COLLATERAL_QUANTUM: u64 = 100;
+pub const VAULT_SHARE_2_COLLATERAL_QUANTUM: u64 = 10;
+
 pub const SYNTHETIC_QUORUM: u8 = 1;
 pub const SYNTHETIC_RESOLUTION_FACTOR: u64 = 1_000_000_000;
 pub const INITIAL_SUPPLY: u256 = 10_000_000_000_000_000;
@@ -104,3 +108,26 @@ pub fn COLLATERAL_SYMBOL() -> ByteArray {
 pub fn SYNTHETIC_SYMBOL() -> ByteArray {
     "SYN"
 }
+
+pub fn VAULT_SHARE_COLLATERAL_1_ID() -> AssetId {
+    AssetIdTrait::new(value: selector!("VS_1_ID"))
+}
+
+pub fn VAULT_SHARE_COLLATERAL_2_ID() -> AssetId {
+    AssetIdTrait::new(value: selector!("VS_2_ID"))
+}
+
+pub fn VAULT_SHARE_COLLATERAL_1_NAME() -> ByteArray {
+    "VAULT_SHARE_1"
+}
+pub fn VAULT_SHARE_COLLATERAL_1_SYMBOL() -> ByteArray {
+    "VS1"
+}
+
+pub fn VAULT_SHARE_COLLATERAL_2_NAME() -> ByteArray {
+    "VAULT_SHARE_2"
+}
+pub fn VAULT_SHARE_COLLATERAL_2_SYMBOL() -> ByteArray {
+    "VS2"
+}
+

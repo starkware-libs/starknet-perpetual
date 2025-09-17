@@ -148,6 +148,8 @@ pub mod Core {
         pub request_approvals: RequestApprovalsComponent::Storage,
         #[substorage(v0)]
         pub positions: Positions::Storage,
+        // vault position id to vault ContractAddress and AssetId
+        pub vault_positions: Map<PositionId, (ContractAddress, AssetId)>,
     }
 
     #[event]
@@ -314,7 +316,9 @@ pub mod Core {
 
             /// Validations - Fundamentals:
             let position_diff = PositionDiff {
-                collateral_diff: -amount.into(), synthetic_diff: Option::None,
+                base_collateral_diff: -amount.into(),
+                synthetic_diff: Option::None,
+                non_base_collateral_diff: Option::None,
             };
 
             self
@@ -637,25 +641,31 @@ pub mod Core {
 
             /// Execution:
             let liquidated_position_diff = PositionDiff {
-                collateral_diff: actual_amount_quote_liquidated.into()
+                base_collateral_diff: actual_amount_quote_liquidated.into()
                     - liquidated_fee_amount.into(),
                 synthetic_diff: Option::Some(
                     (liquidator_order.base_asset_id, actual_amount_base_liquidated.into()),
                 ),
+                non_base_collateral_diff: Option::None,
             };
             // Passing the negative of actual amounts to order_b as it is linked to order_a.
             let liquidator_position_diff = PositionDiff {
-                collateral_diff: -actual_amount_quote_liquidated.into()
+                base_collateral_diff: -actual_amount_quote_liquidated.into()
                     - actual_liquidator_fee.into(),
                 synthetic_diff: Option::Some(
                     (liquidator_order.base_asset_id, -actual_amount_base_liquidated.into()),
                 ),
+                non_base_collateral_diff: Option::None,
             };
             let insurance_position_diff = PositionDiff {
-                collateral_diff: liquidated_fee_amount.into(), synthetic_diff: Option::None,
+                base_collateral_diff: liquidated_fee_amount.into(),
+                synthetic_diff: Option::None,
+                non_base_collateral_diff: Option::None,
             };
             let fee_position_diff = PositionDiff {
-                collateral_diff: actual_liquidator_fee.into(), synthetic_diff: Option::None,
+                base_collateral_diff: actual_liquidator_fee.into(),
+                synthetic_diff: Option::None,
+                non_base_collateral_diff: Option::None,
             };
 
             /// Validations - Fundamentals:
@@ -768,14 +778,16 @@ pub mod Core {
 
             /// Execution:
             let deleveraged_position_diff = PositionDiff {
-                collateral_diff: deleveraged_quote_amount.into(),
+                base_collateral_diff: deleveraged_quote_amount.into(),
                 synthetic_diff: Option::Some((base_asset_id, deleveraged_base_amount.into())),
+                non_base_collateral_diff: Option::None,
             };
             // Passing the negative of actual amounts to deleverager as it is linked to
             // deleveraged.
             let deleverager_position_diff = PositionDiff {
-                collateral_diff: -deleveraged_quote_amount.into(),
+                base_collateral_diff: -deleveraged_quote_amount.into(),
                 synthetic_diff: Option::Some((base_asset_id, -deleveraged_base_amount.into())),
+                non_base_collateral_diff: Option::None,
             };
 
             /// Validations - Fundamentals:
@@ -861,7 +873,7 @@ pub mod Core {
             let quote_amount_a: i64 = -1
                 * self
                     .assets
-                    .get_synthetic_price(synthetic_id: base_asset_id)
+                    .get_asset_price(synthetic_id: base_asset_id)
                     .mul(rhs: base_balance)
                     .try_into()
                     .expect('QUOTE_AMOUNT_OVERFLOW');
@@ -878,13 +890,15 @@ pub mod Core {
 
             /// Execution:
             let position_diff_a = PositionDiff {
-                collateral_diff: quote_amount_a.into(),
+                base_collateral_diff: quote_amount_a.into(),
                 synthetic_diff: Option::Some((base_asset_id, base_amount_a.into())),
+                non_base_collateral_diff: Option::None,
             };
             // Passing the negative of actual amounts to position_b as it is linked to position_a.
             let position_diff_b = PositionDiff {
-                collateral_diff: -quote_amount_a.into(),
+                base_collateral_diff: -quote_amount_a.into(),
                 synthetic_diff: Option::Some((base_asset_id, -base_amount_a.into())),
+                non_base_collateral_diff: Option::None,
             };
 
             // Apply diffs
@@ -903,6 +917,54 @@ pub mod Core {
                     },
                 )
         }
+        fn deposit_into_vault(
+            ref self: perpetuals::core::core::Core::ContractState,
+            operator_nonce: core::integer::u64,
+            position_id: perpetuals::core::types::position::PositionId,
+            vault_position_id: perpetuals::core::types::position::PositionId,
+            collateral_id: perpetuals::core::types::asset::AssetId,
+            quantized_amount: core::integer::u64,
+            expiration: starkware_utils::time::time::Timestamp,
+            salt: core::felt252,
+            signature: core::array::Span<core::felt252>,
+        ) {}
+
+        fn withdraw_from_vault(
+            ref self: perpetuals::core::core::Core::ContractState,
+            operator_nonce: core::integer::u64,
+            position_id: perpetuals::core::types::position::PositionId,
+            vault_position_id: perpetuals::core::types::position::PositionId,
+            collateral_id: perpetuals::core::types::asset::AssetId,
+            number_of_shares: core::integer::u64,
+            minimum_quantized_amount: core::integer::u64,
+            vault_share_execution_price: perpetuals::core::types::price::Price,
+            expiration: starkware_utils::time::time::Timestamp,
+            salt: core::felt252,
+            user_signature: core::array::Span<core::felt252>,
+            vault_owner_signature: core::array::Span<core::felt252>,
+        ) {}
+
+        fn liquidate_vault_shares(
+            ref self: perpetuals::core::core::Core::ContractState,
+            operator_nonce: core::integer::u64,
+            position_id: perpetuals::core::types::position::PositionId,
+            vault_position_id: perpetuals::core::types::position::PositionId,
+            collateral_id: perpetuals::core::types::asset::AssetId,
+            number_of_shares: core::integer::u64,
+            vault_share_execution_price: perpetuals::core::types::price::Price,
+            expiration: starkware_utils::time::time::Timestamp,
+            salt: core::felt252,
+            vault_owner_signature: core::array::Span<core::felt252>,
+        ) {}
+
+        fn register_vault(
+            ref self: perpetuals::core::core::Core::ContractState,
+            operator_nonce: core::integer::u64,
+            vault_position_id: perpetuals::core::types::position::PositionId,
+            vault_contract_address: core::starknet::contract_address::ContractAddress,
+            vault_asset_id: perpetuals::core::types::asset::AssetId,
+            signature: core::array::Span<core::felt252>,
+        ) {}
     }
 
     #[generate_trait]
@@ -970,19 +1032,23 @@ pub mod Core {
 
             /// Positions' Diffs:
             let position_diff_a = PositionDiff {
-                collateral_diff: actual_amount_quote_a.into() - actual_fee_a.into(),
+                base_collateral_diff: actual_amount_quote_a.into() - actual_fee_a.into(),
                 synthetic_diff: Option::Some((order_a.base_asset_id, actual_amount_base_a.into())),
+                non_base_collateral_diff: Option::None,
             };
 
             // Passing the negative of actual amounts to order_b as it is linked to order_a.
             let position_diff_b = PositionDiff {
-                collateral_diff: -actual_amount_quote_a.into() - actual_fee_b.into(),
+                base_collateral_diff: -actual_amount_quote_a.into() - actual_fee_b.into(),
                 synthetic_diff: Option::Some((order_b.base_asset_id, -actual_amount_base_a.into())),
+                non_base_collateral_diff: Option::None,
             };
 
             // Assuming fee_asset_id is the same for both orders.
             let fee_position_diff = PositionDiff {
-                collateral_diff: (actual_fee_a + actual_fee_b).into(), synthetic_diff: Option::None,
+                base_collateral_diff: (actual_fee_a + actual_fee_b).into(),
+                synthetic_diff: Option::None,
+                non_base_collateral_diff: Option::None,
             };
 
             /// Validations - Fundamentals:
@@ -1050,11 +1116,15 @@ pub mod Core {
         ) {
             // Parameters
             let position_diff_sender = PositionDiff {
-                collateral_diff: -amount.into(), synthetic_diff: Option::None,
+                base_collateral_diff: -amount.into(),
+                synthetic_diff: Option::None,
+                non_base_collateral_diff: Option::None,
             };
 
             let position_diff_recipient = PositionDiff {
-                collateral_diff: amount.into(), synthetic_diff: Option::None,
+                base_collateral_diff: amount.into(),
+                synthetic_diff: Option::None,
+                non_base_collateral_diff: Option::None,
             };
 
             /// Validations - Fundamentals:
@@ -1226,9 +1296,9 @@ pub mod Core {
             let synthetic_enriched_position_diff = self.enrich_synthetic(:position, :position_diff);
             let tvtr_before = match match_nullable(tvtr_before) {
                 FromNullableResult::Null => {
-                    let (provisional_delta, unchanged_synthetics) = self
+                    let (provisional_delta, unchanged_synthetics, unchanged_collaterals) = self
                         .positions
-                        .derive_funding_delta_and_unchanged_synthetics(:position, :position_diff);
+                        .derive_funding_delta_and_unchanged_balances(:position, :position_diff);
                     let position_diff_enriched = self
                         .enrich_collateral(
                             :position,
@@ -1264,9 +1334,9 @@ pub mod Core {
                 ._validate_synthetic_shrinks(
                     :position, asset_id: synthetic_diff_id, amount: synthetic_diff_balance.into(),
                 );
-            let (provisional_delta, unchanged_synthetics) = self
+            let (provisional_delta, unchanged_synthetics, unchanged_collaterals) = self
                 .positions
-                .derive_funding_delta_and_unchanged_synthetics(:position, :position_diff);
+                .derive_funding_delta_and_unchanged_balances(:position, :position_diff);
             let synthetic_enriched_position_diff = self.enrich_synthetic(:position, :position_diff);
             let position_diff_enriched = self
                 .enrich_collateral(
@@ -1286,9 +1356,9 @@ pub mod Core {
             position: StoragePath<Position>,
             position_diff: PositionDiff,
         ) {
-            let (provisional_delta, unchanged_synthetics) = self
+            let (provisional_delta, unchanged_synthetics, unchanged_collaterals) = self
                 .positions
-                .derive_funding_delta_and_unchanged_synthetics(:position, :position_diff);
+                .derive_funding_delta_and_unchanged_balances(:position, :position_diff);
 
             let synthetic_enriched_position_diff = self.enrich_synthetic(:position, :position_diff);
             let position_diff_enriched = self
@@ -1333,13 +1403,13 @@ pub mod Core {
                 .synthetic_diff {
                 let balance_before = self.positions.get_synthetic_balance(:position, :synthetic_id);
                 let balance_after = balance_before + diff;
-                let price = self.assets.get_synthetic_price(synthetic_id);
+                let price = self.assets.get_asset_price(synthetic_id);
                 let risk_factor_before = self
                     .assets
-                    .get_synthetic_risk_factor(synthetic_id, balance_before, price);
+                    .get_asset_risk_factor(synthetic_id, balance_before, price);
                 let risk_factor_after = self
                     .assets
-                    .get_synthetic_risk_factor(synthetic_id, balance_after, price);
+                    .get_asset_risk_factor(synthetic_id, balance_after, price);
 
                 let asset_diff_enriched = SyntheticDiffEnriched {
                     asset_id: synthetic_id,
@@ -1354,7 +1424,7 @@ pub mod Core {
                 Option::None
             };
             SyntheticEnrichedPositionDiff {
-                collateral_diff: position_diff.collateral_diff,
+                collateral_diff: position_diff.base_collateral_diff,
                 synthetic_enriched: synthetic_enriched,
             }
         }

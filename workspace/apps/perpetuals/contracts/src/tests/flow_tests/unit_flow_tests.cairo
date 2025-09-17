@@ -3,6 +3,20 @@ use perpetuals::tests::constants::*;
 use perpetuals::tests::flow_tests::infra::*;
 use perpetuals::tests::flow_tests::perps_tests_facade::*;
 use starkware_utils::constants::MAX_U128;
+use starkware_utils_testing::test_utils::TokenTrait;
+
+#[test]
+fn test_deposit_vault_share_1() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let user = state.new_user_with_position();
+    state
+        .facade
+        .vault_share_1_token_state
+        .fund(recipient: user.account.address, amount: 10000000000);
+    state.facade.add_and_activate_vault_share_1_collateral(price: 12);
+    let deposit_info = state.facade.deposit_vault_share_1(user.account, user.position_id, 1000);
+    state.facade.process_deposit(deposit_info);
+}
 
 #[test]
 fn test_deleverage_after_funding_tick() {
@@ -17,7 +31,6 @@ fn test_deleverage_after_funding_tick() {
     let asset_id = synthetic_info.asset_id;
 
     let mut state: FlowTestBase = FlowTestBaseTrait::new();
-
     state.facade.add_active_synthetic(synthetic_info: @synthetic_info, initial_price: 100);
 
     // Create users.
