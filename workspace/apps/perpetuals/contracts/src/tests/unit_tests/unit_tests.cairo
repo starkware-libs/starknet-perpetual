@@ -18,7 +18,7 @@ use perpetuals::core::components::positions::interface::{
     IPositionsSafeDispatcherTrait,
 };
 use perpetuals::core::core::Core::SNIP12MetadataImpl;
-use perpetuals::core::errors::WITHDRAW_EXPIRED;
+use perpetuals::core::errors::SIGNED_TX_EXPIRED;
 use perpetuals::core::interface::{ICore, ICoreSafeDispatcher, ICoreSafeDispatcherTrait};
 use perpetuals::core::types::asset::AssetStatus;
 use perpetuals::core::types::funding::{FUNDING_SCALE, FundingIndex, FundingTick};
@@ -410,7 +410,7 @@ fn test_expiration_validation() {
             expiration: withdraw_args.expiration,
             salt: withdraw_args.salt,
         );
-    assert_panic_with_felt_error(:result, expected_error: WITHDRAW_EXPIRED);
+    assert_panic_with_felt_error(:result, expected_error: SIGNED_TX_EXPIRED);
 }
 
 #[test]

@@ -21,12 +21,11 @@ pub mod Core {
     };
     use perpetuals::core::errors::{
         ASSET_ID_NOT_COLLATERAL, CANT_LIQUIDATE_IF_POSITION, CANT_TRADE_WITH_FEE_POSITION,
-        DEPOSIT_INTO_VAULT_EXPIRED, DIFFERENT_BASE_ASSET_IDS, INVALID_ACTUAL_BASE_SIGN,
-        INVALID_ACTUAL_QUOTE_SIGN, INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE,
-        INVALID_QUOTE_AMOUNT_SIGN, INVALID_QUOTE_FEE_AMOUNT, INVALID_SAME_POSITIONS,
-        INVALID_ZERO_AMOUNT, OPERATION_ALREADY_DONE, POSITION_IS_VAULT_POSITION,
-        SYNTHETIC_IS_ACTIVE, TRANSFER_EXPIRED, WITHDRAW_EXPIRED, fulfillment_exceeded_err,
-        order_expired_err,
+        DIFFERENT_BASE_ASSET_IDS, INVALID_ACTUAL_BASE_SIGN, INVALID_ACTUAL_QUOTE_SIGN,
+        INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE, INVALID_QUOTE_AMOUNT_SIGN,
+        INVALID_QUOTE_FEE_AMOUNT, INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT,
+        OPERATION_ALREADY_DONE, POSITION_IS_VAULT_POSITION, SIGNED_TX_EXPIRED, SYNTHETIC_IS_ACTIVE,
+        fulfillment_exceeded_err, order_expired_err,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
@@ -130,9 +129,11 @@ pub mod Core {
     struct Storage {
         // Order hash to fulfilled absolute base amount.
         fulfillment: Map<HashType, u64>,
-        // vault position id to vault ContractAddress and AssetId
-        vault_positions_to_addresses: Map<PositionId, ContractAddress>,
-        vault_positions_to_assets: Map<PositionId, AssetId>,
+        // vault position to contract address of tokenized vault contract.
+        pub vault_positions_to_addresses: Map<PositionId, ContractAddress>,
+        // vault position to vault position asset_id.
+        // i.e. positions holding share of vault position, will have this asset_id in the position.
+        pub vault_positions_to_assets: Map<PositionId, AssetId>,
         // --- Components ---
         #[substorage(v0)]
         accesscontrol: AccessControlComponent::Storage,
@@ -306,7 +307,7 @@ pub mod Core {
             self.pausable.assert_not_paused();
             self.operator_nonce.use_checked_nonce(:operator_nonce);
             self.assets.validate_assets_integrity();
-            validate_expiration(expiration: expiration, err: WITHDRAW_EXPIRED);
+            validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
             let collateral_id = self.assets.get_collateral_id();
             let position = self.positions.get_position_snapshot(:position_id);
             let hash = self
@@ -426,7 +427,7 @@ pub mod Core {
             self.pausable.assert_not_paused();
             self.operator_nonce.use_checked_nonce(:operator_nonce);
             self.assets.validate_assets_integrity();
-            validate_expiration(:expiration, err: TRANSFER_EXPIRED);
+            validate_expiration(:expiration, err: SIGNED_TX_EXPIRED);
             assert(recipient != position_id, INVALID_SAME_POSITIONS);
             let position = self.positions.get_position_snapshot(:position_id);
             let collateral_id = self.assets.get_collateral_id();
@@ -909,12 +910,28 @@ pub mod Core {
                 )
         }
 
+        /// Deposits a specified amount into a vault.
+        ///
+        /// Validations:
+        /// - Ensures the contract is not paused.
+        /// - Validates the operator nonce.
+        /// - Checks asset integrity.
+        /// - Retrieves the vault share asset ID associated with the vault position.
+        /// - Validates the deposit parameters including position IDs, amount, expiration,
+        ///   and signature. Refer to `_validate_deposit_into_vault` for detailed validation steps.
+        ///
+        /// Execution:
+        /// - Calculates the unquantized amount.
+        /// - Deposits the unquantized amount into the vault contract.
+        /// - Retrieves the shares amount from the vault contract.
+        /// - Runs fundamental validation on the position ID.
+        /// - Applies the diff in the collateral only.
+        /// - Emits the event.
         fn deposit_into_vault(
             ref self: ContractState,
             operator_nonce: u64,
             position_id: PositionId,
             vault_position_id: PositionId,
-            collateral_id: AssetId,
             quantized_amount: u64,
             expiration: Timestamp,
             salt: felt252,
@@ -925,17 +942,16 @@ pub mod Core {
             self.operator_nonce.use_checked_nonce(:operator_nonce);
             self.assets.validate_assets_integrity();
 
-            let share_id = self.vault_positions_to_assets.read(vault_position_id);
+            let vault_share_asset_id = self.vault_positions_to_assets.read(vault_position_id);
             self
                 ._validate_deposit_into_vault(
                     :position_id,
                     :vault_position_id,
-                    :collateral_id,
                     :quantized_amount,
                     :expiration,
                     :salt,
                     :signature,
-                    :share_id,
+                    :vault_share_asset_id,
                 );
             /// Executions:
         // TODO(Mohammad): impl execute deposit.
@@ -1197,43 +1213,42 @@ pub mod Core {
                 );
         }
 
+        /// Validates a deposit into a vault.
+        ///
+        /// This function ensures the transaction is valid by:
+        /// - Checking tx expiration.
+        /// - Verifying the vault asset is active, meaning vault asset has already a price.
+        /// - Ensuring the position is not a vault position itself.
+        /// - Confirming the deposit amount is non-zero.
+        /// - Checking the signature.
+        /// - Ensuring the operation hasn't been previously fulfilled.
         fn _validate_deposit_into_vault(
             ref self: ContractState,
             position_id: PositionId,
             vault_position_id: PositionId,
-            collateral_id: AssetId,
             quantized_amount: u64,
             expiration: Timestamp,
             salt: felt252,
             signature: Signature,
-            share_id: AssetId,
+            vault_share_asset_id: AssetId,
         ) {
-            validate_expiration(expiration: expiration, err: DEPOSIT_INTO_VAULT_EXPIRED);
+            validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
 
             // Vault position id is a vault position, and the asset is active.
-            self.assets.validate_active_asset(asset_id: share_id);
+            self.assets.validate_active_asset(asset_id: vault_share_asset_id);
 
-            // position id is exists and it is not a vault position.
-            let position = self.positions.get_position_snapshot(:position_id);
-            let position_address = self.vault_positions_to_addresses.read(position_id);
-            assert(position_address.is_zero(), POSITION_IS_VAULT_POSITION);
+            // position id is not a vault position.
+            assert(!self.is_vault_position(:position_id), POSITION_IS_VAULT_POSITION);
 
             // Amount is non zero
             assert(quantized_amount.is_non_zero(), INVALID_ZERO_AMOUNT);
 
-            // Collateral asset validation
-            assert(collateral_id == self.assets.get_collateral_id(), ASSET_ID_NOT_COLLATERAL);
-
             // Signature validation
+            let position = self.positions.get_position_snapshot(:position_id);
             let hash = _validate_signature(
                 public_key: position.get_owner_public_key(),
                 order: VaultDepositArgs {
-                    position_id,
-                    vault_position_id,
-                    collateral_id,
-                    quantized_amount,
-                    expiration,
-                    salt,
+                    position_id, vault_position_id, quantized_amount, expiration, salt,
                 },
                 signature: signature,
             );
@@ -1431,6 +1446,11 @@ pub mod Core {
                 collateral_diff: position_diff.collateral_diff,
                 synthetic_enriched: synthetic_enriched,
             }
+        }
+
+        fn is_vault_position(self: @ContractState, position_id: PositionId) -> bool {
+            let position_address = self.vault_positions_to_addresses.read(position_id);
+            position_address.is_non_zero()
         }
     }
 
