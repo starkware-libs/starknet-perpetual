@@ -19,7 +19,7 @@ use perpetuals::core::components::positions::interface::{
 };
 use perpetuals::core::core::Core;
 use perpetuals::core::core::Core::SNIP12MetadataImpl;
-use perpetuals::core::errors::WITHDRAW_EXPIRED;
+use perpetuals::core::errors::SIGNED_TX_EXPIRED;
 use perpetuals::core::interface::{ICore, ICoreSafeDispatcher, ICoreSafeDispatcherTrait};
 use perpetuals::core::types::asset::AssetStatus;
 use perpetuals::core::types::asset::synthetic::SyntheticTrait;
@@ -412,7 +412,7 @@ fn test_expiration_validation() {
             expiration: withdraw_args.expiration,
             salt: withdraw_args.salt,
         );
-    assert_panic_with_felt_error(:result, expected_error: WITHDRAW_EXPIRED);
+    assert_panic_with_felt_error(:result, expected_error: SIGNED_TX_EXPIRED);
 }
 
 #[test]
@@ -3563,7 +3563,6 @@ fn test_failed_deposit_into_vault_scenarios() {
             operator_nonce: 0,
             position_id: user.position_id,
             vault_position_id: non_vault_position,
-            collateral_id: cfg.collateral_cfg.collateral_id,
             quantized_amount: DEPOSIT_AMOUNT,
             expiration: Time::now().add(delta: Time::days(1)),
             salt: 0,
@@ -3599,7 +3598,6 @@ fn test_failed_deposit_into_vault_scenarios() {
             operator_nonce: 1,
             position_id: user.position_id,
             vault_position_id: non_active_vault_position,
-            collateral_id: cfg.collateral_cfg.collateral_id,
             quantized_amount: DEPOSIT_AMOUNT,
             expiration: Time::now().add(delta: Time::days(1)),
             salt: 0,
@@ -3633,7 +3631,6 @@ fn test_failed_deposit_into_vault_scenarios() {
             operator_nonce: 2,
             position_id: unregistered_user,
             vault_position_id: vault_user.position_id,
-            collateral_id: cfg.collateral_cfg.collateral_id,
             quantized_amount: DEPOSIT_AMOUNT,
             expiration: Time::now().add(delta: Time::days(1)),
             salt: 0,
@@ -3667,27 +3664,10 @@ fn test_failed_deposit_into_vault_scenarios() {
             operator_nonce: 5,
             position_id: user.position_id,
             vault_position_id: vault_user.position_id,
-            collateral_id: cfg.collateral_cfg.collateral_id,
             quantized_amount: 0,
             expiration: Time::now().add(delta: Time::days(1)),
             salt: 0,
             signature: array![].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: 'INVALID_ZERO_AMOUNT');
-
-    // Test 5: deposit into vault with different base asset id.
-    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
-    let result = dispatcher
-        .deposit_into_vault(
-            operator_nonce: 6,
-            position_id: user.position_id,
-            vault_position_id: vault_user.position_id,
-            collateral_id: asset_id,
-            quantized_amount: 10,
-            expiration: Time::now().add(delta: Time::days(1)),
-            salt: 0,
-            signature: array![].span(),
-        );
-
-    assert_panic_with_felt_error(:result, expected_error: 'QUOTE_ASSET_ID_NOT_COLLATERAL');
 }

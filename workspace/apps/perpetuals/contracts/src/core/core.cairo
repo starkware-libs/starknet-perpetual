@@ -22,12 +22,12 @@ pub mod Core {
     };
     use perpetuals::core::errors::{
         ASSET_ID_NOT_COLLATERAL, CANT_LIQUIDATE_IF_POSITION, CANT_TRADE_WITH_FEE_POSITION,
-        COLLATERAL_BALANCE_MISMATCH, DEPOSIT_INTO_VAULT_EXPIRED, DIFFERENT_BASE_ASSET_IDS,
-        INVALID_ACTUAL_BASE_SIGN, INVALID_ACTUAL_QUOTE_SIGN, INVALID_AMOUNT_SIGN,
-        INVALID_BASE_CHANGE, INVALID_QUOTE_AMOUNT_SIGN, INVALID_QUOTE_FEE_AMOUNT,
-        INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT, OPERATION_ALREADY_DONE,
-        POSITION_IS_VAULT_POSITION, SHARES_BALANCE_MISMATCH, SYNTHETIC_IS_ACTIVE, TRANSFER_EXPIRED,
-        TRANSFER_FAILED, WITHDRAW_EXPIRED, fulfillment_exceeded_err, order_expired_err,
+        COLLATERAL_BALANCE_MISMATCH, DIFFERENT_BASE_ASSET_IDS, INVALID_ACTUAL_BASE_SIGN,
+        INVALID_ACTUAL_QUOTE_SIGN, INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE,
+        INVALID_QUOTE_AMOUNT_SIGN, INVALID_QUOTE_FEE_AMOUNT, INVALID_SAME_POSITIONS,
+        INVALID_ZERO_AMOUNT, OPERATION_ALREADY_DONE, POSITION_IS_VAULT_POSITION,
+        SHARES_BALANCE_MISMATCH, SIGNED_TX_EXPIRED, SYNTHETIC_IS_ACTIVE, TRANSFER_FAILED,
+        fulfillment_exceeded_err, order_expired_err,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
@@ -131,8 +131,10 @@ pub mod Core {
     struct Storage {
         // Order hash to fulfilled absolute base amount.
         fulfillment: Map<HashType, u64>,
-        // vault position id to vault ContractAddress and AssetId
+        // vault position to contract address of tokenized vault contract.
         pub vault_positions_to_addresses: Map<PositionId, ContractAddress>,
+        // vault position to vault position asset_id.
+        // i.e. positions holding share of vault position, will have this asset_id in the position.
         pub vault_positions_to_assets: Map<PositionId, AssetId>,
         // --- Components ---
         #[substorage(v0)]
@@ -308,7 +310,7 @@ pub mod Core {
             self.pausable.assert_not_paused();
             self.operator_nonce.use_checked_nonce(:operator_nonce);
             self.assets.validate_assets_integrity();
-            validate_expiration(expiration: expiration, err: WITHDRAW_EXPIRED);
+            validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
             let collateral_id = self.assets.get_collateral_id();
             let position = self.positions.get_position_snapshot(:position_id);
             let hash = self
@@ -431,7 +433,7 @@ pub mod Core {
             self.pausable.assert_not_paused();
             self.operator_nonce.use_checked_nonce(:operator_nonce);
             self.assets.validate_assets_integrity();
-            validate_expiration(:expiration, err: TRANSFER_EXPIRED);
+            validate_expiration(:expiration, err: SIGNED_TX_EXPIRED);
             assert(recipient != position_id, INVALID_SAME_POSITIONS);
             let position = self.positions.get_position_snapshot(:position_id);
             let collateral_id = self.assets.get_collateral_id();
@@ -630,7 +632,7 @@ pub mod Core {
             // Signatures validation:
             let liquidator_order_hash = _validate_signature(
                 public_key: liquidator_position.get_owner_public_key(),
-                order: liquidator_order,
+                message: liquidator_order,
                 signature: liquidator_signature,
             );
 
@@ -914,12 +916,28 @@ pub mod Core {
                 )
         }
 
+        /// Deposits a specified amount into a vault.
+        ///
+        /// Validations:
+        /// - Ensures the contract is not paused.
+        /// - Validates the operator nonce.
+        /// - Checks asset integrity.
+        /// - Retrieves the vault share asset ID associated with the vault position.
+        /// - Validates the deposit parameters including position IDs, amount, expiration,
+        ///   and signature. Refer to `_validate_deposit_into_vault` for detailed validation steps.
+        ///
+        /// Execution:
+        /// - Calculates the unquantized amount.
+        /// - Deposits the unquantized amount into the vault contract.
+        /// - Retrieves the shares amount from the vault contract.
+        /// - Runs fundamental validation on the position ID.
+        /// - Applies the diff in the collateral only.
+        /// - Emits the event.
         fn deposit_into_vault(
             ref self: ContractState,
             operator_nonce: u64,
             position_id: PositionId,
             vault_position_id: PositionId,
-            collateral_id: AssetId,
             quantized_amount: u64,
             expiration: Timestamp,
             salt: felt252,
@@ -930,24 +948,27 @@ pub mod Core {
             self.operator_nonce.use_checked_nonce(:operator_nonce);
             self.assets.validate_assets_integrity();
 
-            let share_id = self.vault_positions_to_assets.read(vault_position_id);
+            let vault_share_asset_id = self.vault_positions_to_assets.read(vault_position_id);
             self
                 ._validate_deposit_into_vault(
                     :position_id,
                     :vault_position_id,
-                    :collateral_id,
                     :quantized_amount,
                     :expiration,
                     :salt,
                     :signature,
-                    :share_id,
+                    :vault_share_asset_id,
                 );
 
             /// Executions:
             let vault_address = self.vault_positions_to_addresses.read(vault_position_id);
             let quantized_shares_amount = self
                 ._execute_deposit_into_vault(
-                    :position_id, :vault_position_id, :quantized_amount, :vault_address, :share_id,
+                    :position_id,
+                    :vault_position_id,
+                    :quantized_amount,
+                    :vault_address,
+                    :vault_share_asset_id,
                 );
 
             // TODO(Mohammad): add `assetType` to `deposit` once it is added.
@@ -966,7 +987,7 @@ pub mod Core {
                     events::DepositIntoVault {
                         position_id,
                         vault_position_id,
-                        collateral_id,
+                        collateral_id: self.assets.get_collateral_id(),
                         quantized_amount,
                         expiration,
                         salt,
@@ -1009,12 +1030,12 @@ pub mod Core {
             // Signatures validation:
             let hash_a = _validate_signature(
                 public_key: position_a.get_owner_public_key(),
-                order: order_a,
+                message: order_a,
                 signature: signature_a,
             );
             let hash_b = _validate_signature(
                 public_key: position_b.get_owner_public_key(),
-                order: order_b,
+                message: order_b,
                 signature: signature_b,
             );
 
@@ -1231,43 +1252,40 @@ pub mod Core {
                 );
         }
 
+        /// Validates a deposit into a vault.
+        ///
+        /// This function ensures the transaction is valid by:
+        /// - Checking tx expiration.
+        /// - Verifying the vault asset is active, meaning vault asset has already a price.
+        /// - Ensuring the position is not a vault position itself.
+        /// - Confirming the deposit amount is non-zero.
+        /// - Checking the signature.
+        /// - Ensuring the operation hasn't been previously fulfilled.
         fn _validate_deposit_into_vault(
             ref self: ContractState,
             position_id: PositionId,
             vault_position_id: PositionId,
-            collateral_id: AssetId,
             quantized_amount: u64,
             expiration: Timestamp,
             salt: felt252,
             signature: Signature,
-            share_id: AssetId,
+            vault_share_asset_id: AssetId,
         ) {
-            validate_expiration(expiration: expiration, err: DEPOSIT_INTO_VAULT_EXPIRED);
+            validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
 
-            // Vault position id is a vault position, and the asset is active.
-            self.assets.validate_active_asset(asset_id: share_id);
+            self.assets.validate_active_asset(asset_id: vault_share_asset_id);
 
-            // position id is exists and it is not a vault position.
-            let position = self.positions.get_position_snapshot(:position_id);
-            let position_address = self.vault_positions_to_addresses.read(position_id);
-            assert(position_address.is_zero(), POSITION_IS_VAULT_POSITION);
+            // Depositing position must not be a vault position.
+            assert(!self.is_vault_position(:position_id), POSITION_IS_VAULT_POSITION);
 
-            // Amount is non zero
             assert(quantized_amount.is_non_zero(), INVALID_ZERO_AMOUNT);
 
-            // Collateral asset validation
-            assert(collateral_id == self.assets.get_collateral_id(), ASSET_ID_NOT_COLLATERAL);
-
             // Signature validation
+            let position = self.positions.get_position_snapshot(:position_id);
             let hash = _validate_signature(
                 public_key: position.get_owner_public_key(),
-                order: VaultDepositArgs {
-                    position_id,
-                    vault_position_id,
-                    collateral_id,
-                    quantized_amount,
-                    expiration,
-                    salt,
+                message: VaultDepositArgs {
+                    position_id, vault_position_id, quantized_amount, expiration, salt,
                 },
                 signature: signature,
             );
@@ -1294,14 +1312,16 @@ pub mod Core {
             vault_position_id: PositionId,
             quantized_amount: u64,
             vault_address: ContractAddress,
-            share_id: AssetId,
+            vault_share_asset_id: AssetId,
         ) -> u64 {
             let quantum = self.assets.get_collateral_quantum();
             let unquantized_amount: u256 = quantized_amount.into() * quantum.into();
 
             // Deposit into vault.
             let unquantized_shares_amount = self
-                ._deposit_to_vault_contract(:vault_address, :unquantized_amount, :share_id);
+                ._deposit_to_vault_contract(
+                    :vault_address, :unquantized_amount, :vault_share_asset_id,
+                );
 
             // Build position diffs.
             // TODO(Mohammad): use shares quantom once register_vault is added.
@@ -1336,7 +1356,7 @@ pub mod Core {
             ref self: ContractState,
             vault_address: ContractAddress,
             unquantized_amount: u256,
-            share_id: AssetId,
+            vault_share_asset_id: AssetId,
         ) -> u256 {
             let contract_address = get_contract_address();
             let erc20_dispatcher = self.assets.get_collateral_token_contract();
@@ -1349,7 +1369,7 @@ pub mod Core {
 
             // Approve and deposit assets into the vault
             erc20_dispatcher.approve(spender: vault_address, amount: unquantized_amount);
-            let shares_amount = IERC4626Dispatcher { contract_address: vault_address }
+            let vault_shares_amount = IERC4626Dispatcher { contract_address: vault_address }
                 .deposit(assets: unquantized_amount, receiver: contract_address);
 
             // Fetch balances after deposit
@@ -1360,11 +1380,11 @@ pub mod Core {
             // Validate balances to ensure correctness
             assert(after_deposit_balance == before_deposit_balance, COLLATERAL_BALANCE_MISMATCH);
             assert(
-                after_deposit_shares_balance == before_deposit_shares_balance + shares_amount,
+                after_deposit_shares_balance == before_deposit_shares_balance + vault_shares_amount,
                 SHARES_BALANCE_MISMATCH,
             );
 
-            shares_amount
+            vault_shares_amount
         }
 
         fn _validate_synthetic_shrinks(
@@ -1555,12 +1575,17 @@ pub mod Core {
                 synthetic_enriched: synthetic_enriched,
             }
         }
+
+        fn is_vault_position(self: @ContractState, position_id: PositionId) -> bool {
+            let position_address = self.vault_positions_to_addresses.read(position_id);
+            position_address.is_non_zero()
+        }
     }
 
     fn _validate_signature<T, +Drop<T>, +Copy<T>, +OffchainMessageHash<T>>(
-        public_key: PublicKey, order: T, signature: Signature,
+        public_key: PublicKey, message: T, signature: Signature,
     ) -> HashType {
-        let msg_hash = order.get_message_hash(:public_key);
+        let msg_hash = message.get_message_hash(:public_key);
         validate_stark_signature(:public_key, :msg_hash, :signature);
         msg_hash
     }
