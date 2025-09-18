@@ -17,10 +17,12 @@ use perpetuals::core::components::positions::interface::{
     IPositions, IPositionsDispatcher, IPositionsDispatcherTrait, IPositionsSafeDispatcher,
     IPositionsSafeDispatcherTrait,
 };
+use perpetuals::core::core::Core;
 use perpetuals::core::core::Core::SNIP12MetadataImpl;
 use perpetuals::core::errors::WITHDRAW_EXPIRED;
 use perpetuals::core::interface::{ICore, ICoreSafeDispatcher, ICoreSafeDispatcherTrait};
 use perpetuals::core::types::asset::AssetStatus;
+use perpetuals::core::types::asset::synthetic::SyntheticTrait;
 use perpetuals::core::types::funding::{FUNDING_SCALE, FundingIndex, FundingTick};
 use perpetuals::core::types::order::Order;
 use perpetuals::core::types::position::{POSITION_VERSION, PositionMutableTrait};
@@ -51,7 +53,7 @@ use perpetuals::tests::test_utils::{
     validate_balance,
 };
 use snforge_std::cheatcodes::events::{EventSpyTrait, EventsFilterTrait};
-use snforge_std::{start_cheat_block_timestamp_global, test_address};
+use snforge_std::{interact_with_state, start_cheat_block_timestamp_global, test_address};
 use starknet::storage::{StoragePathEntry, StoragePointerReadAccess};
 use starkware_utils::components::replaceability::interface::IReplaceable;
 use starkware_utils::components::request_approvals::interface::{IRequestApprovals, RequestStatus};
@@ -3532,4 +3534,160 @@ fn test_successful_remove_nonexistent_oracle() {
     // Test:
     cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.app_governor);
     state.remove_oracle_from_asset(asset_id: synthetic_id, oracle_public_key: key_pair.public_key);
+}
+
+// Vault tokenisation tests.
+
+#[test]
+#[feature("safe_dispatcher")]
+fn test_failed_deposit_into_vault_scenarios() {
+    // Setup state, token and user:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+
+    // Setup dispatchers:
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+    let dispatcher = ICoreSafeDispatcher { contract_address };
+    let position_dispatcher = IPositionsDispatcher { contract_address };
+
+    // Setup users:
+    let user: User = Default::default();
+    let vault_user = UserTrait::new(position_id: POSITION_ID_2, key_pair: KEY_PAIR_2());
+    let asset_id = cfg.synthetic_cfg.synthetic_id;
+
+    // Test 1: deposit into vault with unexisted vault asset id.
+    let non_vault_position = vault_user.position_id;
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    let result = dispatcher
+        .deposit_into_vault(
+            operator_nonce: 0,
+            position_id: user.position_id,
+            vault_position_id: non_vault_position,
+            collateral_id: cfg.collateral_cfg.collateral_id,
+            quantized_amount: DEPOSIT_AMOUNT,
+            expiration: Time::now().add(delta: Time::days(1)),
+            salt: 0,
+            signature: array![].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: 'NOT_SYNTHETIC');
+
+    // Add the vault asset, without activating it.
+    interact_with_state(
+        contract_address,
+        || {
+            let mut state = Core::contract_state_for_testing();
+
+            state.vault_positions_to_assets.write(vault_user.position_id, asset_id);
+
+            let synthetic_config = SyntheticTrait::config(
+                status: AssetStatus::PENDING,
+                risk_factor_first_tier_boundary: Default::default(),
+                risk_factor_tier_size: Default::default(),
+                quorum: Default::default(),
+                resolution_factor: Default::default(),
+            );
+
+            state.assets.synthetic_config.write(asset_id, Some(synthetic_config));
+        },
+    );
+
+    // Test 2: deposit into vault with unactivated vault asset.
+    let non_active_vault_position = vault_user.position_id;
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    let result = dispatcher
+        .deposit_into_vault(
+            operator_nonce: 1,
+            position_id: user.position_id,
+            vault_position_id: non_active_vault_position,
+            collateral_id: cfg.collateral_cfg.collateral_id,
+            quantized_amount: DEPOSIT_AMOUNT,
+            expiration: Time::now().add(delta: Time::days(1)),
+            salt: 0,
+            signature: array![].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: 'SYNTHETIC_NOT_ACTIVE');
+
+    // Activate the vault asset.
+    interact_with_state(
+        contract_address,
+        || {
+            let mut state = Core::contract_state_for_testing();
+
+            let synthetic_config = SyntheticTrait::config(
+                status: AssetStatus::ACTIVE,
+                risk_factor_first_tier_boundary: Default::default(),
+                risk_factor_tier_size: Default::default(),
+                quorum: Default::default(),
+                resolution_factor: Default::default(),
+            );
+
+            state.assets.synthetic_config.write(asset_id, Some(synthetic_config));
+        },
+    );
+
+    // Test 3: deposit into vault with unexisted position id.
+    let unregistered_user = user.position_id;
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    let result = dispatcher
+        .deposit_into_vault(
+            operator_nonce: 2,
+            position_id: unregistered_user,
+            vault_position_id: vault_user.position_id,
+            collateral_id: cfg.collateral_cfg.collateral_id,
+            quantized_amount: DEPOSIT_AMOUNT,
+            expiration: Time::now().add(delta: Time::days(1)),
+            salt: 0,
+            signature: array![].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: 'POSITION_DOESNT_EXIST');
+
+    // Add vault position, and user position.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    position_dispatcher
+        .new_position(
+            operator_nonce: 3,
+            position_id: user.position_id,
+            owner_public_key: user.get_public_key(),
+            owner_account: Zero::zero(),
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    position_dispatcher
+        .new_position(
+            operator_nonce: 4,
+            position_id: vault_user.position_id,
+            owner_public_key: vault_user.get_public_key(),
+            owner_account: Zero::zero(),
+        );
+
+    // Test 4: deposit into vault with zero amount.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    let result = dispatcher
+        .deposit_into_vault(
+            operator_nonce: 5,
+            position_id: user.position_id,
+            vault_position_id: vault_user.position_id,
+            collateral_id: cfg.collateral_cfg.collateral_id,
+            quantized_amount: 0,
+            expiration: Time::now().add(delta: Time::days(1)),
+            salt: 0,
+            signature: array![].span(),
+        );
+    assert_panic_with_felt_error(:result, expected_error: 'INVALID_ZERO_AMOUNT');
+
+    // Test 5: deposit into vault with different base asset id.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    let result = dispatcher
+        .deposit_into_vault(
+            operator_nonce: 6,
+            position_id: user.position_id,
+            vault_position_id: vault_user.position_id,
+            collateral_id: asset_id,
+            quantized_amount: 10,
+            expiration: Time::now().add(delta: Time::days(1)),
+            salt: 0,
+            signature: array![].span(),
+        );
+
+    assert_panic_with_felt_error(:result, expected_error: 'QUOTE_ASSET_ID_NOT_COLLATERAL');
 }

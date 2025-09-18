@@ -1,7 +1,7 @@
 use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::position::PositionId;
 
-pub const ASSET_ID_NOT_COLLATERAL: felt252 = 'UOTE_ASSET_ID_NOT_COLLATERAL';
+pub const ASSET_ID_NOT_COLLATERAL: felt252 = 'QUOTE_ASSET_ID_NOT_COLLATERAL';
 pub const CANT_TRADE_WITH_FEE_POSITION: felt252 = 'CANT_TRADE_WITH_FEE_POSITION';
 pub const CANT_LIQUIDATE_IF_POSITION: felt252 = 'CANT_LIQUIDATE_IF_POSITION';
 pub const COLLATERAL_BALANCE_MISMATCH: felt252 = 'COLLATERAL_BALANCE_MISMATCH';
