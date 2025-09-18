@@ -134,8 +134,8 @@ pub mod Core {
         // Order hash to fulfilled absolute base amount.
         fulfillment: Map<HashType, u64>,
         // vault position id to vault ContractAddress and AssetId
-        vault_positions_to_addresses: Map<PositionId, ContractAddress>,
-        vault_positions_to_assets: Map<PositionId, AssetId>,
+        pub vault_positions_to_addresses: Map<PositionId, ContractAddress>,
+        pub vault_positions_to_assets: Map<PositionId, AssetId>,
         // --- Components ---
         #[substorage(v0)]
         accesscontrol: AccessControlComponent::Storage,
