@@ -101,7 +101,6 @@ pub trait ICore<TContractState> {
         operator_nonce: u64,
         position_id: PositionId,
         vault_position_id: PositionId,
-        collateral_id: AssetId,
         quantized_amount: u64,
         expiration: Timestamp,
         salt: felt252,

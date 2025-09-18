@@ -1,7 +1,6 @@
 use core::hash::{HashStateExTrait, HashStateTrait};
 use core::poseidon::PoseidonTrait;
 use openzeppelin::utils::snip12::StructHash;
-use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::position::PositionId;
 use starkware_utils::signature::stark::HashType;
 use starkware_utils::time::time::Timestamp;
@@ -10,7 +9,6 @@ use starkware_utils::time::time::Timestamp;
 pub struct VaultDepositArgs {
     pub position_id: PositionId,
     pub vault_position_id: PositionId,
-    pub collateral_id: AssetId,
     pub quantized_amount: u64,
     pub expiration: Timestamp,
     pub salt: felt252,
@@ -22,7 +20,6 @@ pub struct VaultDepositArgs {
 ///   "\"VaultDepositArgs\"(
 ///    \"position_id\":\"PositionId\",
 ///    \"vault_position_id\":\"PositionId\",
-///    \"collateral_id\":\"AssetId\",
 ///    \"quantized_amount\":\"u64\",
 ///    \"expiration\":\"Timestamp\",
 ///    \"salt\":\"felt\"
@@ -30,15 +27,12 @@ pub struct VaultDepositArgs {
 ///    \"PositionId\"(
 ///    \"value\":\"u32\"
 ///    )"
-///    \"AssetId\"(
-///    \"value\":\"felt\"
-///    )"
 ///    \"Timestamp\"(
 ///    \"seconds\":\"u64\"
 ///    )
 /// );
 const VAULT_DEPOSIT_ARGS_TYPE_HASH: HashType =
-    0x02fd0884bec28d3a73edd59e4a36a246a4e26b96e283617898a80323a769abba;
+    0x0261990c673bdf6a616b6b550e1196c85bfbb8ee72fe3abe478633cb3adb3231;
 
 impl StructHashImpl of StructHash<VaultDepositArgs> {
     fn hash_struct(self: @VaultDepositArgs) -> HashType {
@@ -55,7 +49,7 @@ mod tests {
     #[test]
     fn test_vault_deposit_args_type_hash() {
         let expected = selector!(
-            "\"VaultDepositArgs\"(\"position_id\":\"PositionId\",\"vault_position_id\":\"PositionId\",\"collateral_id\":\"AssetId\",\"quantized_amount\":\"u64\",\"expiration\":\"Timestamp\",\"salt\":\"felt\")\"AssetId\"(\"value\":\"felt\")\"PositionId\"(\"value\":\"u32\")\"Timestamp\"(\"seconds\":\"u64\")",
+            "\"VaultDepositArgs\"(\"position_id\":\"PositionId\",\"vault_position_id\":\"PositionId\",\"quantized_amount\":\"u64\",\"expiration\":\"Timestamp\",\"salt\":\"felt\")\"PositionId\"(\"value\":\"u32\")\"Timestamp\"(\"seconds\":\"u64\")",
         );
         assert_eq!(to_base_16_string(VAULT_DEPOSIT_ARGS_TYPE_HASH), to_base_16_string(expected));
     }
