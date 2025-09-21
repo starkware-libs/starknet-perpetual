@@ -22,6 +22,14 @@ pub enum AssetStatus {
     INACTIVE,
 }
 
+#[derive(Copy, Debug, Drop, PartialEq, Serde, starknet::Store)]
+pub enum AssetType {
+    #[default]
+    SYNTHETIC,
+    SPOT_COLLATERAL,
+    VAULT_SHARE_COLLATERAL,
+}
+
 #[generate_trait]
 pub impl AssetIdImpl of AssetIdTrait {
     fn new(value: felt252) -> AssetId {
@@ -77,6 +85,8 @@ pub struct AssetConfig {
     pub quorum: u8,
     // Smallest unit of a synthetic asset in the system.
     pub resolution_factor: u64,
+    pub quantum: u64,
+    pub asset_type: AssetType,
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store)]
@@ -113,6 +123,8 @@ pub impl AssetImpl of AssetTrait {
         risk_factor_tier_size: u128,
         quorum: u8,
         resolution_factor: u64,
+        quantum: u64,
+        asset_type: AssetType,
     ) -> AssetConfig {
         AssetConfig {
             version: VERSION,
@@ -121,6 +133,8 @@ pub impl AssetImpl of AssetTrait {
             risk_factor_tier_size,
             quorum,
             resolution_factor,
+            quantum,
+            asset_type,
         }
     }
     fn timely_data(
