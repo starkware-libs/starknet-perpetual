@@ -1,8 +1,6 @@
 # Perpetuals \- Specs
 
-# Diagrams
-
-## L2 Contracts block diagram
+## Diagram
 
 ```mermaid
 classDiagram
@@ -25,13 +23,17 @@ classDiagram
         liquidate()
         deleverage()
         reduce_inactive_asset_position()
+
+        deposit_into_vault()
+        withdraw_from_vault()
     }
     class Position{
         version: u8,
         owner_account: Option< ContractAddress>,
         owner_public_key: PublicKey,
         collateral_balance: Balance,
-        synthetic_assets: IterableMap< AssetId, SyntheticAsset>,
+        synthetic_balance: IterableMap< AssetId, SyntheticBalance>,
+        collateral_balance: IterableMap< AssetId, Balance>,
     }
     class Positions{
         positions: Map< PositionId, Position>
@@ -59,8 +61,8 @@ classDiagram
         collateral_token_contract: IERC20Dispatcher,
         collateral_quantum: u64,
         num_of_active_synthetic_assets: usize,
-        pub synthetic_config: Map< AssetId, Option [SyntheticConfig]>,
-        pub synthetic_timely_data: IterableMap< AssetId, SyntheticTimelyData>,
+        pub synthetic_config: Map< AssetId, Option [AssetConfig]>,
+        pub synthetic_timely_data: IterableMap< AssetId, AssetTimelyData>,
         pub risk_factor_tiers: Map<AssetId, Vec [FixedTwoDecimal] >,
         asset_oracle: Map< AssetId, Map [PublicKey, felt252 ]>,
         max_oracle_price_validity: TimeDelta,
@@ -68,6 +70,7 @@ classDiagram
 
         add_oracle_to_asset()
         add_synthetic_asset()
+        add_spot_collateral_asset()
         deactivate_synthetic()
         funding_tick()
         price_tick()
@@ -80,14 +83,15 @@ classDiagram
         get_last_price_validation() -> Timestamp
         get_max_funding_interval() -> TimeDelta
         get_max_funding_rate() -> u32
-        get_max_price_interval() -> TimeDelta
         get_max_oracle_price_validity() -> TimeDelta
         get_num_of_active_synthetic_assets() -> usize
-        get_collateral_id() -> AssetId
+        get_base_collateral_id() -> AssetId
         get_max_price_interval() -> TimeDelta
-        get_synthetic_config() -> SyntheticConfig
-        get_synthetic_timely_data() -> SyntheticTimelyData
+        get_asset_config() -> AssetConfig
+        get_asset_timely_data() -> AssetTimelyData
         get_risk_factor_tiers() -> Span< FixedTwoDecimal>
+
+        register_vault()
     }
     class Deposit{
         registered_deposits: Map< HashType, DepositStatus>
@@ -155,13 +159,8 @@ classDiagram
         register_security_agent()
         remove_security_agent()
     }
-    class SyntheticAsset{
-        version: u8
-        balance: Balance
-        funding_index: FundingIndex
-    }
 
-    class SyntheticConfig{
+    class AssetConfig{
         version: u8
         status: AssetStatus
         risk_factor_first_tier_boundary: u128
@@ -169,11 +168,17 @@ classDiagram
         quorum: u8
         resolution_factor: u64
     }
-    class SyntheticTimelyData{
+    class AssetTimelyData{
         version: u8
         price: Price
         last_price_update: Timestamp
         funding_index: FundingIndex
+    }
+
+    class SyntheticBalance {
+        pub version: u8,
+        pub balance: Balance,
+        pub funding_index: FundingIndex,
     }
 
     CoreContract o-- Positions
@@ -184,17 +189,18 @@ classDiagram
     CoreContract o-- Pausable
     CoreContract o-- Roles
     CoreContract o-- ReplaceabilityComponent
-    Assets o-- SyntheticConfig
-    Assets o-- SyntheticTimelyData
+    Assets o-- AssetConfig
+    Assets o-- AssetTimelyData
     Positions o-- Position
-    Position o-- SyntheticAsset
+    Position o-- SyntheticBalance
 ```
 
-# Core contract
+## Core contract
 
-## Value risk calculator
+### Value risk calculator
 
-### Total Value (TV) and Total Risk (TR)
+#### Total Value (TV) and Total Risk (TR)
+
 <img src="../assets/tv-tr-example.png" alt="tv tr example" />
 
 [Same as in StarkEx](https://docs.starkware.co/starkex/perpetual/perpetual_overview.html#total_value_total_risk)
@@ -203,9 +209,9 @@ The *total value* of a position is the sum of the value of the position’s coll
 The *total risk* is a measurement that includes the total value of all synthetic assets in a position, and also takes into account a predetermined *risk factor* for each synthetic asset. As the risk factor increases, so does the total risk.
 Example:
 
-### Structs
+##### Structs
 
-#### PositionTVTR
+###### PositionTVTR
 
 The total value and total risk of a position.
 
@@ -217,7 +223,7 @@ pub struct PositionTVTR {
 
 ```
 
-#### TVTRChange
+###### TVTRChange
 
 The change in terms of total value and total risk of a position.
 
@@ -228,9 +234,10 @@ pub struct TVTRChange {
 }
 ```
 
-#### PositionState
+###### PositionState
 
 Represents the state of a position based on its total value and total risk.
+
 - A position is **Deleveragable** (and also **Liquidatable**) if its total value is negative.
 - A position is **Liquidatable** if its total value is less than its total risk.
 - Otherwise, the position is considered **Healthy**.
@@ -243,24 +250,24 @@ pub enum PositionState {
 }
 ```
 
-#### Deleveragable
+##### Deleveragable
 
 A position is in deleveragable state when:
 $TV<0 $
 
-#### Liquidatable
+##### Liquidatable
 
 A position is in liquidatable state when:
 $TV<TR $
 
-#### Healthy
+##### Healthy
 
 A position is in a healthy state when:
 $TV\geq TR $
 
-### Functions
+#### Functions
 
-#### Calculate Position TV TR Change
+##### Calculate Position TV TR Change
 
 ```rust
 fn calculate_position_tvtr_change(
@@ -269,6 +276,7 @@ fn calculate_position_tvtr_change(
 ```
 
 ##### Logic
+
 1. Calculates value and risk changes for synthetic assets
 2. Calculates value and risk changes for collateral assets
 3. Combines all calculations into final before/after totals
@@ -278,9 +286,7 @@ fn calculate_position_tvtr_change(
 checks if the change in position is healthier than the previous state.
 
 $$ ( \frac{TV}{TR})\_{new} \geq (\frac{TV}{TR})\_{old} $$
-
-   **AND**
-
+**AND**
 $$ {TR}\_{new} \lt {TR\_{old}} $$
 
 #### Is Fair Deleverage
@@ -292,10 +298,9 @@ $$ \frac{TV\_{new}-1e^{-6}USDC}{TR\_{new}} \leq \frac{TV}{TR}\_{old} \leq \frac{
 Deleveragerer should be [healthy](#healthy) or [healthier](#is-healthier).
 Deleveragree should be ([healthy](#healthy) or [healthier](#is-healthier)) **and** [is fair deleverage](#is-fair-deleverage)
 
+### Structs
 
-## Structs
-
-### Settlement
+#### Settlement
 
 ```rust
 struct Settlement {
@@ -310,7 +315,7 @@ struct Settlement {
 }
 ```
 
-### PositionId
+#### PositionId
 
 ```rust
 struct PositionId {
@@ -318,7 +323,7 @@ struct PositionId {
 }
 ```
 
-### AssetId
+#### AssetId
 
 ```rust
 pub struct AssetId {
@@ -326,7 +331,7 @@ pub struct AssetId {
 }
 ```
 
-### Position
+#### Position
 
 ```rust
 #[starknet::storage_node]
@@ -334,18 +339,21 @@ pub struct Position {
     pub version: u8,
     pub owner_account: Option<ContractAddress>,
     pub owner_public_key: PublicKey,
+    // main collateral balance (USDC)
     pub collateral_balance: Balance,
     pub synthetic_balance: IterableMap<AssetId, SyntheticBalance>,
+    // other collateral balances (vault shares, spot assets)
+    pub collateral_balance: IterableMap<AssetId, Balance>,
 }
 ```
 
-### PublicKey
+#### PublicKey
 
 ```rust
 pub type PublicKey = felt252;
 ```
 
-### Balance
+#### Balance
 
 ```rust
 pub struct Balance {
@@ -353,7 +361,7 @@ pub struct Balance {
 }
 ```
 
-### RiskFactor
+#### RiskFactor
 
 Risk factor is a value that represents the risk of a synthetic asset.
 For each synthetic asset, the risk factor is a value between 0 and 1000.
@@ -367,10 +375,21 @@ pub struct RiskFactor {
 }
 ```
 
-### SyntheticAsset
+#### AssetType
 
 ```rust
-pub struct SyntheticAsset {
+pub enum AssetType {
+    #[default]
+    SYNTHETIC,
+    SPOT_COLLATERAL,
+    VAULT_SHARE_COLLATERAL
+}
+```
+
+#### Asset
+
+```rust
+pub struct Asset {
     pub id: AssetId,
     pub balance: Balance,
     pub price: Price,
@@ -378,16 +397,17 @@ pub struct SyntheticAsset {
 }
 ```
 
-### PositionData
+#### PositionData
 
 ```rust
 pub struct PositionData {
-    pub synthetics: Span<SyntheticAsset>,
-    pub collateral_balance: Balance,
+    pub base_collateral_balance: Balance,
+    pub synthetic_balance: Span<Asset>,
+    pub other_collateral_balance: Span<Asset>,
 }
 ```
 
-### FundingIndex
+#### FundingIndex
 
 `FundingIndex` represents a global funding rate tracker for each synthetic asset in the system.
 It's used to calculate funding payments between long and short position holders.
@@ -404,7 +424,7 @@ pub struct FundingIndex {
 }
 ```
 
-### SyntheticBalance
+#### SyntheticBalance
 
 ```rust
 pub struct SyntheticBalance {
@@ -415,43 +435,32 @@ pub struct SyntheticBalance {
 
 ```
 
-### Price
+#### Price
+
 Price is the price of a synthetic asset in the Perps system.
 The price is the price of the minimal unit of the asset in 10^-6 USD.
+
 ```rust
 pub struct Price {
-	// Unsigned 28-bit fixed point decimal percision.
+    // Unsigned 28-bit fixed point decimal percision.
     // 28-bit for the integer part and 28-bit for the fractional part.
     pub value: u64
 }
 ```
 
-
-### SyntheticDiffEnriched
-
-```rust
-pub struct SyntheticDiffEnriched {
-    pub asset_id: AssetId,
-    pub balance_before: Balance,
-    pub balance_after: Balance,
-    pub price: Price,
-    pub risk_factor_before: RiskFactor,
-    pub risk_factor_after: RiskFactor,
-}
-```
-
-### Signature
+#### Signature
 
 ```rust
 pub type Signature = Span<felt252>;
 ```
 
-### HashType
+#### HashType
 
 ```rust
 pub type HashType = felt252;
 ```
-### Timestamp
+
+#### Timestamp
 
 ```rust
 pub struct Timestamp {
@@ -459,7 +468,7 @@ pub struct Timestamp {
 }
 ```
 
-### TimeDelta
+#### TimeDelta
 
 ```rust
 pub struct TimeDelta {
@@ -467,8 +476,7 @@ pub struct TimeDelta {
 }
 ```
 
-
-### AssetStatus
+#### AssetStatus
 
 ```rust
 pub enum AssetStatus {
@@ -478,10 +486,10 @@ pub enum AssetStatus {
 }
 ```
 
-### SyntheticConfig
+#### AssetConfig
 
 ```rust
-struct SyntheticConfig {
+struct AssetConfig {
     version: u8,
     pub status: AssetStatus,
     pub risk_factor_first_tier_boundary: u128,
@@ -492,10 +500,10 @@ struct SyntheticConfig {
 }
 ```
 
-### SyntheticTimelyData
+#### AssetTimelyData
 
 ```rust
-struct SyntheticTimelyData {
+struct AssetTimelyData {
     version: u8,
     pub price: Price,
     pub last_price_update: Timestamp,
@@ -503,7 +511,8 @@ struct SyntheticTimelyData {
 }
 ```
 
-### FundingTick
+#### FundingTick
+
 In `funding_tick` we get `FundingIndex` for each active synthetic asset in the system.
 
 ```rust
@@ -513,7 +522,8 @@ pub struct FundingTick {
 }
 ```
 
-### SignedPrice
+#### SignedPrice
+
 In `price_tick` we get an array of `SignedPrice` for a single synthetic asset in the system and then we calculate the price in terms of the system's smallest unit.
 
 ```rust
@@ -524,21 +534,22 @@ pub struct SignedPrice {
     pub oracle_price: u128,
 }
 ```
-## Validations
 
-### Pause
+### Validations
+
+#### Pause
 
 Checking that the contract is not paused. This is done using pausable component.
 
-### Position
+#### Position
 
 Checking that the position exists in the system.
 
-### Operator Nonce
+#### Operator Nonce
 
 Checking that the caller of the function is the Operator and checks that the operator nonce received is the same as in the component. This is done using OperatorNonce component.
 
-### Signature
+#### Signature
 
 #### Caller validation
 
@@ -547,7 +558,6 @@ When a position has owner account the flows that require 2 phases (deposit, with
 #### Public key signature
 
 This is done using the [OZ account/src/utils/signature.cairo](https://github.com/OpenZeppelin/cairo-contracts/blob/main/packages/account/src/utils/signature.cairo).
-
 
 #### Get Message Hash
 
@@ -586,7 +596,6 @@ fn hash_struct(self: @TYPE) -> HashType {
 
 The `StarknetDomain` values are:
 
-
 ```rust
 const NAME: felt252 = 'Perpetuals';
 const VERSION: felt252 = 'v0';
@@ -611,6 +620,7 @@ pub const STARKNET_DOMAIN_TYPE_HASH: HashType =
 The public key is the position public key.
 
 ##### WithdrawArgs
+
 ```rust
 pub struct WithdrawArgs {
     pub recipient: ContractAddress,
@@ -816,37 +826,232 @@ impl StructHashImpl of StructHash<Order> {
 
 ```
 
-### Expiration
+##### Vault
+
+```rust
+pub struct Vault {
+    vault_position_id: PositionId,
+    vault_contract_address: ContractAddress,
+    vault_asset_id: AssetId,
+}
+
+/// selector!(
+///   "\"Vault\"(
+///    \"vault_position_id\":\"PositionId\",
+///    \"vault_contract_address\":\"ContractAddress\",
+///    \"vault_asset_id\":\"AssetId\",
+///    )
+///    \"PositionId\"(
+///    \"value\":\"u32\"
+///    )"
+///    \"AssetId\"(
+///    \"value\":\"felt\"
+///    )"
+/// );
+
+const VAULT_TYPE_HASH: HashType = XXX;
+
+impl StructHashImpl of StructHash<Order> {
+    fn hash_struct(self: @Vault) -> HashType {
+        let hash_state = PoseidonTrait::new();
+        hash_state.update_with(VAULT_TYPE_HASH).update_with(*self).finalize()
+    }
+}
+
+```
+
+##### DepositIntoVaultArgs
+
+```rust
+pub struct DepositIntoVaultArgs {
+    pub position_id: PositionId,
+    pub vault_position_id: PositionId,
+    pub collateral_id: AssetId,
+    pub quantized_amount: u64,
+    pub expiration: Timestamp,
+    pub salt: felt252,
+}
+
+/// selector!(
+///   "\"DepositIntoVaultArgs\"(
+///    \"position_id\":\"PositionId\",
+///    \"vault_position_id\":\"PositionId\",
+///    \"collateral_id\":\"AssetId\",
+///    \"quantized_amount\":\"u64\",
+///    \"expiration\":\"Timestamp\",
+///    \"salt\":\"felt\"
+///    )
+///    \"PositionId\"(
+///    \"value\":\"u32\"
+///    )"
+///    \"AssetId\"(
+///    \"value\":\"felt\"
+///    )"
+///    \"Timestamp\"(
+///    \"seconds\":\"u64\"
+///    )"
+/// );
+
+const DEPOSIT_INTO_VAULT_ARGS_TYPE_HASH: HashType = XXX;
+
+impl StructHashImpl of StructHash<DepositIntoVaultArgs> {
+    fn hash_struct(self: @DepositIntoVaultArgs) -> HashType {
+        let hash_state = PoseidonTrait::new();
+        hash_state.update_with(DEPOSIT_INTO_VAULT_ARGS_TYPE_HASH).update_with(*self).finalize()
+    }
+}
+```
+
+##### WithdrawFromVaultUserArgs
+
+```rust
+pub struct WithdrawFromVaultUserArgs {
+    pub position_id: PositionId,
+    pub vault_position_id: PositionId,
+    pub collateral_id: AssetId, 
+    pub number_of_shares: u64
+    pub minimum_quantized_amount: u64,
+    pub expiration: Timestamp, 
+    pub salt: felt
+}
+
+/// selector!(
+///   "\"WithdrawFromVaultUserArgs\"(
+///    \"position_id\":\"PositionId\",
+///    \"vault_position_id\":\"PositionId\",
+///    \"collateral_id\":\"AssetId\",
+///    \"number_of_shares\":\"u64\",
+///    \"minimum_quantized_amount\":\"u64\",
+///    \"expiration\":\"Timestamp\",
+///    \"salt\":\"felt\"
+///    )
+///    \"PositionId\"(
+///    \"value\":\"u32\"
+///    )"
+///    \"AssetId\"(
+///    \"value\":\"felt\"
+///    )"
+///    \"Timestamp\"(
+///    \"seconds\":\"u64\"
+///    )"
+/// );
+
+const WITHDRAW_FROM_VAULT_USER_ARGS_TYPE_HASH: HashType = XXX;
+
+impl StructHashImpl of StructHash<WithdrawFromVaultUserArgs> {
+    fn hash_struct(self: @WithdrawFromVaultUserArgs) -> HashType {
+        let hash_state = PoseidonTrait::new();
+        hash_state.update_with(WITHDRAW_FROM_VAULT_USER_ARGS_TYPE_HASH).update_with(*self).finalize()
+    }
+}
+```
+
+##### WithdrawFromVaultOwnerArgs
+
+```rust
+pub struct WithdrawFromVaultOwnerArgs {
+    user_hash: HashType, 
+    vault_share_execution_price: Price
+}
+
+/// selector!(
+///   "\"WithdrawFromVaultOwnerArgs\"(
+///    \"user_hash\":\"HashType\",
+///    \"vault_share_execution_price\":\"Price\",
+///    )
+///    \"HashType\"(
+///    \"value\":\"felt\"
+///    )"
+///    \"vault_share_execution_price\"(
+///    \"value\":\"u64\"
+///    )"
+/// );
+
+const WITHDRAW_FROM_VAULT_OWNER_ARGS_TYPE_HASH: HashType = XXX;
+
+impl StructHashImpl of StructHash<WithdrawFromVaultOwnerArgs> {
+    fn hash_struct(self: @WithdrawFromVaultOwnerArgs) -> HashType {
+        let hash_state = PoseidonTrait::new();
+        hash_state.update_with(WITHDRAW_FROM_VAULT_OWNER_ARGS_TYPE_HASH).update_with(*self).finalize()
+    }
+}
+```
+
+##### LiquidateVaultSharesArgs
+
+```rust
+pub struct LiquidateVaultSharesArgs {
+    vault_share_execution_price: Price,
+    vault_position_id: PositionId,
+    collateral_id: AssetId,
+    number_of_shares: u64,
+    expiration: Timestamp,
+    salt: felt252,
+}
+
+/// selector!(
+///   "\"LiquidateVaultSharesArgs\"(
+///    \"vault_share_execution_price\":\"Price\",
+///    \"vault_position_id\":\"PositionId\",
+///    \"collateral_id\":\"AssetId\",
+///    \"number_of_shares\":\"u64\",
+///    \"expiration\":\"Timestamp\",
+///    \"salt\":\"felt\"
+///    )
+///    \"PositionId\"(
+///    \"value\":\"u32\"
+///    )"
+///    \"AssetId\"(
+///    \"value\":\"felt\"
+///    )"
+///    \"Timestamp\"(
+///    \"seconds\":\"u64\"
+///    )"
+///    \"Price\"(
+///    \"value\":\"u64\"
+///    )"
+/// );
+
+const LIQUIDATE_VAULT_SHARES_ARGS_TYPE_HASH: HashType = XXX;
+
+impl StructHashImpl of StructHash<LiquidateVaultSharesArgs> {
+    fn hash_struct(self: @LiquidateVaultSharesArgs) -> HashType {
+        let hash_state = PoseidonTrait::new();
+        hash_state.update_with(LIQUIDATE_VAULT_SHARES_ARGS_TYPE_HASH).update_with(*self).finalize()
+    }
+}
+```
+
+#### Expiration
 
 Checking that the expiration timestamp of the transaction hasn’t expired.
 
-
-### Requests
+#### Requests
 
 Checking if there’s an approved request in the [requests component](#requests) ([deposit component](#deposit)) for the current (deposit) flow.
 
-### Funding
+#### Funding
 
 At the start of each flow, we check if `max_funding_interval` has passed since the `last_funding_tick`.
 
-### Price
+#### Price
 
 At the start of each flow, we check if `max_price_interval` has passed since the `last_price_validation`.
 When this condition is met, we iterate through all active synthetic assets in the system and verify if the `max_price_interval` has elapsed since each asset's `last_price_update`. Following this verification, we update the `last_price_validation` timestamp.
 
-### Asset
+#### Asset
 
 Checking that the asset exists in the system and is active.
 
-### Fulfillment
+#### Fulfillment
 
 Check whether the order hasn’t already been completely fulfilled by checking whether the fulfillment storage map value of the message hash is smaller than the order base amount.
 
-### Fundamental
+#### Fundamental
 
 Position after the change is [healthy](#healthy) or [is healthier](#is-healthier) after change.
 
-## Errors
+### Errors
 
 ```rust
 pub const CANT_TRADE_WITH_FEE_POSITION: felt252 = 'CANT_TRADE_WITH_FEE_POSITION';
@@ -909,12 +1114,12 @@ pub fn position_not_liquidatable(position_id: PositionId) -> ByteArray {
 }
 ```
 
-## Components
+### Components
 
-### Operator Nonce
+#### Operator Nonce
 A component for operator flows - checks that the nonce is valid and that the Operator is the caller.
 
-#### Interface
+##### Interface
 
 ```rust
 #[starknet::interface]
@@ -922,7 +1127,9 @@ pub trait IOperatorNonce<TContractState> {
     fn get_operator_nonce(self: @TContractState) -> u64;
 }
 ```
-#### Storage
+
+##### Storage
+
 ```rust
 #[storage]
 pub struct Storage {
@@ -930,11 +1137,11 @@ pub struct Storage {
 }
 ```
 
-### Pausable
+#### Pausable
 
 A security component for the pause mechanism.
 
-#### Interface
+##### Interface
 
 ```rust
 #[starknet::interface]
@@ -944,24 +1151,31 @@ pub trait IPausable<TState> {
     fn unpause(ref self: TState);
 }
 ```
-#### Storage
+
+##### Storage
+
 ```rust
 #[storage]
 pub struct Storage {
     pub paused: bool,
 }
 ```
-#### Events
+
+##### Events
+
 ```rust
 pub enum Event {
     Paused: Paused,
     Unpaused: Unpaused,
 }
+
 ```
-### Replaceability
+
+#### Replaceability
 
 In charge of the upgrades of the contract
-#### Interface
+
+##### Interface
 
 ```rust
 #[starknet::interface]
@@ -975,7 +1189,9 @@ pub trait IReplaceable<TContractState> {
     fn replace_to(ref self: TContractState, implementation_data: ImplementationData);
 }
 ```
-#### Storage
+
+##### Storage
+
 ```rust
     #[storage]
     struct Storage {
@@ -989,7 +1205,9 @@ pub trait IReplaceable<TContractState> {
         finalized: bool,
     }
 ```
-#### Events
+
+##### Events
+
 ```rust
 pub enum Event {
     ImplementationAdded: ImplementationAdded,
@@ -999,11 +1217,11 @@ pub enum Event {
 }
 ```
 
-### Requests
+#### Requests
 
 A component for registration of user requests and validation. The component allows users request the following flows: `transfer_request`, `withdraw_request`, `set_public_key_request` and `set_owner_account_request` before the operator can execute them.
 
-#### Interface
+##### Interface
 
 ```rust
 #[starknet::interface]
@@ -1020,7 +1238,7 @@ pub enum RequestStatus {
 }
 ```
 
-#### Storage
+##### Storage
 
 ```rust
 #[storage]
@@ -1029,7 +1247,7 @@ pub struct Storage {
 }
 ```
 
-#### Errors
+##### Errors
 
 ```rust
 pub const CALLER_IS_NOT_OWNER_ACCOUNT: felt252 = 'CALLER_IS_NOT_OWNER_ACCOUNT';
@@ -1038,11 +1256,11 @@ pub const REQUEST_ALREADY_REGISTERED: felt252 = 'REQUEST_ALREADY_REGISTERED';
 pub const REQUEST_NOT_REGISTERED: felt252 = 'REQUEST_NOT_REGISTERED';
 ```
 
-### Roles
+#### Roles
 
 In charge of access control in the contract.
 
-#### Interface
+##### Interface
 
 ```rust
 #[starknet::interface]
@@ -1074,7 +1292,9 @@ pub trait IRoles<TContractState> {
     fn remove_security_agent(ref self: TContractState, account: ContractAddress);
 }
 ```
-#### Events
+
+##### Events
+
 ```rust
 pub enum Event {
     AppGovernorAdded: AppGovernorAdded,
@@ -1096,7 +1316,7 @@ pub enum Event {
 }
 ```
 
-#### Errors
+##### Errors
 
 ```rust
 pub(crate) enum AccessErrors {
@@ -1119,11 +1339,11 @@ pub(crate) enum AccessErrors {
 }
 ```
 
-### Assets
+#### Assets
 
 In charge of all assets related operations.
 
-#### Storage
+##### Storage
 
 ```rust
 #[storage]
@@ -1139,8 +1359,9 @@ pub struct Storage {
     collateral_token_contract: IERC20Dispatcher,
     collateral_quantum: u64,
     num_of_active_synthetic_assets: usize,
-    pub synthetic_config: Map<AssetId, Option<SyntheticConfig>>,
-    pub synthetic_timely_data: IterableMap<AssetId, SyntheticTimelyData>,
+    pub synthetic_config: Map<AssetId, Option<AssetConfig>>,
+    pub synthetic_timely_data: IterableMap<AssetId, AssetTimelyData>,
+    pub collateral_timely_data: IterableMap<AssetId, AssetTimelyData>,
     pub risk_factor_tiers: Map<AssetId, Vec<FixedTwoDecimal>>,
     asset_oracle: Map<AssetId, Map<PublicKey, felt252>>,
     max_oracle_price_validity: TimeDelta,
@@ -1148,7 +1369,8 @@ pub struct Storage {
 }
 
 ```
-#### Events
+
+##### Events
 
 ```rust
 #[event]
@@ -1164,7 +1386,7 @@ pub enum Event {
 }
 ```
 
-##### FundingTick
+###### FundingTick
 
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
@@ -1175,7 +1397,7 @@ pub struct FundingTick {
 }
 ```
 
-##### PriceTick
+###### PriceTick
 
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
@@ -1186,7 +1408,7 @@ pub struct PriceTick {
 }
 ```
 
-##### AssetActivated
+###### AssetActivated
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
 pub struct AssetActivated {
@@ -1195,7 +1417,7 @@ pub struct AssetActivated {
 }
 ```
 
-##### SyntheticAdded
+###### SyntheticAdded
 
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
@@ -1210,7 +1432,24 @@ pub struct SyntheticAdded {
 }
 ```
 
-##### SyntheticAssetDeactivated
+###### SpotCollateralAdded
+
+```rust
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct SpotCollateralAdded {
+    #[key]
+    pub asset_id: AssetId,
+    #[key]
+    pub erc20_contract_address: ContractAddress,
+    pub quantum: u64,
+    pub risk_factor_tiers: Span<u8>,
+    pub risk_factor_first_tier_boundary: u128,
+    pub risk_factor_tier_size: u128,
+    pub quorum: u8,
+}
+```
+
+###### SyntheticAssetDeactivated
 
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
@@ -1220,7 +1459,7 @@ pub struct SyntheticAssetDeactivated {
 }
 ```
 
-##### AssetQuorumUpdated
+###### AssetQuorumUpdated
 
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
@@ -1232,7 +1471,7 @@ pub struct AssetQuorumUpdated {
 }
 ```
 
-##### OracleRemoved
+###### OracleRemoved
 
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
@@ -1244,7 +1483,8 @@ pub struct OracleRemoved {
 }
 ```
 
-##### OracleAdded
+###### OracleAdded
+
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
 pub struct OracleAdded {
@@ -1257,11 +1497,23 @@ pub struct OracleAdded {
 }
 ```
 
-#### Public Functions
+###### VaultRegistered
 
-##### Funding Tick
+```rust
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct VaultRegistered {
+    #[key]
+    pub vault_position_id: PositionId,
+    #[key]
+    pub vault_asset_id: AssetId,
+    #[key]
+    pub vault_contract_address: ContractAddress,
+}
+```
 
-###### Description
+##### Public Functions
+
+###### Funding Tick
 
 Updates the funding index of every active, and non-pending, asset in the system.
 **`funding_ticks` span must be sorted according to the asset id**
@@ -1277,6 +1529,7 @@ fn funding_tick(
 Funding is calculated on the go and applied during any flow that requires checking the collateral balance. This calculation is done without updating the storage. When updating a position's synthetic assets, the following steps are taken:
 
 When the funding index increases over time:
+
 - Long positions (positive balance) pay funding (negative result)
 - Short positions (negative balance) receive funding (positive result)
 When the funding index decreases over time:
@@ -1290,15 +1543,14 @@ to ensure the correct direction of payment based on position type.
    $$change=(old\\_funding\\_index - new\\_funding\\_index)*balance $$
 
 Add `change` to the collateral balance (notice that `change` can be positive or negative)
-
 2. Update the cached\_funding\_index of the synthetic asset
 3. Update the synthetic balance.
 
-###### Access Control
+**Access Control:**
 
 Only the Operator can execute.
 
-###### Validations
+**Validations:**
 
 1. [Pausable check](#pausable)
 2. [Operator Nonce check](#operator-nonce)
@@ -1309,15 +1561,16 @@ Only the Operator can execute.
    In practice, we would check:
    $prev\\_idx-new\\_idx \leq max\\_funding\\_rate * (block\\_timestamp-prev\\_funding\\_time) * asset\\_price$
 
-###### Logic
+**Logic:**
 
-1. Run Validations
+1. Run validations
 2. Iterate over the funding ticks:
    1. Update asset funding index if asset is active else panic.
    2. prev\_asset\_id \= curr\_tick.asset\_id
 3. Update global last\_funding\_tick timestamp in storage
 
-###### Errors
+**Errors:**
+
 - PAUSED
 - INVALID\_NONCE
 - ONLY\_OPERATOR
@@ -1328,13 +1581,11 @@ Only the Operator can execute.
 - NOT_SYNTHETIC
 - INVALID_FUNDING_RATE
 
-###### Emits
+**Emits:**
 
 For each element in `funding_ticks`: [FundingTick](#fundingtick-1)
 
-##### Price Tick
-
-###### Description
+###### Price Tick
 
 Price tick for an asset to update its’ price.
 **price\_tick span must be sorted according to the signers public keys**
@@ -1349,11 +1600,11 @@ fn price_tick(
 )
 ```
 
-###### Access Control
+**Access Control:**
 
 Only the Operator can execute.
 
-###### Validations
+**Validations:**
 
 1. [Pausable check](#pausable)
 2. [Operator Nonce check](#operator-nonce)
@@ -1362,7 +1613,7 @@ Only the Operator can execute.
 5. `signed_prices` is sorted according to the signers public key
 6. Validate that the `oracle_price` is actually the median price (odd: the middle; even: between middles)
 
-###### Logic
+**Logic:**
 
 1. For each `signed_price` in `signed_prices`:
    1. Validate stark signature on:
@@ -1388,12 +1639,13 @@ $median\\_price = \frac{price*2^{28}}{asset\\_id.resolution\\_factor *10^{12} }$
    2. num_of_active_synthetic_asset+=1
    3. Emit AssetActivated
 
-###### Emits
+**Emits:**
 
 [PriceTick](#pricetick-1)
 [AssetActivated](#assetactivated)
 
-###### Errors
+**Errors:**
+
 - PAUSED
 - ONLY_OPERATOR
 - INVALID_NONCE
@@ -1404,9 +1656,7 @@ $median\\_price = \frac{price*2^{28}}{asset\\_id.resolution\\_factor *10^{12} }$
 - INVALID_MEDIAN
 - INVALID_PRICE_TIMESTAMP
 
-##### Add Synthetic Asset
-
-###### Description
+###### Add Synthetic Asset
 
 Adds a synthetic asset.
 
@@ -1436,43 +1686,106 @@ fn add_synthetic_asset(
 )
 ```
 
-###### Access Control
+**Access Control:**
 
 Only APP\_GOVERNOR can execute.
 
-###### Validations
+**Validations:**
 
 1. App governor is the caller.
-2. asset\_id does not exist in the system.
+2. `asset_id` does not exist in the system.
 3. `risk_factor_tiers` length is non zero.
 4. `risk_factor_first_tier_boundary`, `risk_factor_tier_size`, `quorum`, and `resolution_factor` are non zero.
 5. All values in $0 \leq risk\\_factor\\_tiers \leq 100$ .
 6. `risk_factor_tiers` is sorted.
 
+**Logic:**
 
-###### Logic
-
-1. Run [validations](#validations-22).
+1. Run validations.
 2. Add a new entry to synthetic\_config with the params:
 3. Initialize status \= AssetStatus::PENDING. It will be updated during the next price tick of this asset.
 4. Add a new entry to synthetic\_timely\_data map with:
    1. price = 0.
    2. funding\_index = 0.
    3. last\_price\_update = Zero::zero().
-4. Add the `risk_factor_tiers` to the assets risk\_factor map.
+5. Add the `risk_factor_tiers` to the assets risk\_factor map.
 
-###### Emits
+**Emits:**
 
 [SyntheticAdded](#syntheticadded)
 
-###### Errors
+**Errors:**
+
 - ONLY_APP_GOVERNOR
 - SYNTHETIC_ALREADY_EXISTS
 - INVALID_ZERO_QUORUM
 
-##### Deactivate Synthetic
+###### Add Collateral Asset
 
-###### Description
+Adds a spot collateral asset.
+
+Risk factor tiers example:
+**risk\_factor\_tiers \= \[10, 20, 30, 50, 100, 200, 400\]**
+**risk\_factor\_first\_tier\_boundary \= 10,000**
+**risk\_factor\_tier\_size \= 20,000**
+which means:
+
+- \[0, 10,000\) \-\> 1%
+- \[10,000, 30,000\) \-\> 2%
+- \[30,000, 50,000\) \-\> 3%
+- \[50,000, 70,000\) \-\> 5%
+- \[70,000, 90,000\) \-\> 10%
+- \[90,000, 110,000\) \-\> 20%
+- \[110,000, MAX\] \-\> 40%
+
+```rust
+fn add_collateral_asset(
+    ref self: ContractState,
+    asset_id: AssetId,
+    erc20_contract_address: ContractAddress,
+    quantum: u64,
+    resolution_factor: u64,
+    risk_factor_tiers: Span<u8>,
+    risk_factor_first_tier_boundary: u128,
+    risk_factor_tier_size: u128,
+    quorum: u8,
+)
+```
+
+**Access Control:**
+
+Only APP\_GOVERNOR can execute.
+
+**Validations:**
+
+1. App governor is the caller.
+2. `asset_id` does not exist in the system.
+3. `risk_factor_tiers` length is non zero.
+4. `risk_factor_first_tier_boundary`, `risk_factor_tier_size`, `quorum`, and `resolution_factor` are non zero.
+5. All values in $0 \leq risk\\_factor\\_tiers \leq 100$ .
+6. `risk_factor_tiers` is sorted.
+7. `erc20_contract_address` is not zero.
+8. `quantum` is not zero.
+9. `resolution_factor` is not zero.
+
+**Logic:**
+
+1. Run validations.
+2. Add a new entry to spot\_collateral\_config with the params
+3. Initialize status \= AssetStatus::PENDING. It will be updated during the next price tick of this asset.
+4. Add a new entry to spot\_collateral\_timely\_data map with:
+   1. price = 0.
+   2. last\_price\_update = Zero::zero().
+5. Add the `risk_factor_tiers` to the assets risk\_factor map.
+6. add the new asset to the deposit component
+
+**Emits:**
+[SpotCollateralAdded](#spotcollateraladded)
+
+**Errors:**
+
+
+###### Deactivate Synthetic
 
 Deactivate synthetic asset.
 
@@ -1483,32 +1796,30 @@ fn deactivate_synthetic(
 )
 ```
 
-###### Access Control
+**Access Control:**
 
 Only the App governor can execute.
 
-###### Validations
+**Validations:**
 
 1. App governor is the caller.
 2. [Asset](#asset) check.
 
-###### Logic
+**Logic:**
 
 1. Update synthetic status to AssetStatus::INACTIVE.
 2. Decrement num_of_active_synthetic_assets.
 
-###### Emits
+**Emits:**
 
 [SyntheticAssetDeactivated](#syntheticassetdeactivated)
 
-###### Errors
+**Errors:**
+
 - ONLY_APP_GOVERNOR
 - SYNTHETIC_NOT_EXISTS
 
-
-##### Add Oracle To Asset
-
-###### Description
+###### Add Oracle To Asset
 
 ```rust
 fn add_oracle_to_asset(
@@ -1520,11 +1831,11 @@ fn add_oracle_to_asset(
 )
 ```
 
-###### Access Control
+**Access Control:**
 
 Only APP\_GOVERNOR can execute.
 
-###### Validations
+**Validations:**
 
 1. App Governor is the caller.
 2. `oracle_public_key` does not exist in the `asset_oracle` map.
@@ -1532,26 +1843,24 @@ Only APP\_GOVERNOR can execute.
 4. `asset_name` is 128 bits
 5. `oracle_name` is 40 bits
 
-
-###### Logic
+**Logic:**
 
 1. Run validations
 2. `shifted_asset_name = TWO_POW_40 * asset_name`
 3. Add `oracle_public_key` as the key to `shifted_asset_name || oracle_name` into the inner `asset_id` map of `asset_oracle`.
 
-###### Emits
+**Emits:**
 
 [OracleAdded](#oracleadded)
 
-###### Errors
+**Errors:**
+
 - ONLY\_APP\_GOVERNOR
 - ORACLE_ALREADY_EXISTS
 - ORACLE_NAME_TOO_LONG
 - ASSET_NAME_TOO_LONG
 
-##### Remove Oracle
-
-###### Description
+###### Remove Oracle
 
 ```rust
 fn remove_oracle_from_asset(
@@ -1561,31 +1870,30 @@ fn remove_oracle_from_asset(
 )
 ```
 
-###### Access Control
+**Access Control:**
 
 Only APP\_GOVERNOR can execute.
 
-###### Validations
+**Validations:**
 
 1. App Governor is the caller.
 2. `oracle_public_key` exist in the `asset_id` inner map of `asset_oracle`.
 
-###### Logic
+**Logic:**
 
 1. Run validations
 2. Remove `oracle_public_key` from the `asset_id` inner map of `asset_oracle`.
 
-###### Emits
+**Emits:**
 
 [OracleRemoved](#oracleremoved)
 
-###### Errors
+**Errors:**
+
 - ONLY\_APP\_GOVERNOR
 - ORACLE_NOT_EXISTS
 
-##### Update Synthetic Quorum
-
-###### Description
+###### Update Synthetic Quorum
 
 ```rust
 fn update_synthetic_quorum(
@@ -1595,33 +1903,80 @@ fn update_synthetic_quorum(
 )
 ```
 
-###### Access Control
+**Access Control:**
 
 Only APP\_GOVERNOR can execute.
 
-###### Validations
+**Validations:**
 
 1. App Governor is the caller.
 2. `quorum` is non zero.
 3. [Asset](#asset) check \- `synthetic_id` is not inactive.
 
-###### Logic
+**Logic:**
 
 1. Run validations
 2. Update `quorum` of the `synthetic_id` config.
 
-###### Emits
+**Emits:**
 
 [AssetQuorumUpdated](#assetquorumupdated)
 
-###### Errors
+**Errors:**
+
 - ONLY\_APP\_GOVERNOR
 - SYNTHETIC_NOT_EXISTS
 - SYNTHETIC_NOT_ACTIVE
 - INVALID_ZERO_QUORUM
 - INVALID_SAME_QUORUM
 
-#### Errors
+###### RegisterVault
+
+Register vault is called by the operator to register a vault position
+
+```rust
+fn register_vault(
+    ref self: ContractState,
+    vault_position_id: PositionId,
+    vault_contract_address: ContractAddress,
+    vault_asset_id: AssetId,
+    vault_owner_signature: Signature,
+);
+```
+
+**Access Control:**
+
+Only the Operator can execute.
+
+**Hash:**
+
+[get\_message\_hash](#get-message-hash) on [Vault](#vault) with `vault_position_id` public_key.
+
+**Validations:**
+
+1. [signature validation](#signature) for vault register request by the vault_position_id public key
+2. [Pausable check](#pausable)
+3. [Operator Nonce check](#operator-nonce)
+4. [Position check](#position) for `vault_position_id`
+5. Caller is the operator.
+6. `vault_position_id` is not a registered position.
+7. `vault_position_id` is not a registered vault position.
+8. `vault_contract_address` is not zero.
+9. `vault_asset_id` is not zero and registered.
+
+**Logic:**
+
+1. Run validations
+2. Register the vault position id to the vault contract address and asset id in the vault_positions map
+
+**Emits:**
+
+[VaultRegistered](#vaultregistered)
+
+**Errors:**
+
+##### Errors
+
 ```rust
 pub const ALREADY_INITIALIZED: felt252 = 'ALREADY_INITIALIZED';
 pub const ASSET_ALREADY_EXISTS: felt252 = 'ASSET_ALREADY_EXISTS';
@@ -1668,13 +2023,13 @@ pub const ZERO_MAX_FUNDING_RATE: felt252 = 'ZERO_MAX_FUNDING_RATE';
 pub const ZERO_MAX_ORACLE_PRICE: felt252 = 'ZERO_MAX_ORACLE_PRICE';
 ```
 
-### Deposit
+#### Deposit
 
 A component for handling deposits.
 
-#### Structs
+##### Structs
 
-##### DepositStatus
+###### DepositStatus
 
 ```rust
 pub enum DepositStatus {
@@ -1686,7 +2041,7 @@ pub enum DepositStatus {
 }
 ```
 
-#### Storage
+##### Storage
 
 ```rust
 #[storage]
@@ -1695,7 +2050,9 @@ pub struct Storage {
     cancel_delay: TimeDelta,
 }
 ```
-#### Events
+
+##### Events
+
 ```rust
 #[event]
 #[derive(Drop, PartialEq, starknet::Event)]
@@ -1706,7 +2063,8 @@ pub enum Event {
 }
 ```
 
-##### Deposit
+###### Deposit
+
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
 pub struct Deposit {
@@ -1722,7 +2080,8 @@ pub struct Deposit {
 }
 ```
 
-##### DepositProcessed
+###### DepositProcessed
+
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
 pub struct DepositProcessed {
@@ -1738,7 +2097,7 @@ pub struct DepositProcessed {
 }
 ```
 
-##### DepositCanceled
+###### DepositCanceled
 
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
@@ -1755,7 +2114,8 @@ pub struct DepositCanceled {
 }
 ```
 
-#### Errors
+##### Errors
+
 ```rust
 pub const ALREADY_INITIALIZED: felt252 = 'ALREADY_INITIALIZED';
 pub const CANCELLETION_TIME_PASSED: felt252 = 'CANCELLETION_TIME_PASSED';
@@ -1768,40 +2128,41 @@ pub const INVALID_CANCEL_DELAY: felt252 = 'INVALID_CANCEL_DELAY';
 pub const ZERO_AMOUNT: felt252 = 'ZERO_AMOUNT';
 ```
 
-#### Public Functions
+##### Public Functions
 
-##### Deposit
-
-###### Description
+###### Deposit
 
 The user registers a deposit request using the [Deposit component](#deposit) \- this happens in the Deposit component.
 
 ```rust
 fn deposit(
-	ref self: ContractState,
+    ref self: ContractState,
     position_id: PositionId,
+    asset_id: AssetId,
     quantized_amount: u64,
     salt: felt252,
 )
 ```
 
-###### Access Control
+**Access Control:**
 
 Anyone can execute.
 
-###### Hash
+**Hash:**
 
 ```rust
 pub fn deposit_hash(
     token_address: ContractAddress,
     depositor: ContractAddress,
     position_id: PositionId,
+    asset_id: AssetId,
     quantized_amount: u64,
     salt: felt252,
 ) -> HashType {
     PedersenTrait::new(base: token_address.into())
         .update_with(value: depositor)
         .update_with(value: position_id)
+        .update_with(value: asset_id)
         .update_with(value: quantized_amount)
         .update_with(value: salt)
         .finalize()
@@ -1809,28 +2170,28 @@ pub fn deposit_hash(
 
 ```
 
-###### Validations
+**Validations:**
 
 1. `quantized_amount` is non zero.
 2. `deposit_hash` is not registered in `registered_deposits`.
+3. `asset_id` is a registered asset or the base collateral.
+4. if `asset_id` is a vault asset then `position_id` is not a vault position.
 
-###### Logic
+**Logic:**
 
 1. Register `deposit_hash` as `DepositStatus::PENDING` in `registered_deposits` with the current timestamp.
 2. Transfer `quantized_amount*.quantum` from `get_caller_address()` to `get_contract_address()`
 
-###### Errors
+**Errors:**
 
 - ASSET\_NOT\_REGISTERED
 - DEPOSIT\_ALREADY\_REGISTERED
 
-###### Emits
+**Emits:**
 
 [deposit](#deposit-1)
 
-##### Process Deposit
-
-###### Description
+###### Process Deposit
 
 The user deposits collateral into the system.
 
@@ -1845,11 +2206,12 @@ fn process_deposit(
 )
 
 ```
-###### Access Control
+
+**Access Control:**
 
 Only the Operator can execute.
 
-###### Hash
+**Hash:**
 
 ```rust
 pub fn deposit_hash(
@@ -1868,7 +2230,7 @@ pub fn deposit_hash(
 }
 ```
 
-###### Validations
+**Validations:**
 
 We assume that the position is always healthier for deposit
 
@@ -1877,13 +2239,13 @@ We assume that the position is always healthier for deposit
 3. [Operator Nonce check](#operator-nonce)
 4. [Request approval check on deposit message](#requests)
 
-###### Logic
+**Logic:**
 
 1. Run deposit validations.
 2. Add the amount to the collateral balance in the position.
 3. Mark deposit request as `DepositStatus::PROCESSED`.
 
-###### Errors
+**Errors:**
 
 - PAUSED
 - ONLY\_OPERATOR
@@ -1900,30 +2262,28 @@ We assume that the position is always healthier for deposit
 - ASSET\_NOT\_REGISTERED
 - NOT_SYNTHETIC
 
-###### Emits
+**Emits:**
 
 [deposit\_processed](#depositprocessed)
 
-##### Cancel Pending Deposit
-
-###### Description
+###### Cancel Pending Deposit
 
 The user cancels a registered deposit request in the Deposit component.
 
 ```rust
 fn cancel_pending_deposit(
-	ref self: ContractState,
+    ref self: ContractState,
     position_id: PositionId,
     quantized_amount: u64,
     salt: felt252,
 )
 ```
 
-###### Access Control
+**Access Control:**
 
 Anyone can execute.
 
-###### Hash
+**Hash:**
 
 ```rust
 pub fn deposit_hash(
@@ -1942,39 +2302,74 @@ pub fn deposit_hash(
 }
 ```
 
-###### Validations
+**Validations:**
 
 1. `deposit_hash` is in `DepositStatus::PENDING` in `registered_deposits`
 2. `cancel_delay` elapsed since the deposit was registered.
 
-###### Logic
+**Logic:**
 
 1. Run validations
 2. Mark deposit request as `DepositStatus::CANCELED`.
 3. Transfer `quantized_amount*quantum` from `get_contract_address()` to `get_caller_address()`
 
-###### Errors
+**Errors:**
+
 - DEPOSIT_NOT_CANCELABLE
 - DEPOSIT_NOT_REGISTERED
 - DEPOSIT_ALREADY_PROCESSED
 - DEPOSIT_ALREADY_CANCELED
 - ASSET\_NOT\_REGISTERED
 
-###### Emits
+**Emits:**
 [deposit\_canceled](#depositcanceled)
 
-### Positions
+###### RegisterNewAsset
+
+The operator registers a new collateral asset to the system.
+
+```rust
+fn register_new_asset(
+    ref self: ContractState,
+    asset_id: AssetId,
+    contract_address: ContractAddress,
+)
+```
+
+**Access Control:**
+
+Only the Operator can execute.
+
+**Hash:**
+
+
+**Validations:**
+
+1. `asset_id` is not registered.
+2. 
+3. 
+
+**Logic:**
+
+1. 
+2. 
+
+**Errors:**
+
+**Emits:**
+
+
+#### Positions
 
 In charge of all position related flows.
-#### Public Functions
 
-##### New Position
+##### Public Functions
 
-###### Description
+###### New Position
 
 ```rust
 fn new_position(
-	ref self: ContractState,
+    ref self: ContractState,
     operator_nonce: u64,
     position_id: PositionId,
     owner_public_key: felt252,
@@ -1982,25 +2377,25 @@ fn new_position(
 )
 ```
 
-###### Access Control
+**Access Control:**
 
 Only the Operator can execute.
 
-###### Hash
+**Hash:**
 
-###### Validations
+**Validations:**
 
 1. [Pausable check](#pausable)
 2. [Operator Nonce check](#operator-nonce)
 3. Check that the `position_id` doesn’t exist
 4. Check that `owner_public_key` is not zero
 
-###### Logic
+**Logic:**
 
-1. [Run open position validations](#validations-2)
+1. Run validations
 2. create a new position with `owner_public_key` and `owner_account` under `position_id`
 
-###### Errors
+**Errors:**
 
 - PAUSED
 - ONLY\_OPERATOR
@@ -2008,13 +2403,11 @@ Only the Operator can execute.
 - POSITION\_ALREADY\_EXISTS
 - INVALID\_ZERO\_PUBLIC\_KEY
 
-###### Emits
+**Emits:**
 
 [NewPosition](#newposition)
 
-##### Set Owner Account Request
-
-###### Description
+###### Set Owner Account Request
 
 The user registers an set position owner account request by registering a fact.
 
@@ -2028,15 +2421,15 @@ fn set_owner_account_request(
 )
 ```
 
-###### Access Control
+**Access Control:**
 
 Anyone can execute.
 
-###### Hash
+**Hash:**
 
 [get\_message\_hash](#get-message-hash) on [SetOwnerAccount](#setowneraccount) with `new_public_key`.
 
-###### Validations
+**Validations:**
 
 1. position has no owner account.
 2. `new_owner_account` is not zero.
@@ -2044,12 +2437,12 @@ Anyone can execute.
 4. caller address is `new_owner_account`
 5. [signature validation](#signature)
 
-###### Logic
+**Logic:**
 
-1. Run validation
+1. Run validations
 2. Register a request with status `RequestStatus::PENDING` to set owner account using the requests component.
 
-###### Errors
+**Errors:**
 
 - INVALID\_POSITION
 - POSITION_HAS_OWNER_ACCOUNT
@@ -2058,13 +2451,11 @@ Anyone can execute.
 - CALLER\_IS\_NOT\_OWNER\_ACCOUNT
 - INVALID\_STARK\_KEY\_SIGNATURE
 
-###### Emits
+**Emits:**
 
 [SetOwnerAccountRequest](#setowneraccountrequest)
 
-##### Set Owner Account
-
-###### Description
+###### Set Owner Account
 
 Updates the account owner only for a no-owner position.
 
@@ -2079,15 +2470,15 @@ fn set_owner_account(
 )
 ```
 
-###### Access Control
+**Access Control:**
 
 Only the Operator can execute.
 
-###### Hash
+**Hash:**
 
 [get\_message\_hash](#get-message-hash) on [SetOwnerAccountArgs](#setowneraccountargs) with position `public_key`.
 
-###### Validations
+**Validations:**
 
 1. [Pausable check](#pausable)
 2. [Operator Nonce check](#operator-nonce)
@@ -2095,12 +2486,12 @@ Only the Operator can execute.
 4. [Position check](#position-1)
 5. [Request approval check on set public key message](#requests-1)
 
-###### Logic
+**Logic:**
 
 1. Run validations
 2. Set the `new_owner_account` as the owner account of the position
 
-###### Errors
+**Errors:**
 
 - PAUSED
 - ONLY\_OPERATOR
@@ -2109,13 +2500,11 @@ Only the Operator can execute.
 - INVALID\_POSITION
 - INVALID\_STARK\_SIGNATURE
 
-###### Emits
+**Emits:**
 
 [SetOwnerAccount](#setowneraccount)
 
-##### Set Public Key Request
-
-###### Description
+###### Set Public Key Request
 
 The user registers an update position public key request by registering a fact.
 
@@ -2129,27 +2518,27 @@ fn set_public_key_request(
 )
 ```
 
-###### Access Control
+**Access Control:**
 
 Anyone can execute.
 
-###### Hash
+**Hash:**
 
 [get\_message\_hash](#get-message-hash) on [SetPublicKeyArgs](#setpublickeyargs) with `new_public_key`.
 
-###### Validations
+**Validations:**
 
 1. [signature validation](#signature)
 2. `new_public_key` is not the same as the current public key
 3. Caller address is the owner account of the position.
 4. Request is not registered already.
 
-###### Logic
+**Logic:**
 
-1. Run validation
+1. Run validations
 2. Register a request with status `RequestStatus::PENDING` to set public key using the requests component.
 
-###### Errors
+**Errors:**
 
 - INVALID\_POSITION
 - REQUEST_ALREADY_REGISTERED
@@ -2157,13 +2546,11 @@ Anyone can execute.
 - CALLER\_IS\_NOT\_OWNER\_ACCOUNT
 - INVALID\_STARK\_KEY\_SIGNATURE
 
-###### Emits
+**Emits:**
 
 [SetPublicKeyRequest](#setpublickeyrequest)
 
-##### Set Public Key
-
-###### Description
+###### Set Public Key
 
 Update the public key of a position.
 
@@ -2178,29 +2565,29 @@ fn set_public_key(
 )
 ```
 
-###### Access Control
+**Access Control:**
 
 Only the Operator can execute.
 
-###### Hash
+**Hash:**
 
 [get\_message\_hash](#get-message-hash) on [SetPublicKeyArgs](#setpublickeyargs) with `new_public_key`.
 
-###### Validations
+**Validations:**
 
 1. [Pausable check](#pausable)
 2. [Operator Nonce check](#operator-nonce)
 3. [Expiration validation](#expiration)
 4. [Request approval check on set public key message](#requests-1)
 
-###### Logic
+**Logic:**
 
 1. Run [validations](#validations-15)
 2. Update the public key of the position to the `new_public_key`
 3. Mark request as processed
 
 
-###### Errors
+**Errors:**
 
 - PAUSED
 - INVALID\_NONCE
@@ -2210,11 +2597,12 @@ Only the Operator can execute.
 - REQUEST_NOT_REGISTERED
 - REQUEST_ALREADY_PROCESSED
 
-###### Emits
+**Emits:**
 
 [SetPublicKey](#setpublickey)
 
-#### Storage
+##### Storage
+
 ```rust
 pub const FEE_POSITION: PositionId = PositionId { value: 0 };
 pub const INSURANCE_FUND_POSITION: PositionId = PositionId { value: 1 };
@@ -2222,9 +2610,12 @@ pub const INSURANCE_FUND_POSITION: PositionId = PositionId { value: 1 };
 #[storage]
 pub struct Storage {
     positions: Map<PositionId, Position>,
+    vault_positions: Map<PositionId, (ContractAddress, AssetId)>,
 }
 ```
-#### Events
+
+##### Events
+
 ```rust
 #[event]
 #[derive(Drop, PartialEq, starknet::Event)]
@@ -2236,7 +2627,7 @@ pub enum Event {
     SetPublicKeyRequest: events::SetPublicKeyRequest,
 }
 ```
-##### NewPosition
+###### NewPosition
 
 ```rust
 #[derive(starknet::Event)]
@@ -2251,7 +2642,8 @@ pub struct NewPosition {
 }
 ```
 
-##### SetOwnerAccountRequest
+###### SetOwnerAccountRequest
+
 ```rust
 #[derive(starknet::Event)]
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
@@ -2266,7 +2658,9 @@ pub struct SetOwnerAccountRequest {
     pub set_owner_account_hash: felt252,
 }
 ```
-##### SetOwnerAccount
+
+###### SetOwnerAccount
+
 ```rust
 #[derive(starknet::Event)]
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
@@ -2280,7 +2674,8 @@ pub struct SetOwnerAccount {
     pub set_owner_account_hash: felt252,
 }
 ```
-##### SetPublicKeyRequest
+
+###### SetPublicKeyRequest
 
 ```rust
 #[derive(starknet::Event)]
@@ -2295,7 +2690,8 @@ pub struct SetPublicKeyRequest {
     pub set_public_key_request_hash: felt252,
 }
 ```
-##### SetPublicKey
+
+###### SetPublicKey
 
 ```rust
 #[derive(starknet::Event)]
@@ -2310,7 +2706,7 @@ pub struct SetPublicKey {
 }
 ```
 
-#### Errors
+##### Errors
 
 ```rust
 pub const POSITION_DOESNT_EXIST: felt252 = 'POSITION_DOESNT_EXIST';
@@ -2326,7 +2722,7 @@ pub const INVALID_ZERO_OWNER_ACCOUNT: felt252 = 'INVALID_ZERO_OWNER_ACCOUNT';
 pub const SAME_PUBLIC_KEY: felt252 = 'SAME_PUBLIC_KEY';
 ```
 
-## Storage
+### Storage
 
 ```rust
 #[storage]
@@ -2357,7 +2753,7 @@ struct Storage {
 }
 ```
 
-## Events
+### Events
 
 #### WithdrawRequest
 
@@ -2394,6 +2790,7 @@ pub struct Withdraw {
 ```
 
 #### Trade
+
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
 pub struct Trade {
@@ -2425,6 +2822,7 @@ pub struct Trade {
 ```
 
 #### TransferRequest
+
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
 pub struct TransferRequest {
@@ -2458,6 +2856,7 @@ pub struct Transfer {
 ```
 
 #### Liquidate
+
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
 pub struct Liquidate {
@@ -2482,6 +2881,7 @@ pub struct Liquidate {
 ```
 
 #### Deleverage
+
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
 pub struct Deleverage {
@@ -2497,6 +2897,7 @@ pub struct Deleverage {
 ```
 
 #### InactiveAssetPositionReduced
+
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
 pub struct InactiveAssetPositionReduced {
@@ -2511,9 +2912,59 @@ pub struct InactiveAssetPositionReduced {
 }
 ```
 
-## Constructor
+##### DepositedIntoVault
 
-### Description
+```rust
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct DepositedIntoVault {
+    #[key]
+    pub position_id: PositionId,
+    #[key]
+    pub vault_position_id: PositionId,
+    pub collateral_id: AssetId,
+    pub quantized_amount: u64
+}
+```
+
+##### WithdrawnFromVault
+
+```rust
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct WithdrawnFromVault {
+    #[key]
+    pub position_id: PositionId,
+    #[key]
+    pub vault_position_id: PositionId,
+    #[key]
+    pub collateral_id: AssetId,
+    pub number_of_shares: u64,
+    pub minimum_quantized_amount: u64,
+    pub vault_share_execution_price: Price,
+    pub expiration: Timestamp,
+    pub salt: felt252,
+}
+```
+
+##### LiquidatedFromVault
+
+```rust
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct LiquidatedFromVault {
+    #[key]
+    pub position_id: PositionId,
+    #[key]
+    pub vault_position_id: PositionId,
+    #[key]
+    pub collateral_id: AssetId,
+    pub number_of_shares: u64,
+    pub minimum_quantized_amount: u64,
+    pub vault_share_execution_price: Price,
+    pub expiration: Timestamp,
+    pub salt: felt252,
+}
+```
+
+### Constructor
 
 It only runs once when deploying the contract and is used to initialize the state of the contract.
 
@@ -2538,11 +2989,12 @@ pub fn constructor(
 )
 ```
 
-### Validations
+**Validations:**
+
 1. all inputs are non zero (except upgrade_delay)
 2. all component havn't been initilized before.
 
-### Logic
+**Logic:**
 
 1. Initialize roles with `governance_admin` address.
 2. Initialize replaceability with `upgrade_delay`.
@@ -2550,11 +3002,9 @@ pub fn constructor(
 4. Initialize deposits with `cancel_delay`.
 5. Initialize positions: create fee position with `fee_position_owner_public_key` and insurance fund position with `insurance_fund_position_owner_public_key`.
 
-## Public Functions
+### Public Functions
 
-### Withdraw Request
-
-#### Description
+#### Withdraw Request
 
 The user registers a withdraw request by registering a fact.
 
@@ -2571,27 +3021,27 @@ fn withdraw_request(
 )
 ```
 
-#### Access Control
+**Access Control:**
 
 Anyone can execute.
 
-#### Hash
+**Hash:**
 
 [get\_message\_hash](#get-message-hash) on [WithdrawArgs](#withdrawargs) with position `public_key`.
 
-#### Validations
+**Validations:**
 
 1. [signature validation](#signature)
 2. Amount is non zero.
 3. Caller is the owner address.
 4. Request is new.
 
-#### Logic
+**Logic:**
 
-1. [Run validation](#validations-6)
+1. Run validations
 2. Register a request with status `RequestStatus::PENDING` to withdraw using the requests component.
 
-#### Errors
+**Errors:**
 
 - INVALID\_POSITION
 - INVALID\_ZERO\_AMOUNT
@@ -2599,13 +3049,11 @@ Anyone can execute.
 - CALLER\_IS\_NOT\_OWNER\_ACCOUNT
 - INVALID\_STARK\_KEY\_SIGNATURE
 
-#### Emits
+**Emits:**
 
 [withdraw\_request](#withdrawrequest)
 
-### Withdraw
-
-#### Description
+#### Withdraw
 
 The user withdraws collateral amount from the position to the recipient.
 
@@ -2622,15 +3070,15 @@ fn withdraw(
 )
 ```
 
-#### Access Control
+**Access Control:**
 
 Only the Operator can execute.
 
-#### Hash
+**Hash:**
 
 [get\_message\_hash](#get-message-hash) on [WithdrawArgs](#withdrawargs) with position `public_key`.
 
-#### Validations
+**Validations:**
 
 1. [Pausable check](#pausable)
 2. [Operator Nonce check](#operator-nonce)
@@ -2640,15 +3088,15 @@ Only the Operator can execute.
 6. [Request approval check on withdraw message](#requests-1)
 
 
-#### Logic
+**Logic:**
 
-1. Run [withdraw validations](#validations-7)
+1. Run withdraw validations
 2. Mark withdraw request as `RequestStatus::PROCESSED` in the requests component.
 3. [Fundamental validation](#fundamental)
 4. Subtract the amount from the position collateral.
 5. Transfer `amount * collateral.asset_id.quantum` from the contract to the recipient.
 
-#### Errors
+**Errors:**
 
 - PAUSED
 - ONLY\_OPERATOR
@@ -2662,13 +3110,11 @@ Only the Operator can execute.
 - REQUEST_ALREADY_PROCESSED
 - POSITION_NOT_HEALTHY_NOR_HEALTHIER
 
-#### Emits
+**Emits:**
 
 [withdraw](#withdraw)
 
-### Transfer Request
-
-#### Description
+#### Transfer Request
 
 ```rust
 fn transfer_request(
@@ -2683,31 +3129,31 @@ fn transfer_request(
 )
 ```
 
-#### Access Control
+**Access Control:**
 
 Anyone can execute.
 
-#### Hash
+**Hash:**
 
 [get\_message\_hash](#get-message-hash) on [TransferArgs](#transferargs) with position `public_key`.
 
-#### Validations
+**Validations:**
 
 1. [signature validation](#signature)
 2. Amount is non zero.
 3. Caller is the owner address.
 4. Request is new.
 
-#### Logic
+**Logic:**
 
-1. [Run validation](#validations-10)
+1. Run validations
 2. Register a request with status `RequestStatus::PENDING` to transfer using the requests component.
 
-#### Emits
+**Emits:**
 
 [TransferRequest](#transferrequest)
 
-#### Errors
+**Errors:**
 
 - INVALID\_POSITION
 - INVALID\_ZERO\_AMOUNT
@@ -2715,11 +3161,8 @@ Anyone can execute.
 - CALLER\_IS\_NOT\_OWNER\_ACCOUNT
 - INVALID\_STARK\_KEY\_SIGNATURE
 
-###
+#### Transfer
 
-### Transfer
-
-#### Description
 
 ```rust
 fn transfer(
@@ -2734,15 +3177,15 @@ fn transfer(
 )
 ```
 
-#### Access Control
+**Access Control:**
 
 Only the Operator can execute.
 
-#### Hash
+**Hash:**
 
 [get\_message\_hash](#get-message-hash) on [TransferArgs](#transferargs) with position `public_key`.
 
-#### Validations
+**Validations:**
 
 1. [Pausable check](#pausable)
 2. [Operator Nonce check](#operator-nonce)
@@ -2753,18 +3196,18 @@ Only the Operator can execute.
 7. `recipient != position_id`.
 8. [Request approval check on transfer message](#requests-1)
 
-#### Logic
+**Logic:**
 
 1. Run transfer validations
 2. Subtract the amount from the `position_id` collateral balance.
 3. Add the amount to the recipient `recipient` collateral balance.
 4. [Fundamental validation](#fundamental) for `position_id` in transfer.
 
-#### Emits
+**Emits:**
 
 [Transfer](#transfer)
 
-#### Errors
+**Errors:**
 
 - PAUSED
 - ONLY\_OPERATOR
@@ -2778,62 +3221,59 @@ Only the Operator can execute.
 - REQUEST_ALREADY_PROCESSED
 - POSITION_NOT_HEALTHY_NOR_HEALTHIER
 
-
-### Trade
-
-#### Description
+#### Trade
 
 A trade between 2 positions in the system.
 
 ```rust
 fn trade(
-	ref self: ContractState,
-	operator_nonce: u64,
-	signature_a: Signature,
-	signature_b: Signature,
-	order_a: Order,
-	order_b: Order,
-	actual_amount_base_a: i64,
-	actual_amount_quote_a: i64,
-	actual_fee_a: u64,
-	actual_fee_b: u64,
+    ref self: ContractState,
+    operator_nonce: u64,
+    signature_a: Signature,
+    signature_b: Signature,
+    order_a: Order,
+    order_b: Order,
+    actual_amount_base_a: i64,
+    actual_amount_quote_a: i64,
+    actual_fee_a: u64,
+    actual_fee_b: u64,
 )
 ```
 
-#### Access Control
+**Access Control:**
 
 Only the Operator can execute.
 
-#### Hash
+**Hash:**
 
 [get\_message\_hash](#get-message-hash) on [Order](#order) with position `public_key`.
 
-#### Validations
+**Validations:**
 
 1. [Pausable check](#pausable)
 2. [Operator Nonce check](#operator-nonce)
 3. [Funding validation](#funding)
 4. [Price validation](#price)
 5. [public key signature](#public-key-signature) on each `Order`
-6. [All fee amounts are positive (actuals and order)](#amounts)
+6. All fee amounts are positive (actuals and order)
 7. [Expiration validation](#expiration)
 8. [Synthetic asset check](#asset)
 9. Orders are not from the same position.
 10. Positions are not `FEE_POSITION`.
 11. Orders base and quote amounts have opposite signs and are non-zero (between them and individually).
 12. Orders quote and fee asset ids are the same as the collateral id.
-14. Orders base asset_ids the same and are registered and active synthetics.
-16. `actual_amount_base_a` and `actual_amount_quote_a` are non-zero.
-17. `order_a.base.amount` and `actual_amount_base_a` have the same sign.
-18. `order_a.quote.amount` and `actual_amount_quote_a` have the same sign.
-19. `|fulfillment[order_a_hash]|+|actual_amount_base_a|≤|order_a.base.amount|`
-20. `|fulfillment[order_b_hash]|+|(-actual_amount_base_a)|≤|order_b.base.amount|`
-21. `actual_fee_a / |actual_amount_quote_a| ≤ order_a.fee.amount / |order_a.quote.amount|`
-22. `actual_fee_b / |actual_amount_quote_a| ≤ order_b.fee.amount / |order_b.quote.amount|`
-23. `order_a.base.amount/|order_a.quote.amount|≤actual_amount_base_a/|actual_amount_quote_a|`
-24. `order_b.base.amount/|order_b.quote.amount|≤(-actual_amount_base_a)/|actual_amount_quote_a|`
+13. Orders base asset_ids the same and are registered and active synthetics.
+14. `actual_amount_base_a` and `actual_amount_quote_a` are non-zero.
+15. `order_a.base.amount` and `actual_amount_base_a` have the same sign.
+16. `order_a.quote.amount` and `actual_amount_quote_a` have the same sign.
+17. `|fulfillment[order_a_hash]|+|actual_amount_base_a|≤|order_a.base.amount|`
+18. `|fulfillment[order_b_hash]|+|(-actual_amount_base_a)|≤|order_b.base.amount|`
+19. `actual_fee_a / |actual_amount_quote_a| ≤ order_a.fee.amount / |order_a.quote.amount|`
+20. `actual_fee_b / |actual_amount_quote_a| ≤ order_b.fee.amount / |order_b.quote.amount|`
+21. `order_a.base.amount/|order_a.quote.amount|≤actual_amount_base_a/|actual_amount_quote_a|`
+22. `order_b.base.amount/|order_b.quote.amount|≤(-actual_amount_base_a)/|actual_amount_quote_a|`
 
-#### Logic
+**Logic:**
 
 1. Run validations
 2. Subtract the fees from each position collateral.
@@ -2846,11 +3286,12 @@ Only the Operator can execute.
 9. `fulfillment[order_a_hash]+=|actual_amount_base_a|`
 10. `fulfillment[order_b_hash]+=|actual_amount_base_a|`
 
-#### Emits
+**Emits:**
 
 [Trade](#trade)
 
-#### Errors
+**Errors:**
+
 - PAUSED
 - ONLY\_OPERATOR
 - INVALID\_NONCE
@@ -2876,10 +3317,7 @@ Only the Operator can execute.
 - ILLEGAL_FEE_TO_QUOTE_RATIO
 - POSITION_NOT_HEALTHY_NOR_HEALTHIER
 
-
-### Multi Trade
-
-#### Description
+#### Multi Trade
 
 Executes multiple trades in a single operation.  
 Each trade is validated and executed using the same logic as a single trade.  
@@ -2887,40 +3325,37 @@ All trades are processed within one transaction.
 
 ```rust
 fn multi_trade(
-	ref self: ContractState,
-	operator_nonce: u64,
+    ref self: ContractState,
+    operator_nonce: u64,
     trades: Span<Settlement>,
 )
 ```
 
-#### Access Control
+**Access Control:**
 
 Only the Operator can execute.
 
-#### Hash
+**Hash:**
 
 See [Trade](#trade) for details.
 
-#### Validations
+**Validations:**
 
 See [Trade](#trade) for details.
 
-#### Logic
+**Logic:**
 
 See [Trade](#trade) for details.
 
-#### Emits
+**Emits:**
 
 See [Trade](#trade) for details.
 
-#### Errors
+**Errors:**
 
 See [Trade](#trade) for details.
 
-
-### Liquidate
-
-#### Description
+#### Liquidate
 
 When a user position [is liquidatable](#liquidatable), the system can match the liquidated position with a signed order without a signature of the liquidated position to make it [healthier](#is-healthier).
 
@@ -2940,22 +3375,22 @@ fn liquidate(
 )
 ```
 
-#### Access Control
+**Access Control:**
 
 Only the Operator can execute.
 
-#### Hash
+**Hash:**
 
 [get\_message\_hash](#get-message-hash) on [Order](#order) with position `public_key`.
 
-#### Validations
+**Validations:**
 
 1. [Pausable check](#pausable)
 2. [Operator Nonce check](#operator-nonce)
 3. [Funding validation](#funding)
 4. [Price validation](#price)
 5. [public key signature](#public-key-signature) on
-6. [All fees amounts are non negative (actuals and order)](#amounts)
+6. All fees amounts are non negative (actuals and order)
 7. [Expiration validation](#expiration)
 8. [Synthetic asset check](#asset)
 9. Liquidator order is not from the same position as the liquidated position.
@@ -2973,7 +3408,7 @@ Only the Operator can execute.
 21. `actual_liquidator_fee / |actual_amount_quote_liquidated| ≤ liquidator_order.fee.amount / |liquidator_order.quote.amount|`
 22. `actual_amount_base_liquidated / |actual_amount_quote_liquidated| ≤ - liquidator_order.base.amount / |liquidator_order.quote.amount|`
 
-#### Logic
+**Logic:**
 
 1. Run validations
 2. Add `actual_amount_base_liquidated` to the `liquidated_position_id` base id synthetic.
@@ -2987,11 +3422,12 @@ Only the Operator can execute.
 10. `fulfillment[liquidator_order_hash] += |actual_amount_base_liquidated|`
 11. [Fundamental validation](#fundamental) for both positions.
 
-#### Emits
+**Emits:**
 
 [Liquidate](#liquidate)
 
-#### Errors
+**Errors:**
+
 - PAUSED
 - ONLY\_OPERATOR
 - INVALID\_NONCE
@@ -3020,15 +3456,13 @@ Only the Operator can execute.
 - POSITION_IS_NOT_HEALTHIER
 - POSITION_NOT_HEALTHY_NOR_HEALTHIER
 
-### Deleverage
-
-#### Description
+#### Deleverage
 
 When a user position [is deleveragable](#deleveragable), the system can match the deleveraged position with deleverger position, both without position’s signature, to make it [healthier](#is-healthier).
 
 ```rust
 fn deleverage(
-	ref self: ContractState,
+    ref self: ContractState,
     operator_nonce: u64,
     deleveraged_position_id: PositionId,
     deleverager_position_id: PositionId,
@@ -3038,11 +3472,11 @@ fn deleverage(
 )
 ```
 
-#### Access Control
+**Access Control:**
 
 Only the Operator can execute.
 
-#### Validations
+**Validations:**
 
 1. [Pausable check](#pausable)
 2. [Operator Nonce check](#operator-nonce)
@@ -3056,19 +3490,20 @@ Only the Operator can execute.
 10. `deleveraged_position.balance` decreases in magnitude after the change: `|base_deleveraged.amount|` must not exceed `|deleveraged_position.balance|`, and both should have the same sign
 11. `deleverager_position.balance` decreases in magnitude after the change: `|base_deleveraged.amount|` must not exceed `|deleverager_position.balance|`, and both should have opposite sign.
 
-#### Logic
+**Logic:**
 
-1. [Run Validations](#validations-12).
+1. Run validations
 2. Add `deleveraged_base_amount` to the `deleveraged_position_id` base id synthetic.
 3. Subtract `deleveraged_base_amount` from the `deleverager_position_id` base id synthetic.
 4. Add `deleveraged_quote_amount` to the `deleveraged_position_id` collateral.
 5. Subtract `deleveraged_quote_amount` from the `deleverager_position_id` collateral.
 6. [Fundamental validation](#fundamental) for both positions.
 
-#### Emits
+**Emits:**
 [deleverage](#deleverage)
 
-#### Errors
+**Errors:**
+
 - PAUSED
 - ONLY\_OPERATOR
 - INVALID\_NONCE
@@ -3090,15 +3525,13 @@ Only the Operator can execute.
 - POSITION_IS_NOT_HEALTHIER
 - POSITION_NOT_HEALTHY_NOR_HEALTHIER
 
-### InactiveAssetPositionReduced
-
-#### Description
+#### InactiveAssetPositionReduced
 
 When a position `a` has a positive amount of an inactive asset, the system can match with a position `b` which has a negative amount of inactive asset, both without position’s signature, to clean inactive assets from the system.
 
 ```rust
 fn reduce_inactive_asset_position(
-	ref self: ContractState,
+    ref self: ContractState,
     operator_nonce: u64,
     position_a: PositionId,
     position_b: PositionId,
@@ -3108,11 +3541,11 @@ fn reduce_inactive_asset_position(
 )
 ```
 
-#### Access Control
+**Access Control:**
 
 Only the Operator can execute.
 
-#### Validations
+**Validations:**
 
 1. [Pausable check](#pausable)
 2. [Operator Nonce check](#operator-nonce)
@@ -3125,18 +3558,19 @@ Only the Operator can execute.
 9. `position_a.balance` decreases in magnitude after the change: `|base_amount_a|` must not exceed `|position_a.balance|`, and both should have the same sign.
 10. `position_b.balance` decreases in magnitude after the change: `|base_amount_a|` must not exceed `|position_b.balance|`, and both should have opposite sign.
 
-#### Logic
+**Logic:**
 
-1. [Run Validations](#validations-12).
+1. Run validations
 2. `positions[position_a].syntethic_assets[base_asset_id] += base_amount_a`
 3. `positions[position_b].syntethic_assets[base_asset_id] -= base_amount_a`
 4. Add `quote_amount_a` to the `position_a` collateral.
 5. Subtract `quote_amount_a` from the `position_b` collateral.
 
-#### Emits
-[InactiveAssetPositionReduced](#reduce-inactive-asset-position)
+**Emits:**
+[InactiveAssetPositionReduced](#inactiveassetpositionreduced)
 
-#### Errors
+**Errors:**
+
 - PAUSED
 - ONLY\_OPERATOR
 - INVALID\_NONCE
@@ -3155,3 +3589,181 @@ Only the Operator can execute.
 - ACTIVE_SYNTHETIC
 - POSITION_IS_NOT_HEALTHIER
 - POSITION_NOT_HEALTHY_NOR_HEALTHIER
+
+#### DepositIntoVault
+
+Transfer into vault is called by the operator after a user deposited an amount he want to deposit into the vault.
+
+```rust
+fn deposit_into_vault(
+    ref self: TContractState,
+    operator_nonce: u64,
+    position_id: PositionId,
+    vault_position_id: PositionId,
+    collateral_id: AssetId,
+    quantized_amount: u64,
+    expiration: Timestamp,
+    salt: felt252,
+    signature: Signature,
+);
+```
+
+**Access Control:**
+
+Only the Operator can execute.
+
+**Hash:**
+
+[get\_message\_hash](#get-message-hash) on [DepositIntoVaultArgs](#depositintovaultargs) with position `public_key`.
+
+**Validations:**
+
+1. [signature validation](#signature)
+2. [Pausable check](#pausable)
+3. [Operator Nonce check](#operator-nonce)
+4. [Price validation](#price)
+5. [Position check](#position) for `position_id` and `vault_position_id`
+6. [Expiration validation](#expiration)
+7. `vault_position_id` is a registered vault position.
+8. deposit position id is not a vault position and exists.
+9. Amount is non zero.
+10. Caller is the operator.
+11. Request is new (check not exists in the fulfillment).
+
+**Logic:**
+
+1. Run validations
+2. operator calls deposit of the vault contract.
+3. vault contract calculates the amount of shares to mint (total assets (=TV of the vault position) / # of shares) and mints the vault shares to the perps contract and transfers the underlying asset to the perps contract as well.
+4. decrease the position_id collateral_id balance by quantized_amount.
+5. increase the vault_position_id collateral_id balance by quantized_amount.
+6. calls the perps deposit function to deposit the vault shares to the user
+
+**Emits:**
+
+[DepositedIntoVault](#depositedintovault)
+
+**Errors:**
+
+#### WithdrawFromVault
+
+Withdraw from vault is called by the operator to let the user "cash out" his vault shares from the vault position into his position
+
+```rust
+fn withdraw_from_vault(
+    ref self: ContractState,
+    operator_nonce: u64,
+    position_id: PositionId,
+    vault_position_id: PositionId,
+    collateral_id: AssetId,
+    number_of_shares: u64,
+    minimum_quantized_amount: u64,
+    vault_share_execution_price: Price,
+    expiration: Timestamp,
+    salt: felt252,
+    user_signature: Signature,
+    vault_owner_signature: Signature,
+);
+```
+
+**Access Control:**
+
+Only the Operator can execute.
+
+**Hash:**
+
+[get\_message\_hash](#get-message-hash) on [WithdrawFromVaultUserArgs](#withdrawfromvaultuserargs) with `position_id` public_key.
+
+[get\_message\_hash](#get-message-hash) on [WithdrawFromVaultOwnerArgs](#withdrawfromvaultownerargs) with `vault_position_id` public_key.
+
+**Validations:**
+
+1. [signature validation](#signature) for user signature and vault owner signature
+2. [Pausable check](#pausable)
+3. [Operator Nonce check](#operator-nonce)
+4. [Price validation](#price)
+5. [Position check](#position) for `position_id` and `vault_position_id`
+6. [Expiration validation](#expiration)
+7. `vault_position_id` is a registered vault position.
+8. position id is not a vault position and exists.
+9. number_of_shares is non zero.
+10. minimum_quantized_amount is non zero.
+11. vault_share_execution_price is non zero.
+12. Caller is the operator.
+13. Request is new (check user payload hash not exists in the fulfillment map).
+14. `number_of_shares * vault_share_execution_price >= minimum_quantized_amount`
+
+**Logic:**
+
+1. Run validations
+2. transfer vault_asset_id: number_of_shares from the perps contract to the vault contract (for burning the vault shares)
+3. reduce the position id vault share balance by number_of_shares
+4. transfer collateral_id: vault_share_execution_price*number_of_shares from the perps contract to the vault contract (for transferring back the shares value)
+5. call the new redeem function of the vault contract (a version where the price of a vault share is dicateded by the operator) which burns the vault shares and transfers the assets from the vault contract to the perps contract
+6. increase the position_id collateral_id balance by vault_share_execution_price*number_of_shares
+7. reduce the vault_position_id collateral_id balance by vault_share_execution_price*number_of_shares
+
+**Emits:**
+
+[WithdrawnFromVault](#withdrawnfromvault)
+
+**Errors:**
+
+#### LiquidateVaultShares
+
+Withdraw from vault is called by the operator to let the user "cash out" his vault shares from the vault position into his position
+
+```rust
+fn liquidate_vault_shares(
+    ref self: TContractState,
+    operator_nonce: u64,
+    position_id: PositionId,
+    vault_position_id: PositionId,
+    collateral_id: AssetId,
+    number_of_shares: u64,
+    vault_share_execution_price: Price,
+    expiration: Timestamp,
+    salt: felt252,
+    vault_owner_signature: Signature,
+);
+```
+
+**Access Control:**
+
+Only the Operator can execute.
+
+**Hash:**
+
+[get\_message\_hash](#get-message-hash) on [LiquidateVaultSharesArgs](#liquidatevaultsharesargs) with `vault_position_id` public_key.
+
+**Validations:**
+
+1. [signature validation](#signature) for vault owner signature
+2. [Pausable check](#pausable)
+3. [Price validation](#price)
+4. [Operator Nonce check](#operator-nonce)
+5. [Position check](#position) for `position_id` and `vault_position_id`
+6. [Expiration validation](#expiration)
+7. `vault_position_id` is a registered vault position.
+8. position id is not a vault position and exists.
+9. number_of_shares is non zero.
+10. position id is liquidatable.
+11. vault_share_execution_price is non zero.
+12. Caller is the operator.
+
+**Logic:**
+
+1. Run validations
+2. transfer vault_asset_id: number_of_shares from the perps contract to the vault contract (for burning the vault shares)
+3. reduce the position id vault share balance by number_of_shares
+4. transfer collateral_id: vault_share_execution_price*number_of_shares from the perps contract to the vault contract (for transferring back the shares value)
+5. call the new redeem function of the vault contract (a version where the price of a vault share is dicateded by the operator) which burns the vault shares and transfers the assets from the vault contract to the perps contract
+6. increase the position_id collateral_id balance by vault_share_execution_price*number_of_shares
+7. reduce the vault_position_id collateral_id balance by vault_share_execution_price*number_of_shares
+8. position id is healthier
+
+**Emits:**
+
+[LiquidatedFromVault](#liquidatedfromvault)
+
+**Errors:**
