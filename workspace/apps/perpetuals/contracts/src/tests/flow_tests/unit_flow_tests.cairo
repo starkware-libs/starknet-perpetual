@@ -2303,10 +2303,7 @@ use starkware_utils_testing::test_utils::cheat_caller_address_once;
 /// gas : 5940188809(L2)
 
 #[test]
-#[fork(
-    url: "https://rpc.starknet.lava.build/",
-    block_number: 1844544,
-)]
+#[fork(url: "https://rpc.starknet.lava.build/", block_number: 1844544)]
 fn test_profile() {
     let caller_address: ContractAddress =
         0x048ddc53f41523d2a6b40c3dff7f69f4bbac799cd8b2e3fc50d3de1d4119441f
