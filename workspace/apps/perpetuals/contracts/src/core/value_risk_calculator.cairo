@@ -4,7 +4,7 @@ use perpetuals::core::errors::{
     position_not_deleveragable, position_not_fair_deleverage, position_not_healthy_nor_healthier,
     position_not_liquidatable,
 };
-use perpetuals::core::types::asset::synthetic::SyntheticAsset;
+use perpetuals::core::types::asset::Asset;
 use perpetuals::core::types::balance::{Balance, BalanceDiff};
 use perpetuals::core::types::position::{
     PositionDiffEnriched, PositionId, SyntheticEnrichedPositionDiff,
@@ -78,7 +78,7 @@ fn is_fair_deleverage(before: PositionTVTR, after: PositionTVTR) -> bool {
 
 /// Returns the state of a position.
 pub fn evaluate_position(
-    unchanged_synthetics: Span<SyntheticAsset>, collateral_balance: Balance,
+    unchanged_synthetics: Span<Asset>, collateral_balance: Balance,
 ) -> PositionState {
     let tvtr = calculate_position_tvtr(
         unchanged_synthetics: unchanged_synthetics, collateral_balance: collateral_balance,
@@ -116,7 +116,7 @@ pub fn assert_healthy_or_healthier(position_id: PositionId, tvtr: TVTRChange) {
 
 pub fn liquidated_position_validations(
     position_id: PositionId,
-    unchanged_synthetics: Span<SyntheticAsset>,
+    unchanged_synthetics: Span<Asset>,
     position_diff_enriched: PositionDiffEnriched,
 ) {
     let tvtr_before = calculate_position_tvtr_before(
@@ -138,7 +138,7 @@ pub fn liquidated_position_validations(
 
 pub fn deleveraged_position_validations(
     position_id: PositionId,
-    unchanged_synthetics: Span<SyntheticAsset>,
+    unchanged_synthetics: Span<Asset>,
     position_diff_enriched: PositionDiffEnriched,
 ) {
     let tvtr_before = calculate_position_tvtr_before(
@@ -162,7 +162,7 @@ pub fn deleveraged_position_validations(
 }
 
 pub fn calculate_position_tvtr(
-    unchanged_synthetics: Span<SyntheticAsset>, collateral_balance: Balance,
+    unchanged_synthetics: Span<Asset>, collateral_balance: Balance,
 ) -> PositionTVTR {
     let position_diff_enriched = PositionDiffEnriched {
         collateral_enriched: BalanceDiff { before: collateral_balance, after: collateral_balance },
@@ -218,7 +218,7 @@ pub fn calculate_position_tvtr_change(
 }
 
 pub fn calculate_position_tvtr_before(
-    unchanged_synthetics: Span<SyntheticAsset>, position_diff_enriched: PositionDiffEnriched,
+    unchanged_synthetics: Span<Asset>, position_diff_enriched: PositionDiffEnriched,
 ) -> PositionTVTR {
     let mut total_value = 0_i128;
     let mut total_risk = 0_u128;
@@ -246,8 +246,7 @@ pub fn calculate_position_tvtr_before(
 
 #[cfg(test)]
 mod tests {
-    use perpetuals::core::types::asset::synthetic::{SyntheticAsset, SyntheticDiffEnriched};
-    use perpetuals::core::types::asset::{AssetId, AssetIdTrait};
+    use perpetuals::core::types::asset::{Asset, AssetDiffEnriched, AssetId, AssetIdTrait};
     use perpetuals::core::types::balance::BalanceTrait;
     use perpetuals::core::types::price::{Price, PriceTrait};
     use perpetuals::core::types::risk_factor::RiskFactor;
@@ -308,14 +307,14 @@ mod tests {
     #[test]
     fn test_calculate_position_tvtr_change_basic_case() {
         // Create a position with a single asset entry.
-        let asset = SyntheticAsset {
+        let asset = Asset {
             id: SYNTHETIC_ASSET_ID_1(),
             balance: BalanceTrait::new(value: 60),
             price: PRICE_1(),
             risk_factor: RISK_FACTOR_1(),
         };
         let position_data = array![].span();
-        let asset_diff = SyntheticDiffEnriched {
+        let asset_diff = AssetDiffEnriched {
             asset_id: asset.id,
             balance_before: asset.balance,
             balance_after: BalanceTrait::new(value: 80),
@@ -361,14 +360,14 @@ mod tests {
     #[test]
     fn test_calculate_position_tvtr_change_negative_balance() {
         // Create a position with a single asset entry.
-        let asset = SyntheticAsset {
+        let asset = Asset {
             id: SYNTHETIC_ASSET_ID_1(),
             balance: BalanceTrait::new(value: -60),
             price: PRICE_1(),
             risk_factor: RISK_FACTOR_1(),
         };
         let position_data = array![].span();
-        let asset_diff = SyntheticDiffEnriched {
+        let asset_diff = AssetDiffEnriched {
             asset_id: asset.id,
             balance_before: asset.balance,
             balance_after: BalanceTrait::new(value: 20),
@@ -414,31 +413,31 @@ mod tests {
     #[test]
     fn test_calculate_position_tvtr_change_multiple_assets() {
         // Create a position with multiple assets.
-        let asset_1 = SyntheticAsset {
+        let asset_1 = Asset {
             id: SYNTHETIC_ASSET_ID_1(),
             balance: BalanceTrait::new(value: 60),
             price: PRICE_1(),
             risk_factor: RISK_FACTOR_1(),
         };
-        let asset_2 = SyntheticAsset {
+        let asset_2 = Asset {
             id: SYNTHETIC_ASSET_ID_2(),
             balance: BalanceTrait::new(value: 40),
             price: PRICE_2(),
             risk_factor: RISK_FACTOR_2(),
         };
-        let asset_3 = SyntheticAsset {
+        let asset_3 = Asset {
             id: SYNTHETIC_ASSET_ID_3(),
             balance: BalanceTrait::new(value: 20),
             price: PRICE_3(),
             risk_factor: RISK_FACTOR_3(),
         };
-        let asset_4 = SyntheticAsset {
+        let asset_4 = Asset {
             id: SYNTHETIC_ASSET_ID_4(),
             balance: BalanceTrait::new(value: 10),
             price: PRICE_4(),
             risk_factor: RISK_FACTOR_4(),
         };
-        let asset_5 = SyntheticAsset {
+        let asset_5 = Asset {
             id: SYNTHETIC_ASSET_ID_5(),
             balance: BalanceTrait::new(value: 5),
             price: PRICE_5(),
@@ -447,7 +446,7 @@ mod tests {
         let position_data = array![asset_2, asset_3, asset_4, asset_5].span();
 
         // Create a position diff with two assets diff.
-        let asset_diff_1 = SyntheticDiffEnriched {
+        let asset_diff_1 = AssetDiffEnriched {
             asset_id: asset_1.id,
             balance_before: asset_1.balance,
             balance_after: BalanceTrait::new(value: 80),
@@ -505,7 +504,7 @@ mod tests {
     #[test]
     fn test_calculate_position_tvtr_empty_diff() {
         // Create a position with a single asset entry.
-        let asset = SyntheticAsset {
+        let asset = Asset {
             id: SYNTHETIC_ASSET_ID_1(),
             balance: BalanceTrait::new(value: 60),
             price: PRICE_1(),
@@ -588,7 +587,7 @@ mod tests {
     #[test]
     fn test_basic_calculate_position_tvtr_before() {
         let balance = 50;
-        let asset = SyntheticAsset {
+        let asset = Asset {
             id: SYNTHETIC_ASSET_ID_1(),
             balance: BalanceTrait::new(value: balance),
             price: PRICE_1(),
@@ -613,19 +612,19 @@ mod tests {
         let balance_2 = 100;
         let balance_3 = 150;
         let collateral_balance_before = 50;
-        let asset_1 = SyntheticAsset {
+        let asset_1 = Asset {
             id: SYNTHETIC_ASSET_ID_1(),
             balance: BalanceTrait::new(value: balance_1),
             price: PRICE_1(),
             risk_factor: RISK_FACTOR_1(),
         };
-        let asset_2 = SyntheticAsset {
+        let asset_2 = Asset {
             id: SYNTHETIC_ASSET_ID_2(),
             balance: BalanceTrait::new(value: balance_2),
             price: PRICE_2(),
             risk_factor: RISK_FACTOR_2(),
         };
-        let asset_3 = SyntheticAsset {
+        let asset_3 = Asset {
             id: SYNTHETIC_ASSET_ID_3(),
             balance: BalanceTrait::new(value: balance_3),
             price: PRICE_3(),
@@ -638,7 +637,7 @@ mod tests {
                 after: BalanceTrait::new(value: 0),
             },
             synthetic_enriched: Option::Some(
-                SyntheticDiffEnriched {
+                AssetDiffEnriched {
                     asset_id: asset_3.id,
                     balance_before: asset_3.balance,
                     balance_after: BalanceTrait::new(value: 0),
@@ -668,7 +667,7 @@ mod tests {
     fn test_calculate_position_tvtr_before_no_unchanged_synthetics() {
         let collateral_balance_before = 50;
         let synthetic_balance_before = 200;
-        let asset = SyntheticAsset {
+        let asset = Asset {
             id: SYNTHETIC_ASSET_ID_1(),
             balance: BalanceTrait::new(value: synthetic_balance_before),
             price: PRICE_1(),
@@ -681,7 +680,7 @@ mod tests {
                 after: BalanceTrait::new(value: 0),
             },
             synthetic_enriched: Option::Some(
-                SyntheticDiffEnriched {
+                AssetDiffEnriched {
                     asset_id: asset.id,
                     balance_before: asset.balance,
                     balance_after: BalanceTrait::new(value: 0),
@@ -717,7 +716,7 @@ mod tests {
     #[test]
     fn test_calculate_position_tvtr_before_negative_balance() {
         let balance = -50;
-        let asset = SyntheticAsset {
+        let asset = Asset {
             id: SYNTHETIC_ASSET_ID_1(),
             balance: BalanceTrait::new(value: balance),
             price: PRICE_1(),
@@ -735,7 +734,7 @@ mod tests {
     #[test]
     fn test_calculate_position_tvtr_before_negative_balance_in_diff() {
         let balance = -50;
-        let asset = SyntheticAsset {
+        let asset = Asset {
             id: SYNTHETIC_ASSET_ID_1(),
             balance: BalanceTrait::new(value: balance),
             price: PRICE_1(),
@@ -745,7 +744,7 @@ mod tests {
         let position_diff_enriched = PositionDiffEnriched {
             collateral_enriched: Default::default(),
             synthetic_enriched: Option::Some(
-                SyntheticDiffEnriched {
+                AssetDiffEnriched {
                     asset_id: asset.id,
                     balance_before: asset.balance,
                     balance_after: BalanceTrait::new(value: 0),

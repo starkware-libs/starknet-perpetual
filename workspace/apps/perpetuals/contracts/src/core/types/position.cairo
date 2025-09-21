@@ -1,5 +1,4 @@
-use perpetuals::core::types::asset::AssetId;
-use perpetuals::core::types::asset::synthetic::{SyntheticAsset, SyntheticDiffEnriched};
+use perpetuals::core::types::asset::{Asset, AssetDiffEnriched, AssetId};
 use perpetuals::core::types::balance::{Balance, BalanceDiff};
 use perpetuals::core::types::funding::FundingIndex;
 use starknet::ContractAddress;
@@ -17,7 +16,8 @@ pub struct Position {
     pub owner_account: Option<ContractAddress>,
     pub owner_public_key: PublicKey,
     pub collateral_balance: Balance,
-    pub synthetic_balance: IterableMap<AssetId, SyntheticBalance>,
+    #[rename("synthetic_balance")]
+    pub assets_balance: IterableMap<AssetId, SyntheticBalance>,
 }
 
 /// Synthetic asset in a position.
@@ -46,14 +46,14 @@ pub struct PositionDiff {
 #[derive(Copy, Debug, Drop, Serde, Default)]
 pub struct SyntheticEnrichedPositionDiff {
     pub collateral_diff: Balance,
-    pub synthetic_enriched: Option<SyntheticDiffEnriched>,
+    pub synthetic_enriched: Option<AssetDiffEnriched>,
 }
 
 /// Diff where both collateral and synthetic are enriched.
 #[derive(Copy, Debug, Drop, Serde, Default)]
 pub struct PositionDiffEnriched {
     pub collateral_enriched: BalanceDiff,
-    pub synthetic_enriched: Option<SyntheticDiffEnriched>,
+    pub synthetic_enriched: Option<AssetDiffEnriched>,
 }
 
 pub impl PositionDiffEnrichedIntoSyntheticEnrichedPositionDiff of Into<
@@ -69,7 +69,7 @@ pub impl PositionDiffEnrichedIntoSyntheticEnrichedPositionDiff of Into<
 
 #[derive(Copy, Debug, Drop, Serde, PartialEq)]
 pub struct PositionData {
-    pub synthetics: Span<SyntheticAsset>,
+    pub synthetics: Span<Asset>,
     pub collateral_balance: Balance,
 }
 

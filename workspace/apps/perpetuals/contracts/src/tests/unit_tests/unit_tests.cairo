@@ -1074,13 +1074,7 @@ fn test_successful_deactivate_synthetic_asset() {
     // Setup parameters:
     let synthetic_id = cfg.synthetic_cfg.synthetic_id;
     assert!(
-        state
-            .assets
-            .synthetic_config
-            .entry(synthetic_id)
-            .read()
-            .unwrap()
-            .status == AssetStatus::ACTIVE,
+        state.assets.asset_config.entry(synthetic_id).read().unwrap().status == AssetStatus::ACTIVE,
     );
 
     // Test:
@@ -1097,7 +1091,7 @@ fn test_successful_deactivate_synthetic_asset() {
     assert!(
         state
             .assets
-            .synthetic_config
+            .asset_config
             .entry(synthetic_id)
             .read()
             .unwrap()
@@ -2941,9 +2935,7 @@ fn test_funding_tick_basic() {
     );
 
     // Check:
-    assert!(
-        state.assets.get_synthetic_timely_data(synthetic_id).funding_index == new_funding_index,
-    );
+    assert!(state.assets.get_asset_timely_data(synthetic_id).funding_index == new_funding_index);
 }
 
 #[test]
@@ -3052,10 +3044,10 @@ fn test_price_tick_basic() {
         spied_event: events[2], asset_id: synthetic_id, price: PriceTrait::new(value: 100),
     );
 
-    assert!(state.assets.get_synthetic_config(synthetic_id).status == AssetStatus::ACTIVE);
+    assert!(state.assets.get_asset_config(synthetic_id).status == AssetStatus::ACTIVE);
     assert!(state.assets.get_num_of_active_synthetic_assets() == 1);
 
-    let data = state.assets.get_synthetic_timely_data(synthetic_id);
+    let data = state.assets.get_asset_timely_data(synthetic_id);
     assert!(data.last_price_update == new_time);
     assert!(data.price.value() == 100 * PRICE_SCALE);
 }
@@ -3122,9 +3114,9 @@ fn test_price_tick_odd() {
             ]
                 .span(),
         );
-    assert!(state.assets.get_synthetic_config(synthetic_id).status == AssetStatus::ACTIVE);
+    assert!(state.assets.get_asset_config(synthetic_id).status == AssetStatus::ACTIVE);
     assert!(state.assets.get_num_of_active_synthetic_assets() == 1);
-    let data = state.assets.get_synthetic_timely_data(synthetic_id);
+    let data = state.assets.get_asset_timely_data(synthetic_id);
     assert!(data.last_price_update == new_time);
     assert!(data.price.value() == 100 * PRICE_SCALE);
 }
@@ -3180,10 +3172,10 @@ fn test_price_tick_even() {
             ]
                 .span(),
         );
-    assert!(state.assets.get_synthetic_config(synthetic_id).status == AssetStatus::ACTIVE);
+    assert!(state.assets.get_asset_config(synthetic_id).status == AssetStatus::ACTIVE);
     assert!(state.assets.get_num_of_active_synthetic_assets() == 1);
 
-    let data = state.assets.get_synthetic_timely_data(synthetic_id);
+    let data = state.assets.get_asset_timely_data(synthetic_id);
     assert!(data.last_price_update == new_time);
     assert!(data.price.value() == 100 * PRICE_SCALE);
 }
@@ -3373,7 +3365,7 @@ fn test_price_tick_golden() {
             :oracle_price,
             signed_prices: [signed_price1, signed_price0, signed_price2].span(),
         );
-    let data = state.assets.get_synthetic_timely_data(synthetic_id);
+    let data = state.assets.get_asset_timely_data(synthetic_id);
     assert!(data.last_price_update == Time::now());
     assert!(data.price.value() == 6430);
 }
@@ -3403,7 +3395,7 @@ fn test_successful_add_and_remove_oracle() {
             :asset_name,
         );
 
-    state.update_synthetic_quorum(:synthetic_id, quorum: 2);
+    state.update_asset_quorum(asset_id: synthetic_id, quorum: 2);
 
     // Add another oracle for the same asset id.
     let asset_name = 'ASSET_NAME';
