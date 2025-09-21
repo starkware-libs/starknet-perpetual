@@ -1,4 +1,5 @@
 use core::num::traits::Zero;
+use perpetuals::core::components::assets::errors::SYNTHETIC_NOT_EXISTS;
 use perpetuals::core::components::assets::interface::{
     IAssets, IAssetsDispatcher, IAssetsDispatcherTrait, IAssetsSafeDispatcher,
     IAssetsSafeDispatcherTrait,
@@ -20,12 +21,14 @@ use perpetuals::core::components::positions::interface::{
 use perpetuals::core::core::Core;
 use perpetuals::core::core::Core::SNIP12MetadataImpl;
 use perpetuals::core::errors::SIGNED_TX_EXPIRED;
+use perpetuals::core::events;
 use perpetuals::core::interface::{ICore, ICoreSafeDispatcher, ICoreSafeDispatcherTrait};
 use perpetuals::core::types::asset::{AssetStatus, AssetTrait};
 use perpetuals::core::types::funding::{FUNDING_SCALE, FundingIndex, FundingTick};
 use perpetuals::core::types::order::Order;
-use perpetuals::core::types::position::{POSITION_VERSION, PositionMutableTrait};
+use perpetuals::core::types::position::{POSITION_VERSION, PositionId, PositionMutableTrait};
 use perpetuals::core::types::price::{PRICE_SCALE, PriceTrait, SignedPrice};
+use perpetuals::core::types::register_vault::RegisterVaultArgs;
 use perpetuals::core::types::set_owner_account::SetOwnerAccountArgs;
 use perpetuals::core::types::set_public_key::SetPublicKeyArgs;
 use perpetuals::core::types::transfer::TransferArgs;
@@ -52,7 +55,10 @@ use perpetuals::tests::test_utils::{
     validate_balance,
 };
 use snforge_std::cheatcodes::events::{EventSpyTrait, EventsFilterTrait};
-use snforge_std::{interact_with_state, start_cheat_block_timestamp_global, test_address};
+use snforge_std::{
+    EventSpyAssertionsTrait, interact_with_state, spy_events, start_cheat_block_timestamp_global,
+    test_address,
+};
 use starknet::storage::{StoragePathEntry, StoragePointerReadAccess};
 use starkware_utils::components::replaceability::interface::IReplaceable;
 use starkware_utils::components::request_approvals::interface::{IRequestApprovals, RequestStatus};
@@ -3662,3 +3668,282 @@ fn test_failed_deposit_into_vault_scenarios() {
         );
     assert_panic_with_felt_error(:result, expected_error: 'INVALID_ZERO_AMOUNT');
 }
+
+// Register vault tests.
+
+#[test]
+fn test_register_vault_successful() {
+    // Setup state, token and user:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let vault: User = Default::default();
+    init_position(cfg: @cfg, ref :state, user: vault);
+
+    // Setup parameters:
+    let vault_position_id = vault.position_id;
+    let vault_contract_address = VAULT_CONTRACT_ADDRESS_1();
+    let vault_asset_id = SYNTHETIC_ASSET_ID_2();
+    let expiration = Time::now().add(Time::days(1));
+
+    let register_vault_args = RegisterVaultArgs {
+        vault_position_id, vault_contract_address, vault_asset_id, expiration,
+    };
+    let msg_hash = register_vault_args.get_message_hash(public_key: vault.get_public_key());
+    let signature = vault.sign_message(msg_hash);
+    let operator_nonce = state.get_operator_nonce();
+
+    // Add the vault asset, without activating it.
+    interact_with_state(
+        contract_address: test_address(),
+        f: || {
+            let mut state = Core::contract_state_for_testing();
+
+            let asset_config = AssetTrait::config(
+                status: AssetStatus::PENDING,
+                risk_factor_first_tier_boundary: Default::default(),
+                risk_factor_tier_size: Default::default(),
+                quorum: Default::default(),
+                resolution_factor: Default::default(),
+            );
+
+            state.assets.asset_config.write(vault_asset_id, Some(asset_config));
+        },
+    );
+
+    let mut spy = spy_events();
+
+    // Test:
+    cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.operator);
+    state
+        .register_vault(
+            :operator_nonce,
+            :vault_position_id,
+            :vault_contract_address,
+            :vault_asset_id,
+            :expiration,
+            :signature,
+        );
+
+    spy
+        .assert_emitted(
+            @array![
+                (
+                    test_address(),
+                    perpetuals::core::core::Core::Event::VaultRegistered(
+                        perpetuals::core::events::VaultRegistered {
+                            vault_position_id, vault_contract_address, vault_asset_id, expiration,
+                        },
+                    ),
+                ),
+            ],
+        );
+
+    // Checks:
+    let stored_asset_id = state.vault_positions_to_assets.read(vault_position_id);
+    assert_eq!(stored_asset_id, vault_asset_id);
+
+    let stored_contract_address = state.vault_positions_to_addresses.read(vault_position_id);
+    assert_eq!(stored_contract_address, vault_contract_address);
+
+    let stored_position_id = state.addresses_to_vault_positions.read(vault_contract_address);
+    assert_eq!(stored_position_id, vault_position_id);
+}
+
+#[test]
+#[feature("safe_dispatcher")]
+fn test_register_vault_negative_scenarios() {
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+
+    // Setup dispatchers:
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+    let dispatcher = ICoreSafeDispatcher { contract_address };
+    let position_dispatcher = IPositionsDispatcher { contract_address };
+
+    // Add the vault asset, without activating it.
+    interact_with_state(
+        :contract_address,
+        f: || {
+            let mut state = Core::contract_state_for_testing();
+
+            let asset_config = AssetTrait::config(
+                status: AssetStatus::PENDING,
+                risk_factor_first_tier_boundary: Default::default(),
+                risk_factor_tier_size: Default::default(),
+                quorum: Default::default(),
+                resolution_factor: Default::default(),
+            );
+
+            state.assets.asset_config.write(SYNTHETIC_ASSET_ID_2(), Some(asset_config));
+        },
+    );
+
+    let vault: User = Default::default();
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    position_dispatcher
+        .new_position(
+            operator_nonce: 0,
+            position_id: vault.position_id,
+            owner_public_key: vault.get_public_key(),
+            owner_account: Zero::zero(),
+        );
+
+    // Setup parameters with zero contract address:
+    let vault_position_id = vault.position_id;
+    let vault_contract_address = Zero::zero();
+    let vault_asset_id = SYNTHETIC_ASSET_ID_2();
+    let expiration = Time::now().add(Time::days(1));
+
+    let register_vault_args = RegisterVaultArgs {
+        vault_position_id, vault_contract_address, vault_asset_id, expiration,
+    };
+    let msg_hash = register_vault_args.get_message_hash(public_key: vault.get_public_key());
+    let signature = vault.sign_message(msg_hash);
+
+    // Test 1: register vault with zero contract address.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    let result = dispatcher
+        .register_vault(
+            operator_nonce: 1,
+            :vault_position_id,
+            :vault_contract_address,
+            :vault_asset_id,
+            :expiration,
+            :signature,
+        );
+    assert_panic_with_felt_error(:result, expected_error: 'INVALID_VAULT_CONTRACT_ADDRESS');
+
+    // Setup parameters with zero asset id:
+    let vault_position_id = vault.position_id;
+    let vault_contract_address = VAULT_CONTRACT_ADDRESS_1();
+    let vault_asset_id = Zero::zero();
+    let expiration = Time::now().add(Time::days(1));
+
+    let register_vault_args = RegisterVaultArgs {
+        vault_position_id, vault_contract_address, vault_asset_id, expiration,
+    };
+    let msg_hash = register_vault_args.get_message_hash(public_key: vault.get_public_key());
+    let signature = vault.sign_message(msg_hash);
+
+    // Test 2: register vault with zero asset id.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    let result = dispatcher
+        .register_vault(
+            operator_nonce: 2,
+            :vault_position_id,
+            :vault_contract_address,
+            :vault_asset_id,
+            :expiration,
+            :signature,
+        );
+    assert_panic_with_felt_error(:result, expected_error: SYNTHETIC_NOT_EXISTS);
+
+    // Setup parameters:
+    let non_existent_vault_position_id = PositionId { value: 100 };
+    let vault_contract_address = VAULT_CONTRACT_ADDRESS_1();
+    let vault_asset_id = SYNTHETIC_ASSET_ID_2();
+    let expiration = Time::now().add(Time::days(1));
+
+    let register_vault_args = RegisterVaultArgs {
+        vault_position_id: non_existent_vault_position_id,
+        vault_contract_address,
+        vault_asset_id,
+        expiration,
+    };
+    let msg_hash = register_vault_args.get_message_hash(public_key: vault.get_public_key());
+    let signature = vault.sign_message(msg_hash);
+
+    // Test 3: register vault with non-existent position.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    let result = dispatcher
+        .register_vault(
+            operator_nonce: 3,
+            vault_position_id: non_existent_vault_position_id,
+            :vault_contract_address,
+            :vault_asset_id,
+            :expiration,
+            :signature,
+        );
+    assert_panic_with_felt_error(:result, expected_error: 'POSITION_DOESNT_EXIST');
+
+    // Setup parameters:
+    let vault_position_id = vault.position_id;
+    let vault_contract_address = VAULT_CONTRACT_ADDRESS_1();
+    let vault_asset_id = SYNTHETIC_ASSET_ID_2();
+    let expiration = Time::now().add(Time::days(1));
+
+    let register_vault_args = RegisterVaultArgs {
+        vault_position_id, vault_contract_address, vault_asset_id, expiration,
+    };
+    let msg_hash = register_vault_args.get_message_hash(public_key: vault.get_public_key());
+    let signature = vault.sign_message(msg_hash);
+
+    // First successful registration:
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    dispatcher
+        .register_vault(
+            operator_nonce: 4,
+            :vault_position_id,
+            :vault_contract_address,
+            :vault_asset_id,
+            :expiration,
+            :signature,
+        )
+        .unwrap();
+
+    // Setup for registration with same position but different contract address:
+    let vault_contract_address_2 = VAULT_CONTRACT_ADDRESS_2();
+    let register_vault_args_2 = RegisterVaultArgs {
+        vault_position_id,
+        vault_contract_address: vault_contract_address_2,
+        vault_asset_id,
+        expiration,
+    };
+    let msg_hash = register_vault_args_2.get_message_hash(public_key: vault.get_public_key());
+    let signature = vault.sign_message(msg_hash);
+
+    // Test 4: register vault with same position but different contract address.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    let result = dispatcher
+        .register_vault(
+            operator_nonce: 5,
+            :vault_position_id,
+            vault_contract_address: vault_contract_address_2,
+            :vault_asset_id,
+            :expiration,
+            :signature,
+        );
+    assert_panic_with_felt_error(:result, expected_error: 'VAULT_POSITION_ALREADY_EXISTS');
+
+    // Setup for registration with same contract address but different position:
+    let vault2 = UserTrait::new(position_id: POSITION_ID_2, key_pair: KEY_PAIR_2());
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    position_dispatcher
+        .new_position(
+            operator_nonce: 6,
+            position_id: vault2.position_id,
+            owner_public_key: vault2.get_public_key(),
+            owner_account: Zero::zero(),
+        );
+    let vault_position_id_2 = vault2.position_id;
+    let register_vault_args_2 = RegisterVaultArgs {
+        vault_position_id: vault_position_id_2, vault_contract_address, vault_asset_id, expiration,
+    };
+    let msg_hash = register_vault_args_2.get_message_hash(public_key: vault2.get_public_key());
+    let signature = vault2.sign_message(msg_hash);
+
+    // Test 5: register vault with same contract address but different position.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    let result = dispatcher
+        .register_vault(
+            operator_nonce: 7,
+            vault_position_id: vault_position_id_2,
+            :vault_contract_address,
+            :vault_asset_id,
+            :expiration,
+            :signature,
+        );
+    assert_panic_with_felt_error(:result, expected_error: 'VAULT_CONTRACT_ALREADY_EXISTS');
+}
+

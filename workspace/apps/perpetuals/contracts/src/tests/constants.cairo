@@ -44,6 +44,12 @@ pub fn APP_GOVERNOR() -> ContractAddress {
 pub fn OPERATOR() -> ContractAddress {
     'OPERATOR'.try_into().unwrap()
 }
+pub fn VAULT_CONTRACT_ADDRESS_1() -> ContractAddress {
+    'VAULT_CONTRACT_ADDRESS_1'.try_into().unwrap()
+}
+pub fn VAULT_CONTRACT_ADDRESS_2() -> ContractAddress {
+    'VAULT_CONTRACT_ADDRESS_2'.try_into().unwrap()
+}
 
 pub const UPGRADE_DELAY: u64 = 5_u64;
 /// 1 day in seconds.
