@@ -92,7 +92,7 @@ impl FundingIndexIntoImpl of Into<FundingIndex, i64> {
 
 impl i64IntoImplFundingIndex of Into<i64, FundingIndex> {
     fn into(self: i64) -> FundingIndex {
-        FundingIndex{value: self}
+        FundingIndex { value: self }
     }
 }
 

@@ -32,7 +32,7 @@ pub struct Price {
 
 impl u64IntoImplPrice of Into<u64, Price> {
     fn into(self: u64) -> Price {
-        Price{value: self}
+        Price { value: self }
     }
 }
 

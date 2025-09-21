@@ -1,7 +1,6 @@
 #[starknet::component]
 pub mod AssetsComponent {
-    use starknet::SyscallResultTrait;
-use RolesComponent::InternalTrait as RolesInternalTrait;
+    use RolesComponent::InternalTrait as RolesInternalTrait;
     use core::cmp::min;
     use core::hash::Hash;
     use core::iter::{IntoIterator, Iterator};
@@ -25,11 +24,6 @@ use RolesComponent::InternalTrait as RolesInternalTrait;
         UNSORTED_RISK_FACTOR_TIERS, ZERO_MAX_FUNDING_INTERVAL, ZERO_MAX_FUNDING_RATE,
         ZERO_MAX_ORACLE_PRICE, ZERO_MAX_PRICE_INTERVAL,
     };
-    use starknet::storage_access::{
-        StorageBaseAddress, Store, storage_address_from_base, storage_address_from_base_and_offset,
-    };
-    use starknet::syscalls::{storage_read_syscall, storage_write_syscall};
-    use starknet::{ContractAddress, SyscallResult};
     use perpetuals::core::components::assets::events;
     use perpetuals::core::components::assets::interface::IAssets;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
@@ -45,14 +39,16 @@ use RolesComponent::InternalTrait as RolesInternalTrait;
     };
     use perpetuals::core::types::risk_factor::{RiskFactor, RiskFactorTrait};
     use starknet::storage::{
-        Map, Mutable, MutableVecTrait, StorageAsPath, StorageAsPointer, StorageMapReadAccess,
-        StorageMapWriteAccess, StoragePath, StoragePathEntry, StoragePointer0Offset,
-        StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait, StorableStoragePointerReadAccess, StoragePathUpdateTrait
+        IntoIterRange, Map, Mutable, MutableVecTrait, StorableStoragePointerReadAccess,
+        StorageAsPath, StorageAsPointer, StorageMapReadAccess, StorageMapWriteAccess, StoragePath,
+        StoragePathEntry, StoragePathMutableConversion, StoragePathUpdateTrait,
+        StoragePointer0Offset, StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
-    use starknet::storage::{
-        IntoIterRange,
-        StoragePathMutableConversion
+    use starknet::storage_access::{
+        StorageBaseAddress, Store, storage_address_from_base, storage_address_from_base_and_offset,
     };
+    use starknet::syscalls::{storage_read_syscall, storage_write_syscall};
+    use starknet::{ContractAddress, SyscallResult, SyscallResultTrait};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
     use starkware_utils::components::roles::RolesComponent;
@@ -60,7 +56,8 @@ use RolesComponent::InternalTrait as RolesInternalTrait;
     use starkware_utils::math::abs::Abs;
     use starkware_utils::signature::stark::{PublicKey, validate_stark_signature};
     use starkware_utils::storage::iterable_map::{
-        IterableMap, IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl, IterableMapTrait,
+        IterableMap, IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapTrait,
+        IterableMapWriteAccessImpl,
     };
     use starkware_utils::storage::utils::{AddToStorage, SubFromStorage};
     use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
@@ -525,9 +522,12 @@ use RolesComponent::InternalTrait as RolesInternalTrait;
             self: @ComponentState<TContractState>, synthetic_id: AssetId,
         ) -> Price {
             let entry = self.synthetic_timely_data.pointer(key: synthetic_id);
-            let price = storage_read_syscall(0, storage_address_from_base_and_offset(entry.__storage_pointer_address__ , 2)).unwrap_syscall();
-            let x: u64 = price.try_into().unwrap();
-            x.into()
+            let price = storage_read_syscall(
+                0, storage_address_from_base_and_offset(entry.__storage_pointer_address__, 2),
+            )
+                .unwrap_syscall();
+            let price: u64 = price.try_into().unwrap();
+            price.into()
         }
 
         /// Get the risk factor of a synthetic asset.
@@ -545,7 +545,9 @@ use RolesComponent::InternalTrait as RolesInternalTrait;
             price: Price,
         ) -> RiskFactor {
             let entry = self.synthetic_config.entry(synthetic_id);
-            let risk_factor_first_tier_boundary = entry.risk_factor_first_tier_boundary.read(); // read 1
+            let risk_factor_first_tier_boundary = entry
+                .risk_factor_first_tier_boundary
+                .read(); // read 1
 
             let asset_risk_factor_tiers = self.risk_factor_tiers.entry(synthetic_id);
             let synthetic_value: u128 = price.mul(rhs: balance).abs();
@@ -560,7 +562,8 @@ use RolesComponent::InternalTrait as RolesInternalTrait;
                 )
             };
             let con_index: u64 = index.try_into().expect('INDEX_SHOULD_NEVER_OVERFLOW');
-            let risk_factor_entry: StoragePath<RiskFactor> = asset_risk_factor_tiers.update(con_index);
+            let risk_factor_entry: StoragePath<RiskFactor> = asset_risk_factor_tiers
+                .update(con_index);
             risk_factor_entry.read()
         }
 
@@ -568,7 +571,10 @@ use RolesComponent::InternalTrait as RolesInternalTrait;
             self: @ComponentState<TContractState>, synthetic_id: AssetId,
         ) -> FundingIndex {
             let entry = self.synthetic_timely_data.pointer(key: synthetic_id);
-            let funding_index = storage_read_syscall(0, storage_address_from_base_and_offset(entry.__storage_pointer_address__ , 4)).unwrap_syscall();
+            let funding_index = storage_read_syscall(
+                0, storage_address_from_base_and_offset(entry.__storage_pointer_address__, 4),
+            )
+                .unwrap_syscall();
             let x: i64 = funding_index.try_into().unwrap();
             x.into()
         }
