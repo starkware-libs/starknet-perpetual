@@ -41,7 +41,7 @@ impl StructHashImpl of StructHash<SetOwnerAccountArgs> {
 
 #[cfg(test)]
 mod tests {
-    use openzeppelin_testing::common::IntoBase16String;
+    use starkware_utils::math::utils::to_base_16_string;
     use super::SET_OWNER_ACCOUNT_ARGS_HASH;
 
     #[test]
@@ -49,8 +49,6 @@ mod tests {
         let expected = selector!(
             "\"SetOwnerAccountArgs\"(\"position_id\":\"PositionId\",\"public_key\":\"felt\",\"new_owner_account\":\"ContractAddress\",\"expiration\":\"Timestamp\")\"PositionId\"(\"value\":\"u32\")\"Timestamp\"(\"seconds\":\"u64\")",
         );
-        assert!(
-            SET_OWNER_ACCOUNT_ARGS_HASH.into_base_16_string() == expected.into_base_16_string(),
-        );
+        assert!(to_base_16_string(SET_OWNER_ACCOUNT_ARGS_HASH) == to_base_16_string(expected));
     }
 }

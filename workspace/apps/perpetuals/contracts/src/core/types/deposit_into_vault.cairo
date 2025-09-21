@@ -49,7 +49,7 @@ impl StructHashImpl of StructHash<VaultDepositArgs> {
 
 #[cfg(test)]
 mod tests {
-    use openzeppelin_testing::common::IntoBase16String;
+    use starkware_utils::math::utils::to_base_16_string;
     use super::VAULT_DEPOSIT_ARGS_TYPE_HASH;
 
     #[test]
@@ -57,8 +57,6 @@ mod tests {
         let expected = selector!(
             "\"VaultDepositArgs\"(\"position_id\":\"PositionId\",\"vault_position_id\":\"PositionId\",\"collateral_id\":\"AssetId\",\"quantized_amount\":\"u64\",\"expiration\":\"Timestamp\",\"salt\":\"felt\")\"AssetId\"(\"value\":\"felt\")\"PositionId\"(\"value\":\"u32\")\"Timestamp\"(\"seconds\":\"u64\")",
         );
-        assert_eq!(
-            VAULT_DEPOSIT_ARGS_TYPE_HASH.into_base_16_string(), expected.into_base_16_string(),
-        );
+        assert_eq!(to_base_16_string(VAULT_DEPOSIT_ARGS_TYPE_HASH), to_base_16_string(expected));
     }
 }

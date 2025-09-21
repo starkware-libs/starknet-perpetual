@@ -1,7 +1,5 @@
 use core::dict::{Felt252Dict, Felt252DictTrait};
 use core::nullable::{FromNullableResult, match_nullable};
-use openzeppelin_testing::deployment::declare_and_deploy;
-use openzeppelin_testing::signing::StarkKeyPair;
 use perpetuals::core::components::assets::interface::{IAssetsDispatcher, IAssetsDispatcherTrait};
 use perpetuals::core::components::deposit::Deposit::deposit_hash;
 use perpetuals::core::components::deposit::interface::{
@@ -48,6 +46,7 @@ use starkware_utils::constants::{DAY, MINUTE, TEN_POW_12, TWO_POW_32, TWO_POW_40
 use starkware_utils::hash::message_hash::OffchainMessageHash;
 use starkware_utils::signature::stark::{PublicKey, Signature};
 use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
+use starkware_utils_testing::signing::StarkKeyPair;
 use starkware_utils_testing::test_utils::{
     Deployable, TokenState, TokenTrait, cheat_caller_address_once,
 };
@@ -91,7 +90,9 @@ pub struct Account {
 pub impl AccountImpl of AccountTrait {
     fn new(secret_key: felt252) -> Account {
         let key_pair = StarkCurveKeyPairImpl::from_secret_key(secret_key);
-        let address = declare_and_deploy("AccountUpgradeable", array![key_pair.public_key]);
+        let contract_class = snforge_std::declare("AccountUpgradeable").unwrap().contract_class();
+        let (address, _) = contract_class.deploy(@array![key_pair.public_key]).unwrap();
+
         Account { key_pair, address }
     }
 

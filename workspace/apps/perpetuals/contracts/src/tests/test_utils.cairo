@@ -4,8 +4,6 @@ use core::poseidon::PoseidonTrait;
 use openzeppelin::presets::interfaces::{
     AccountUpgradeableABIDispatcher, AccountUpgradeableABIDispatcherTrait,
 };
-use openzeppelin_testing::deployment::declare_and_deploy;
-use openzeppelin_testing::signing::StarkKeyPair;
 use perpetuals::core::components::assets::interface::IAssets;
 use perpetuals::core::components::operator_nonce::interface::IOperatorNonce;
 use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
@@ -31,6 +29,7 @@ use starkware_utils::constants::{MAX_U128, TWO_POW_32, TWO_POW_40};
 use starkware_utils::signature::stark::Signature;
 use starkware_utils::storage::iterable_map::*;
 use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
+use starkware_utils_testing::signing::StarkKeyPair;
 use starkware_utils_testing::test_utils::{
     Deployable, TokenConfig, TokenState, TokenTrait, cheat_caller_address_once,
 };
@@ -217,7 +216,9 @@ fn CONTRACT_STATE() -> Core::ContractState {
 
 fn deploy_account(key_pair: StarkKeyPair) -> ContractAddress {
     let calldata = array![key_pair.public_key];
-    let account_address = declare_and_deploy("AccountUpgradeable", calldata);
+
+    let contract_class = snforge_std::declare("AccountUpgradeable").unwrap().contract_class();
+    let (account_address, _) = contract_class.deploy(@calldata).unwrap();
 
     account_address
 }

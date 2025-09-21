@@ -96,15 +96,6 @@ source = "registry+https://scarbs.xyz/"
 checksum = "sha256:902932ec296c2f400e0ac7c579edeaafd6067b6ce6d9854c1191de28e396ffe3"
 
 [[package]]
-name = "openzeppelin_testing"
-version = "4.6.0"
-source = "registry+https://scarbs.xyz/"
-checksum = "sha256:953fa4e00f25f3f05df884f0a97dfaa66419472b079372abd82a671440219daa"
-dependencies = [
- "snforge_std",
-]
-
-[[package]]
 name = "openzeppelin_token"
 version = "2.0.0"
 source = "registry+https://scarbs.xyz/"
@@ -133,7 +124,6 @@ name = "perpetuals"
 version = "0.2.0"
 dependencies = [
  "openzeppelin",
- "openzeppelin_testing",
  "snforge_std",
  "starkware_utils",
  "starkware_utils_testing",
@@ -157,7 +147,7 @@ dependencies = [
 [[package]]
 name = "starkware_utils"
 version = "1.0.0"
-source = "git+https://github.com/starkware-libs/starkware-starknet-utils?branch=main#5147d9dd3072aaede9de73216b24babab2840c44"
+source = "git+https://github.com/starkware-libs/starkware-starknet-utils?branch=main#aa8b89ae7febcd207d83f16ba3f953cf5b8e3884"
 dependencies = [
  "openzeppelin",
 ]
@@ -165,7 +155,7 @@ dependencies = [
 [[package]]
 name = "starkware_utils_testing"
 version = "1.0.0"
-source = "git+https://github.com/starkware-libs/starkware-starknet-utils?branch=main#5147d9dd3072aaede9de73216b24babab2840c44"
+source = "git+https://github.com/starkware-libs/starkware-starknet-utils?branch=main#aa8b89ae7febcd207d83f16ba3f953cf5b8e3884"
 dependencies = [
  "openzeppelin",
  "snforge_std",

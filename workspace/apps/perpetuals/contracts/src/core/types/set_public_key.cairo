@@ -40,7 +40,7 @@ impl StructHashImpl of StructHash<SetPublicKeyArgs> {
 
 #[cfg(test)]
 mod tests {
-    use openzeppelin_testing::common::IntoBase16String;
+    use starkware_utils::math::utils::to_base_16_string;
     use super::SET_PUBLIC_KEY_ARGS_HASH;
 
     #[test]
@@ -48,6 +48,6 @@ mod tests {
         let expected = selector!(
             "\"SetPublicKeyArgs\"(\"position_id\":\"PositionId\",\"old_public_key\":\"felt\",\"new_public_key\":\"felt\",\"expiration\":\"Timestamp\")\"PositionId\"(\"value\":\"u32\")\"Timestamp\"(\"seconds\":\"u64\")",
         );
-        assert!(SET_PUBLIC_KEY_ARGS_HASH.into_base_16_string() == expected.into_base_16_string());
+        assert!(to_base_16_string(SET_PUBLIC_KEY_ARGS_HASH) == to_base_16_string(expected));
     }
 }

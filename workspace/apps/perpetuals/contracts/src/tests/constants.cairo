@@ -1,11 +1,11 @@
 use core::num::traits::Pow;
-use openzeppelin_testing::signing::StarkKeyPair;
 use perpetuals::core::types::asset::{AssetId, AssetIdTrait};
 use perpetuals::core::types::position::PositionId;
 use snforge_std::signature::stark_curve::StarkCurveKeyPairImpl;
 use starknet::ContractAddress;
 use starkware_utils::constants::{DAY, MINUTE, WEEK};
 use starkware_utils::time::time::TimeDelta;
+use starkware_utils_testing::signing::StarkKeyPair;
 
 
 pub fn OPERATOR_PUBLIC_KEY() -> felt252 {
