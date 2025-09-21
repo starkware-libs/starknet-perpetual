@@ -14,8 +14,7 @@ use perpetuals::core::components::positions::interface::{
 };
 use perpetuals::core::core::Core::SNIP12MetadataImpl;
 use perpetuals::core::interface::{ICoreDispatcher, ICoreDispatcherTrait, Settlement};
-use perpetuals::core::types::asset::synthetic::SyntheticAsset;
-use perpetuals::core::types::asset::{AssetId, AssetIdTrait, AssetStatus};
+use perpetuals::core::types::asset::{Asset, AssetId, AssetIdTrait, AssetStatus};
 use perpetuals::core::types::balance::Balance;
 use perpetuals::core::types::funding::FundingTick;
 use perpetuals::core::types::order::Order;
@@ -765,13 +764,13 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         let user_a_balance_before = dispatcher
             .get_position_assets(position_id: order_a.position_id);
         let user_a_collateral_balance_before = user_a_balance_before.collateral_balance;
-        let user_a_synthetic_balance_before = get_synthetic_balance(
+        let user_a_synthetic_balance_before = get_asset_balance(
             assets: user_a_balance_before.synthetics, :asset_id,
         );
         let user_b_balance_before = dispatcher
             .get_position_assets(position_id: order_b.position_id);
         let user_b_collateral_balance_before = user_b_balance_before.collateral_balance;
-        let user_b_synthetic_balance_before = get_synthetic_balance(
+        let user_b_synthetic_balance_before = get_asset_balance(
             assets: user_b_balance_before.synthetics, :asset_id,
         );
         let fee_position_balance_before = dispatcher
@@ -882,7 +881,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 let new_balance = *synthetic.balance + settlement.actual_amount_base_a.into();
                 new_synthetics_a
                     .append(
-                        SyntheticAsset {
+                        Asset {
                             id: *synthetic.id,
                             balance: new_balance,
                             price: *synthetic.price,
@@ -900,7 +899,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 let new_balance = *synthetic.balance - settlement.actual_amount_base_a.into();
                 new_synthetics_b
                     .append(
-                        SyntheticAsset {
+                        Asset {
                             id: *synthetic.id,
                             balance: new_balance,
                             price: *synthetic.price,
@@ -1028,13 +1027,13 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         let liquidated_balance_before = dispatcher
             .get_position_assets(position_id: liquidated_user.position_id);
         let liquidated_collateral_balance_before = liquidated_balance_before.collateral_balance;
-        let liquidated_synthetic_balance_before = get_synthetic_balance(
+        let liquidated_synthetic_balance_before = get_asset_balance(
             assets: liquidated_balance_before.synthetics, :asset_id,
         );
         let liquidator_balance_before = dispatcher
             .get_position_assets(position_id: liquidator_order.position_id);
         let liquidator_collateral_balance_before = liquidator_balance_before.collateral_balance;
-        let liquidator_synthetic_balance_before = get_synthetic_balance(
+        let liquidator_synthetic_balance_before = get_asset_balance(
             assets: liquidator_balance_before.synthetics, :asset_id,
         );
         let fee_position_balance_before = dispatcher
@@ -1131,13 +1130,13 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         let deleveraged_balance_before = dispatcher
             .get_position_assets(position_id: deleveraged_user.position_id);
         let deleveraged_collateral_balance_before = deleveraged_balance_before.collateral_balance;
-        let deleveraged_synthetic_balance_before = get_synthetic_balance(
+        let deleveraged_synthetic_balance_before = get_asset_balance(
             assets: deleveraged_balance_before.synthetics, asset_id: base_asset_id,
         );
         let deleverager_balance_before = dispatcher
             .get_position_assets(position_id: deleverager_user.position_id);
         let deleverager_collateral_balance_before = deleverager_balance_before.collateral_balance;
-        let deleverager_synthetic_balance_before = get_synthetic_balance(
+        let deleverager_synthetic_balance_before = get_asset_balance(
             assets: deleverager_balance_before.synthetics, asset_id: base_asset_id,
         );
 
@@ -1218,7 +1217,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         );
 
         assert_eq!(
-            dispatcher.get_synthetic_config(synthetic_id: *synthetic_info.asset_id).status,
+            dispatcher.get_asset_config(asset_id: *synthetic_info.asset_id).status,
             AssetStatus::PENDING,
         );
 
@@ -1244,7 +1243,9 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             spied_event: self.get_last_event(contract_address: self.perpetuals_contract),
             asset_id: synthetic_id,
         );
-        assert_eq!(dispatcher.get_synthetic_config(:synthetic_id).status, AssetStatus::INACTIVE);
+        assert_eq!(
+            dispatcher.get_asset_config(asset_id: synthetic_id).status, AssetStatus::INACTIVE,
+        );
     }
 
     fn reduce_inactive_asset_position(
@@ -1274,7 +1275,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
     ) -> Balance {
         let assets = IPositionsDispatcher { contract_address: *self.perpetuals_contract }
             .get_position_assets(position_id);
-        get_synthetic_balance(assets: assets.synthetics, asset_id: synthetic_id)
+        get_asset_balance(assets: assets.synthetics, asset_id: synthetic_id)
     }
 
     fn get_position_collateral_balance(
@@ -1287,7 +1288,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
 
     fn get_synthetic_price(self: @PerpsTestsFacade, synthetic_id: AssetId) -> Price {
         IAssetsDispatcher { contract_address: *self.perpetuals_contract }
-            .get_synthetic_timely_data(synthetic_id: synthetic_id)
+            .get_asset_timely_data(asset_id: synthetic_id)
             .price
     }
 
@@ -1341,9 +1342,9 @@ pub impl PerpsTestsFacadeValidationsImpl of PerpsTestsFacadeValidationsTrait {
         let synthetic_assets = IPositionsDispatcher { contract_address: *self.perpetuals_contract }
             .get_position_assets(:position_id)
             .synthetics;
-        let synthetic_balance = get_synthetic_balance(assets: synthetic_assets, :asset_id);
+        let assets_balance = get_asset_balance(assets: synthetic_assets, :asset_id);
 
-        assert_eq!(synthetic_balance, expected_balance);
+        assert_eq!(assets_balance, expected_balance);
     }
 
     fn validate_total_value(
@@ -1367,7 +1368,7 @@ pub fn advance_time(seconds: u64) {
     start_cheat_block_timestamp_global(Time::now().add(Time::seconds(seconds)).into());
 }
 
-fn get_synthetic_balance(assets: Span<SyntheticAsset>, asset_id: AssetId) -> Balance {
+fn get_asset_balance(assets: Span<Asset>, asset_id: AssetId) -> Balance {
     for asset in assets {
         if asset.id == @asset_id {
             return asset.balance.clone();

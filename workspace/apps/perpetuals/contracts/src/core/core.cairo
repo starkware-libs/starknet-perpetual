@@ -31,8 +31,7 @@ pub mod Core {
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
-    use perpetuals::core::types::asset::synthetic::SyntheticDiffEnriched;
-    use perpetuals::core::types::asset::{AssetId, AssetStatus};
+    use perpetuals::core::types::asset::{AssetDiffEnriched, AssetId, AssetStatus};
     use perpetuals::core::types::balance::{Balance, BalanceDiff};
     use perpetuals::core::types::deposit_into_vault::VaultDepositArgs;
     use perpetuals::core::types::order::{Order, OrderTrait};
@@ -862,7 +861,7 @@ pub mod Core {
             let position_b = self.positions.get_position_snapshot(position_id: position_id_b);
 
             // Validate base asset is inactive synthetic.
-            if let Option::Some(config) = self.assets.synthetic_config.read(base_asset_id) {
+            if let Option::Some(config) = self.assets.asset_config.read(base_asset_id) {
                 assert(config.status == AssetStatus::INACTIVE, SYNTHETIC_IS_ACTIVE);
             } else {
                 panic_with_felt252(NOT_SYNTHETIC);
@@ -871,7 +870,7 @@ pub mod Core {
             let quote_amount_a: i64 = -1
                 * self
                     .assets
-                    .get_synthetic_price(synthetic_id: base_asset_id)
+                    .get_asset_price(asset_id: base_asset_id)
                     .mul(rhs: base_balance)
                     .try_into()
                     .expect('QUOTE_AMOUNT_OVERFLOW');
@@ -1375,7 +1374,7 @@ pub mod Core {
         ) {
             let position_base_balance: i64 = self
                 .positions
-                .get_synthetic_balance(:position, synthetic_id: asset_id)
+                .get_asset_balance(:position, :asset_id)
                 .into();
 
             assert(!have_same_sign(amount, position_base_balance), INVALID_AMOUNT_SIGN);
@@ -1528,17 +1527,19 @@ pub mod Core {
         ) -> SyntheticEnrichedPositionDiff {
             let synthetic_enriched = if let Option::Some((synthetic_id, diff)) = position_diff
                 .synthetic_diff {
-                let balance_before = self.positions.get_synthetic_balance(:position, :synthetic_id);
+                let balance_before = self
+                    .positions
+                    .get_asset_balance(:position, asset_id: synthetic_id);
                 let balance_after = balance_before + diff;
-                let price = self.assets.get_synthetic_price(synthetic_id);
+                let price = self.assets.get_asset_price(asset_id: synthetic_id);
                 let risk_factor_before = self
                     .assets
-                    .get_synthetic_risk_factor(synthetic_id, balance_before, price);
+                    .get_asset_risk_factor(synthetic_id, balance_before, price);
                 let risk_factor_after = self
                     .assets
-                    .get_synthetic_risk_factor(synthetic_id, balance_after, price);
+                    .get_asset_risk_factor(synthetic_id, balance_after, price);
 
-                let asset_diff_enriched = SyntheticDiffEnriched {
+                let asset_diff_enriched = AssetDiffEnriched {
                     asset_id: synthetic_id,
                     balance_before,
                     balance_after,

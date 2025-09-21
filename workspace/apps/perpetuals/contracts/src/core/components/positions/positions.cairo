@@ -17,8 +17,7 @@ pub(crate) mod Positions {
     use perpetuals::core::components::positions::events;
     use perpetuals::core::components::positions::interface::IPositions;
     use perpetuals::core::core::Core::SNIP12MetadataImpl;
-    use perpetuals::core::types::asset::AssetId;
-    use perpetuals::core::types::asset::synthetic::SyntheticAsset;
+    use perpetuals::core::types::asset::{Asset, AssetId};
     use perpetuals::core::types::balance::Balance;
     use perpetuals::core::types::funding::calculate_funding;
     use perpetuals::core::types::position::{
@@ -431,13 +430,13 @@ pub(crate) mod Positions {
             position
         }
 
-        fn get_synthetic_balance(
+        fn get_asset_balance(
             self: @ComponentState<TContractState>,
             position: StoragePath<Position>,
-            synthetic_id: AssetId,
+            asset_id: AssetId,
         ) -> Balance {
-            if let Option::Some(synthetic) = position.synthetic_balance.read(synthetic_id) {
-                synthetic.balance
+            if let Option::Some(asset) = position.assets_balance.read(asset_id) {
+                asset.balance
             } else {
                 0_i64.into()
             }
@@ -454,7 +453,7 @@ pub(crate) mod Positions {
                 return collateral_provisional_balance + provisional_delta;
             }
 
-            for (synthetic_id, synthetic) in position.synthetic_balance {
+            for (synthetic_id, synthetic) in position.assets_balance {
                 if synthetic.balance.is_zero() {
                     continue;
                 }
@@ -475,7 +474,7 @@ pub(crate) mod Positions {
             self: @ComponentState<TContractState>,
             position: StoragePath<Position>,
             position_diff: PositionDiff,
-        ) -> (Balance, Span<SyntheticAsset>) {
+        ) -> (Balance, Span<Asset>) {
             let assets = get_dep_component!(self, Assets);
             let mut unchanged_synthetics = array![];
 
@@ -486,7 +485,7 @@ pub(crate) mod Positions {
             };
             let mut provisional_delta: Balance = 0_i64.into();
 
-            for (synthetic_id, synthetic) in position.synthetic_balance {
+            for (synthetic_id, synthetic) in position.assets_balance {
                 let balance = synthetic.balance;
                 if balance.is_zero() {
                     continue;
@@ -501,10 +500,10 @@ pub(crate) mod Positions {
                     continue;
                 }
 
-                let price = assets.get_synthetic_price(synthetic_id);
-                let risk_factor = assets.get_synthetic_risk_factor(synthetic_id, balance, price);
+                let price = assets.get_asset_price(asset_id: synthetic_id);
+                let risk_factor = assets.get_asset_risk_factor(synthetic_id, balance, price);
                 unchanged_synthetics
-                    .append(SyntheticAsset { id: synthetic_id, balance, price, risk_factor });
+                    .append(Asset { id: synthetic_id, balance, price, risk_factor });
             }
 
             (provisional_delta, unchanged_synthetics.span())
@@ -530,12 +529,12 @@ pub(crate) mod Positions {
         /// current funding index.
         ///
         /// The main collateral balance is updated using the following formula:
-        /// main_collateral_balance += synthetic_balance * (old_funding_index - new_funding_index).
+        /// main_collateral_balance += assets_balance * (old_funding_index - new_funding_index).
         /// After the adjustment, the `funding_index` is set to `global_funding_index`.
         ///
         /// Example:
         /// main_collateral_balance = 1000;
-        /// synthetic_balance = 50;
+        /// assets_balance = 50;
         /// old_funding_index = 200;
         /// new_funding_index = 210;
         ///
@@ -543,7 +542,7 @@ pub(crate) mod Positions {
         ///
         /// After the update:
         /// main_collateral_balance = 500; // 1000 + 50 * (200 - 210)
-        /// synthetic_balance = 300;
+        /// assets_balance = 300;
         /// synthetic_funding_index = 210;
         ///
         fn _update_synthetic_balance_and_funding(
@@ -558,7 +557,7 @@ pub(crate) mod Positions {
             // Adjusts the main collateral balance accordingly:
             let (collateral_funding, current_synthetic_balance) = if let Option::Some(synthetic) =
                 position
-                .synthetic_balance
+                .assets_balance
                 .read(synthetic_id) {
                 let current_synthetic_balance = synthetic.balance;
                 (
@@ -580,7 +579,7 @@ pub(crate) mod Positions {
                 balance: current_synthetic_balance + synthetic_diff,
                 funding_index: global_funding_index,
             };
-            position.synthetic_balance.write(synthetic_id, synthetic_asset);
+            position.assets_balance.write(synthetic_id, synthetic_asset);
         }
 
         fn _get_position_state(
