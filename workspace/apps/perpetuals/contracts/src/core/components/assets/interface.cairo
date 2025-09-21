@@ -1,6 +1,5 @@
 use openzeppelin::interfaces::token::erc20::IERC20Dispatcher;
-use perpetuals::core::types::asset::AssetId;
-use perpetuals::core::types::asset::synthetic::{SyntheticConfig, SyntheticTimelyData};
+use perpetuals::core::types::asset::{AssetConfig, AssetId, AssetTimelyData};
 use perpetuals::core::types::funding::FundingTick;
 use perpetuals::core::types::price::SignedPrice;
 use perpetuals::core::types::risk_factor::RiskFactor;
@@ -41,7 +40,7 @@ pub trait IAssets<TContractState> {
     fn remove_oracle_from_asset(
         ref self: TContractState, asset_id: AssetId, oracle_public_key: PublicKey,
     );
-    fn update_synthetic_quorum(ref self: TContractState, synthetic_id: AssetId, quorum: u8);
+    fn update_asset_quorum(ref self: TContractState, asset_id: AssetId, quorum: u8);
 
     // View functions.
     fn get_collateral_token_contract(self: @TContractState) -> IERC20Dispatcher;
@@ -54,9 +53,7 @@ pub trait IAssets<TContractState> {
     fn get_max_oracle_price_validity(self: @TContractState) -> TimeDelta;
     fn get_num_of_active_synthetic_assets(self: @TContractState) -> usize;
     fn get_collateral_id(self: @TContractState) -> AssetId;
-    fn get_synthetic_config(self: @TContractState, synthetic_id: AssetId) -> SyntheticConfig;
-    fn get_synthetic_timely_data(
-        self: @TContractState, synthetic_id: AssetId,
-    ) -> SyntheticTimelyData;
+    fn get_asset_config(self: @TContractState, asset_id: AssetId) -> AssetConfig;
+    fn get_asset_timely_data(self: @TContractState, asset_id: AssetId) -> AssetTimelyData;
     fn get_risk_factor_tiers(self: @TContractState, asset_id: AssetId) -> Span<RiskFactor>;
 }

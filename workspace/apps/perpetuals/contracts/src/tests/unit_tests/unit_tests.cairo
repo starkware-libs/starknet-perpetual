@@ -21,8 +21,7 @@ use perpetuals::core::core::Core;
 use perpetuals::core::core::Core::SNIP12MetadataImpl;
 use perpetuals::core::errors::SIGNED_TX_EXPIRED;
 use perpetuals::core::interface::{ICore, ICoreSafeDispatcher, ICoreSafeDispatcherTrait};
-use perpetuals::core::types::asset::AssetStatus;
-use perpetuals::core::types::asset::synthetic::SyntheticTrait;
+use perpetuals::core::types::asset::{AssetStatus, AssetTrait};
 use perpetuals::core::types::funding::{FUNDING_SCALE, FundingIndex, FundingTick};
 use perpetuals::core::types::order::Order;
 use perpetuals::core::types::position::{POSITION_VERSION, PositionMutableTrait};
@@ -1076,13 +1075,7 @@ fn test_successful_deactivate_synthetic_asset() {
     // Setup parameters:
     let synthetic_id = cfg.synthetic_cfg.synthetic_id;
     assert!(
-        state
-            .assets
-            .synthetic_config
-            .entry(synthetic_id)
-            .read()
-            .unwrap()
-            .status == AssetStatus::ACTIVE,
+        state.assets.asset_config.entry(synthetic_id).read().unwrap().status == AssetStatus::ACTIVE,
     );
 
     // Test:
@@ -1099,7 +1092,7 @@ fn test_successful_deactivate_synthetic_asset() {
     assert!(
         state
             .assets
-            .synthetic_config
+            .asset_config
             .entry(synthetic_id)
             .read()
             .unwrap()
@@ -1747,7 +1740,7 @@ fn test_successful_trade() {
         .get_collateral_provisional_balance(position: position_a, provisional_delta: Option::None);
     let user_a_synthetic_balance = state
         .positions
-        .get_synthetic_balance(position: position_a, :synthetic_id);
+        .get_asset_balance(position: position_a, asset_id: synthetic_id);
     assert!(
         user_a_collateral_balance == (COLLATERAL_BALANCE_AMOUNT.into() - FEE.into() + QUOTE.into()),
     );
@@ -1759,7 +1752,7 @@ fn test_successful_trade() {
         .get_collateral_provisional_balance(position: position_b, provisional_delta: Option::None);
     let user_b_synthetic_balance = state
         .positions
-        .get_synthetic_balance(position: position_b, :synthetic_id);
+        .get_asset_balance(position: position_b, asset_id: synthetic_id);
     assert!(
         user_b_collateral_balance == (COLLATERAL_BALANCE_AMOUNT.into() - FEE.into() - QUOTE.into()),
     );
@@ -2017,7 +2010,7 @@ fn test_successful_deleverage() {
         );
     let deleveraged_synthetic_balance = state
         .positions
-        .get_synthetic_balance(position: deleveraged_position, :synthetic_id);
+        .get_asset_balance(position: deleveraged_position, asset_id: synthetic_id);
     assert!(deleveraged_collateral_balance == (COLLATERAL_BALANCE_AMOUNT + QUOTE).into());
     assert!(deleveraged_synthetic_balance == (-2 * SYNTHETIC_BALANCE_AMOUNT + BASE).into());
 
@@ -2028,7 +2021,7 @@ fn test_successful_deleverage() {
         );
     let deleverager_synthetic_balance = state
         .positions
-        .get_synthetic_balance(position: deleverager_position, :synthetic_id);
+        .get_asset_balance(position: deleverager_position, asset_id: synthetic_id);
     assert!(deleverager_collateral_balance == (COLLATERAL_BALANCE_AMOUNT - QUOTE).into());
     assert!(deleverager_synthetic_balance == (SYNTHETIC_BALANCE_AMOUNT - BASE).into());
 }
@@ -2183,7 +2176,7 @@ fn test_successful_liquidate() {
         );
     let liquidated_synthetic_balance = state
         .positions
-        .get_synthetic_balance(position: liquidated_position, :synthetic_id);
+        .get_asset_balance(position: liquidated_position, asset_id: synthetic_id);
     assert!(
         liquidated_collateral_balance == (COLLATERAL_BALANCE_AMOUNT.into()
             - INSURANCE_FEE.into()
@@ -2198,7 +2191,7 @@ fn test_successful_liquidate() {
         );
     let liquidator_synthetic_balance = state
         .positions
-        .get_synthetic_balance(position: liquidator_position, :synthetic_id);
+        .get_asset_balance(position: liquidator_position, asset_id: synthetic_id);
     assert!(
         liquidator_collateral_balance == (COLLATERAL_BALANCE_AMOUNT.into()
             - FEE.into()
@@ -2943,9 +2936,7 @@ fn test_funding_tick_basic() {
     );
 
     // Check:
-    assert!(
-        state.assets.get_synthetic_timely_data(synthetic_id).funding_index == new_funding_index,
-    );
+    assert!(state.assets.get_asset_timely_data(synthetic_id).funding_index == new_funding_index);
 }
 
 #[test]
@@ -3054,10 +3045,10 @@ fn test_price_tick_basic() {
         spied_event: events[2], asset_id: synthetic_id, price: PriceTrait::new(value: 100),
     );
 
-    assert!(state.assets.get_synthetic_config(synthetic_id).status == AssetStatus::ACTIVE);
+    assert!(state.assets.get_asset_config(synthetic_id).status == AssetStatus::ACTIVE);
     assert!(state.assets.get_num_of_active_synthetic_assets() == 1);
 
-    let data = state.assets.get_synthetic_timely_data(synthetic_id);
+    let data = state.assets.get_asset_timely_data(synthetic_id);
     assert!(data.last_price_update == new_time);
     assert!(data.price.value() == 100 * PRICE_SCALE);
 }
@@ -3124,9 +3115,9 @@ fn test_price_tick_odd() {
             ]
                 .span(),
         );
-    assert!(state.assets.get_synthetic_config(synthetic_id).status == AssetStatus::ACTIVE);
+    assert!(state.assets.get_asset_config(synthetic_id).status == AssetStatus::ACTIVE);
     assert!(state.assets.get_num_of_active_synthetic_assets() == 1);
-    let data = state.assets.get_synthetic_timely_data(synthetic_id);
+    let data = state.assets.get_asset_timely_data(synthetic_id);
     assert!(data.last_price_update == new_time);
     assert!(data.price.value() == 100 * PRICE_SCALE);
 }
@@ -3182,10 +3173,10 @@ fn test_price_tick_even() {
             ]
                 .span(),
         );
-    assert!(state.assets.get_synthetic_config(synthetic_id).status == AssetStatus::ACTIVE);
+    assert!(state.assets.get_asset_config(synthetic_id).status == AssetStatus::ACTIVE);
     assert!(state.assets.get_num_of_active_synthetic_assets() == 1);
 
-    let data = state.assets.get_synthetic_timely_data(synthetic_id);
+    let data = state.assets.get_asset_timely_data(synthetic_id);
     assert!(data.last_price_update == new_time);
     assert!(data.price.value() == 100 * PRICE_SCALE);
 }
@@ -3375,7 +3366,7 @@ fn test_price_tick_golden() {
             :oracle_price,
             signed_prices: [signed_price1, signed_price0, signed_price2].span(),
         );
-    let data = state.assets.get_synthetic_timely_data(synthetic_id);
+    let data = state.assets.get_asset_timely_data(synthetic_id);
     assert!(data.last_price_update == Time::now());
     assert!(data.price.value() == 6430);
 }
@@ -3405,7 +3396,7 @@ fn test_successful_add_and_remove_oracle() {
             :asset_name,
         );
 
-    state.update_synthetic_quorum(:synthetic_id, quorum: 2);
+    state.update_asset_quorum(asset_id: synthetic_id, quorum: 2);
 
     // Add another oracle for the same asset id.
     let asset_name = 'ASSET_NAME';
@@ -3578,7 +3569,7 @@ fn test_failed_deposit_into_vault_scenarios() {
 
             state.vault_positions_to_assets.write(vault_user.position_id, asset_id);
 
-            let synthetic_config = SyntheticTrait::config(
+            let synthetic_config = AssetTrait::config(
                 status: AssetStatus::PENDING,
                 risk_factor_first_tier_boundary: Default::default(),
                 risk_factor_tier_size: Default::default(),
@@ -3586,7 +3577,7 @@ fn test_failed_deposit_into_vault_scenarios() {
                 resolution_factor: Default::default(),
             );
 
-            state.assets.synthetic_config.write(asset_id, Some(synthetic_config));
+            state.assets.asset_config.write(asset_id, Some(synthetic_config));
         },
     );
 
@@ -3611,7 +3602,7 @@ fn test_failed_deposit_into_vault_scenarios() {
         || {
             let mut state = Core::contract_state_for_testing();
 
-            let synthetic_config = SyntheticTrait::config(
+            let synthetic_config = AssetTrait::config(
                 status: AssetStatus::ACTIVE,
                 risk_factor_first_tier_boundary: Default::default(),
                 risk_factor_tier_size: Default::default(),
@@ -3619,7 +3610,7 @@ fn test_failed_deposit_into_vault_scenarios() {
                 resolution_factor: Default::default(),
             );
 
-            state.assets.synthetic_config.write(asset_id, Some(synthetic_config));
+            state.assets.asset_config.write(asset_id, Some(synthetic_config));
         },
     );
 
