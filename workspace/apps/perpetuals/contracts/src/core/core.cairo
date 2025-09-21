@@ -32,7 +32,7 @@ pub mod Core {
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
-    use perpetuals::core::types::asset::{AssetDiffEnriched, AssetId, AssetStatus};
+    use perpetuals::core::types::asset::{AssetDiffEnriched, AssetId, AssetStatus, AssetType};
     use perpetuals::core::types::balance::{Balance, BalanceDiff};
     use perpetuals::core::types::deposit_into_vault::VaultDepositArgs;
     use perpetuals::core::types::order::{Order, OrderTrait};
@@ -870,9 +870,10 @@ pub mod Core {
 
             // Validate base asset is inactive synthetic.
             if let Option::Some(config) = self.assets.asset_config.read(base_asset_id) {
+                assert(config.asset_type == AssetType::SYNTHETIC, NOT_SYNTHETIC);
                 assert(config.status == AssetStatus::INACTIVE, SYNTHETIC_IS_ACTIVE);
             } else {
-                panic_with_felt252(NOT_SYNTHETIC);
+                panic_with_felt252(SYNTHETIC_NOT_EXISTS);
             }
             let base_balance: Balance = base_amount_a.into();
             let quote_amount_a: i64 = -1
