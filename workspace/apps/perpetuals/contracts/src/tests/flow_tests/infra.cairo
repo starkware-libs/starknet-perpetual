@@ -305,13 +305,13 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
         ref self: FlowTestExtended, liquidated_user: User, mut liquidator_order: OrderRequest,
     ) -> OrderRequest {
         let synthetic_id = liquidator_order.order_info.order.base_asset_id;
-        let synthetic_balance: i64 = self
+        let assets_balance: i64 = self
             .flow_test_base
             .facade
             .get_position_synthetic_balance(position_id: liquidated_user.position_id, :synthetic_id)
             .into();
 
-        let base = min(synthetic_balance.abs(), liquidator_order.actual_base);
+        let base = min(assets_balance.abs(), liquidator_order.actual_base);
 
         let quote = base
             * liquidator_order.order_info.order.quote_amount.abs()
