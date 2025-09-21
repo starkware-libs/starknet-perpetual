@@ -62,7 +62,7 @@ classDiagram
         collateral_quantum: u64,
         num_of_active_synthetic_assets: usize,
         pub synthetic_config: Map< AssetId, Option [AssetConfig]>,
-        pub synthetic_timely_data: IterableMap< AssetId, AssetTimelyData>,
+        pub asset_timely_data: IterableMap< AssetId, AssetTimelyData>,
         pub risk_factor_tiers: Map<AssetId, Vec [FixedTwoDecimal] >,
         asset_oracle: Map< AssetId, Map [PublicKey, felt252 ]>,
         max_oracle_price_validity: TimeDelta,
@@ -75,7 +75,7 @@ classDiagram
         funding_tick()
         price_tick()
         remove_oracle_from_asset()
-        update_synthetic_quorum()
+        update_asset_quorum()
 
         get_collateral_token_contract() -> IERC20Dispatcher
         get_collateral_quantum() -> u64
@@ -1360,7 +1360,7 @@ pub struct Storage {
     collateral_quantum: u64,
     num_of_active_synthetic_assets: usize,
     pub synthetic_config: Map<AssetId, Option<AssetConfig>>,
-    pub synthetic_timely_data: IterableMap<AssetId, AssetTimelyData>,
+    pub asset_timely_data: IterableMap<AssetId, AssetTimelyData>,
     pub collateral_timely_data: IterableMap<AssetId, AssetTimelyData>,
     pub risk_factor_tiers: Map<AssetId, Vec<FixedTwoDecimal>>,
     asset_oracle: Map<AssetId, Map<PublicKey, felt252>>,
@@ -1623,7 +1623,7 @@ Only the Operator can execute.
       `)`
 2. calculate median price using the formula:
 $median\\_price = \frac{price*2^{28}}{asset\\_id.resolution\\_factor *10^{12} }$
-3. `self.synthetic_timely_data[asset_id].price = median_price`
+3. `self.asset_timely_data[asset_id].price = median_price`
 
    Explanation: Oracles sign prices in the same format as StarkEx \- they sign process of major unit with 18 decimals precision. So to ge the asset price of 1 Starknet unit of synthetic asset:
 
@@ -1896,7 +1896,7 @@ Only APP\_GOVERNOR can execute.
 ###### Update Synthetic Quorum
 
 ```rust
-fn update_synthetic_quorum(
+fn update_asset_quorum(
     self: ContractState,
     synthetic_id: AssetId,
     quorum: u8

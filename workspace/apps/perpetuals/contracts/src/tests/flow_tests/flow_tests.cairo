@@ -733,7 +733,7 @@ fn test_multi_trade_single_order() {
     let mut trades: Array<(OrderRequest, OrderRequest)> = ArrayTrait::new();
 
     // tv = balance - fee = balance - 5% of tx value = 20_000 - price / 20
-    // tr = synthetic_balance * synthetic_price * risk = 1 * price * 0.1 = price / 10
+    // tr = assets_balance * synthetic_price * risk = 1 * price * 0.1 = price / 10
     let user_tv = 19949;
     let user_tr = 102;
     //tv = balance - total_fee
