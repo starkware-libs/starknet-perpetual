@@ -8,13 +8,13 @@ pub mod AssetsComponent {
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::token::erc20::interface::IERC20Dispatcher;
     use perpetuals::core::components::assets::errors::{
-        ALREADY_INITIALIZED, ASSET_NAME_TOO_LONG, ASSET_REGISTERED_AS_COLLATERAL,
+        ALREADY_INITIALIZED, ASSET_NAME_TOO_LONG, ASSET_NOT_EXISTS, ASSET_REGISTERED_AS_COLLATERAL,
         COLLATERAL_NOT_REGISTERED, FUNDING_EXPIRED, FUNDING_TICKS_NOT_SORTED, INACTIVE_ASSET,
         INVALID_FUNDING_TICK_LEN, INVALID_MEDIAN, INVALID_PRICE_TIMESTAMP, INVALID_SAME_QUORUM,
         INVALID_ZERO_ASSET_ID, INVALID_ZERO_ASSET_NAME, INVALID_ZERO_ORACLE_NAME,
         INVALID_ZERO_PUBLIC_KEY, INVALID_ZERO_QUANTUM, INVALID_ZERO_QUORUM,
         INVALID_ZERO_RESOLUTION_FACTOR, INVALID_ZERO_RF_FIRST_BOUNDRY, INVALID_ZERO_RF_TIERS_LEN,
-        INVALID_ZERO_RF_TIER_SIZE, INVALID_ZERO_TOKEN_ADDRESS, NOT_SYNTHETIC, ORACLE_ALREADY_EXISTS,
+        INVALID_ZERO_RF_TIER_SIZE, INVALID_ZERO_TOKEN_ADDRESS, ORACLE_ALREADY_EXISTS,
         ORACLE_NAME_TOO_LONG, ORACLE_NOT_EXISTS, ORACLE_PUBLIC_KEY_NOT_REGISTERED,
         QUORUM_NOT_REACHED, SIGNED_PRICES_UNSORTED, SYNTHETIC_ALREADY_EXISTS,
         SYNTHETIC_EXPIRED_PRICE, SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS,
@@ -26,7 +26,7 @@ pub mod AssetsComponent {
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalTrait as NonceInternal;
     use perpetuals::core::types::asset::{
-        AssetConfig, AssetId, AssetStatus, AssetTimelyData, AssetTrait,
+        AssetConfig, AssetId, AssetStatus, AssetTimelyData, AssetTrait, AssetType,
     };
     use perpetuals::core::types::balance::Balance;
     use perpetuals::core::types::funding::{FundingIndex, FundingTick, validate_funding_rate};
@@ -207,6 +207,8 @@ pub mod AssetsComponent {
                 :risk_factor_tier_size,
                 :quorum,
                 :resolution_factor,
+                quantum: Zero::zero(),
+                asset_type: AssetType::SYNTHETIC,
             );
 
             synthetic_entry.write(Option::Some(asset_config));
@@ -506,7 +508,7 @@ pub mod AssetsComponent {
             if let Option::Some(data) = self.asset_timely_data.read(asset_id) {
                 data.price
             } else {
-                panic_with_felt252(NOT_SYNTHETIC)
+                panic_with_felt252(ASSET_NOT_EXISTS)
             }
         }
 
@@ -542,7 +544,7 @@ pub mod AssetsComponent {
                     .at(index.try_into().expect('INDEX_SHOULD_NEVER_OVERFLOW'))
                     .read()
             } else {
-                panic_with_felt252(NOT_SYNTHETIC)
+                panic_with_felt252(ASSET_NOT_EXISTS)
             }
         }
 
@@ -552,7 +554,7 @@ pub mod AssetsComponent {
             if let Option::Some(data) = self.asset_timely_data.read(synthetic_id) {
                 data.funding_index
             } else {
-                panic_with_felt252(NOT_SYNTHETIC)
+                panic_with_felt252(ASSET_NOT_EXISTS)
             }
         }
 
@@ -560,7 +562,7 @@ pub mod AssetsComponent {
             if let Option::Some(config) = self.asset_config.read(asset_id) {
                 assert(config.status == AssetStatus::ACTIVE, SYNTHETIC_NOT_ACTIVE);
             } else {
-                panic_with_felt252(NOT_SYNTHETIC);
+                panic_with_felt252(ASSET_NOT_EXISTS);
             }
         }
 
@@ -707,7 +709,9 @@ pub mod AssetsComponent {
             if asset_config.status == AssetStatus::PENDING {
                 // Activates the synthetic asset.
                 asset_config.status = AssetStatus::ACTIVE;
-                self.num_of_active_synthetic_assets.add_and_write(1);
+                if asset_config.asset_type == AssetType::SYNTHETIC {
+                    self.num_of_active_synthetic_assets.add_and_write(1);
+                }
                 self.asset_config.write(asset_id, Option::Some(asset_config));
                 self.emit(events::AssetActivated { asset_id });
             }
