@@ -41,7 +41,7 @@ pub mod AssetsComponent {
     use starknet::storage::{
         IntoIterRange, Map, Mutable, MutableVecTrait, StorableStoragePointerReadAccess,
         StorageAsPath, StorageAsPointer, StorageMapReadAccess, StorageMapWriteAccess, StoragePath,
-        StoragePathEntry, StoragePathMutableConversion, StoragePathUpdateTrait,
+        StoragePathEntry, StoragePathMutableConversion,
         StoragePointer0Offset, StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
     use starknet::storage_access::{
@@ -580,8 +580,8 @@ pub mod AssetsComponent {
         }
 
 
-        fn validate_active_asset(self: @ComponentState<TContractState>, synthetic_id: AssetId) {
-            let entry = self.synthetic_config.entry(synthetic_id);
+        fn validate_active_asset(self: @ComponentState<TContractState>, asset_id: AssetId) {
+            let entry = self.synthetic_config.entry(asset_id);
             let status = entry.status.read();
             assert(status == AssetStatus::ACTIVE, SYNTHETIC_NOT_ACTIVE);
         }
