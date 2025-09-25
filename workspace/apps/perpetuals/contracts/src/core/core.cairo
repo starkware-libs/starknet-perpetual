@@ -40,7 +40,7 @@ pub mod Core {
         Position, PositionDiff, PositionDiffEnriched, PositionId, PositionTrait,
         SyntheticEnrichedPositionDiff,
     };
-    use perpetuals::core::types::price::PriceMulTrait;
+    use perpetuals::core::types::price::{Price, PriceMulTrait};
     use perpetuals::core::types::register_vault::RegisterVaultArgs;
     use perpetuals::core::types::transfer::TransferArgs;
     use perpetuals::core::types::withdraw::WithdrawArgs;
@@ -1033,6 +1033,26 @@ pub mod Core {
                         vault_position_id, vault_contract_address, vault_asset_id, expiration,
                     },
                 )
+        }
+
+        fn withdraw_from_vault(
+            ref self: ContractState,
+            operator_nonce: u64,
+            position_id: PositionId,
+            vault_position_id: PositionId,
+            number_of_shares: u64,
+            minimum_received_total_amount: u64,
+            vault_share_execution_price: Price,
+            expiration: Timestamp,
+            salt: felt252,
+            user_signature: Signature,
+            vault_owner_signature: Signature,
+        ) {
+            /// Validations:
+            self.pausable.assert_not_paused();
+            self.operator_nonce.use_checked_nonce(:operator_nonce);
+            self.assets.validate_assets_integrity();
+            /// Executions:
         }
     }
 
