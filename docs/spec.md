@@ -908,10 +908,10 @@ impl StructHashImpl of StructHash<DepositIntoVaultArgs> {
 pub struct WithdrawFromVaultUserArgs {
     pub position_id: PositionId,
     pub vault_position_id: PositionId,
-    pub collateral_id: AssetId, 
+    pub collateral_id: AssetId,
     pub number_of_shares: u64
-    pub minimum_quantized_amount: u64,
-    pub expiration: Timestamp, 
+    pub minimum_received_total_amount: u128,
+    pub expiration: Timestamp,
     pub salt: felt
 }
 
@@ -921,7 +921,7 @@ pub struct WithdrawFromVaultUserArgs {
 ///    \"vault_position_id\":\"PositionId\",
 ///    \"collateral_id\":\"AssetId\",
 ///    \"number_of_shares\":\"u64\",
-///    \"minimum_quantized_amount\":\"u64\",
+///    \"minimum_received_total_amount\":\"u128\",
 ///    \"expiration\":\"Timestamp\",
 ///    \"salt\":\"felt\"
 ///    )
@@ -950,7 +950,7 @@ impl StructHashImpl of StructHash<WithdrawFromVaultUserArgs> {
 
 ```rust
 pub struct WithdrawFromVaultOwnerArgs {
-    user_hash: HashType, 
+    user_hash: HashType,
     vault_share_execution_price: Price
 }
 
@@ -2346,13 +2346,13 @@ Only the Operator can execute.
 **Validations:**
 
 1. `asset_id` is not registered.
-2. 
-3. 
+2.
+3.
 
 **Logic:**
 
-1. 
-2. 
+1.
+2.
 
 **Errors:**
 
@@ -2938,7 +2938,7 @@ pub struct WithdrawnFromVault {
     #[key]
     pub collateral_id: AssetId,
     pub number_of_shares: u64,
-    pub minimum_quantized_amount: u64,
+    pub minimum_received_total_amount: u128,
     pub vault_share_execution_price: Price,
     pub expiration: Timestamp,
     pub salt: felt252,
@@ -2957,7 +2957,7 @@ pub struct LiquidatedFromVault {
     #[key]
     pub collateral_id: AssetId,
     pub number_of_shares: u64,
-    pub minimum_quantized_amount: u64,
+    pub minimum_received_total_amount: u128,
     pub vault_share_execution_price: Price,
     pub expiration: Timestamp,
     pub salt: felt252,
@@ -3319,8 +3319,8 @@ Only the Operator can execute.
 
 #### Multi Trade
 
-Executes multiple trades in a single operation.  
-Each trade is validated and executed using the same logic as a single trade.  
+Executes multiple trades in a single operation.
+Each trade is validated and executed using the same logic as a single trade.
 All trades are processed within one transaction.
 
 ```rust
@@ -3657,7 +3657,7 @@ fn withdraw_from_vault(
     vault_position_id: PositionId,
     collateral_id: AssetId,
     number_of_shares: u64,
-    minimum_quantized_amount: u64,
+    minimum_received_total_amount: u128,
     vault_share_execution_price: Price,
     expiration: Timestamp,
     salt: felt252,
@@ -3687,11 +3687,11 @@ Only the Operator can execute.
 7. `vault_position_id` is a registered vault position.
 8. position id is not a vault position and exists.
 9. number_of_shares is non zero.
-10. minimum_quantized_amount is non zero.
+10. minimum_received_total_amount is non zero.
 11. vault_share_execution_price is non zero.
 12. Caller is the operator.
 13. Request is new (check user payload hash not exists in the fulfillment map).
-14. `number_of_shares * vault_share_execution_price >= minimum_quantized_amount`
+14. `number_of_shares * vault_share_execution_price >= minimum_received_total_amount`
 
 **Logic:**
 
