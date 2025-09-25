@@ -606,6 +606,12 @@ pub mod AssetsComponent {
             );
             self._validate_price_interval_integrity(:current_time);
         }
+
+        /// Validates the price interval integrity.
+        fn validate_price_interval_integrity(ref self: ComponentState<TContractState>) {
+            let current_time = Time::now();
+            self._validate_price_interval_integrity(:current_time);
+        }
     }
 
     #[generate_trait]
