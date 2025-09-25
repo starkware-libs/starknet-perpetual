@@ -90,6 +90,13 @@ impl FundingIndexIntoImpl of Into<FundingIndex, i64> {
     }
 }
 
+impl i64IntoImplFundingIndex of Into<i64, FundingIndex> {
+    fn into(self: i64) -> FundingIndex {
+        FundingIndex { value: self }
+    }
+}
+
+
 /// Validates the funding rate by ensuring that the index difference is bounded by the max funding
 /// rate.
 ///

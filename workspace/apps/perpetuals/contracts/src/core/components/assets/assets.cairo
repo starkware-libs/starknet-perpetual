@@ -2,8 +2,11 @@
 pub mod AssetsComponent {
     use RolesComponent::InternalTrait as RolesInternalTrait;
     use core::cmp::min;
+    use core::hash::Hash;
+    use core::iter::{IntoIterator, Iterator};
     use core::num::traits::Zero;
     use core::panic_with_felt252;
+    use core::pedersen::HashState;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::token::erc20::interface::IERC20Dispatcher;
@@ -26,7 +29,7 @@ pub mod AssetsComponent {
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalTrait as NonceInternal;
     use perpetuals::core::types::asset::synthetic::{
-        SyntheticConfig, SyntheticTimelyData, SyntheticTrait,
+        OptionSyntheticConfig, SyntheticConfig, SyntheticTimelyData, SyntheticTrait,
     };
     use perpetuals::core::types::asset::{AssetId, AssetStatus};
     use perpetuals::core::types::balance::Balance;
@@ -35,11 +38,17 @@ pub mod AssetsComponent {
         Price, PriceMulTrait, SignedPrice, convert_oracle_to_perps_price,
     };
     use perpetuals::core::types::risk_factor::{RiskFactor, RiskFactorTrait};
-    use starknet::ContractAddress;
     use starknet::storage::{
-        Map, MutableVecTrait, StorageMapReadAccess, StoragePathEntry, StoragePointerReadAccess,
-        StoragePointerWriteAccess, Vec, VecTrait,
+        IntoIterRange, Map, Mutable, MutableVecTrait, StorableStoragePointerReadAccess,
+        StorageAsPath, StorageAsPointer, StorageMapReadAccess, StorageMapWriteAccess, StoragePath,
+        StoragePathEntry, StoragePathMutableConversion,
+        StoragePointer0Offset, StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
+    use starknet::storage_access::{
+        StorageBaseAddress, Store, storage_address_from_base, storage_address_from_base_and_offset,
+    };
+    use starknet::syscalls::{storage_read_syscall, storage_write_syscall};
+    use starknet::{ContractAddress, SyscallResult, SyscallResultTrait};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
     use starkware_utils::components::roles::RolesComponent;
@@ -47,7 +56,8 @@ pub mod AssetsComponent {
     use starkware_utils::math::abs::Abs;
     use starkware_utils::signature::stark::{PublicKey, validate_stark_signature};
     use starkware_utils::storage::iterable_map::{
-        IterableMap, IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
+        IterableMap, IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapTrait,
+        IterableMapWriteAccessImpl,
     };
     use starkware_utils::storage::utils::{AddToStorage, SubFromStorage};
     use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
@@ -65,7 +75,7 @@ pub mod AssetsComponent {
         collateral_token_contract: IERC20Dispatcher,
         collateral_quantum: u64,
         num_of_active_synthetic_assets: usize,
-        pub synthetic_config: Map<AssetId, Option<SyntheticConfig>>,
+        pub synthetic_config: Map<AssetId, OptionSyntheticConfig>,
         pub synthetic_timely_data: IterableMap<AssetId, SyntheticTimelyData>,
         pub risk_factor_tiers: Map<AssetId, Vec<RiskFactor>>,
         asset_oracle: Map<AssetId, Map<PublicKey, felt252>>,
@@ -186,7 +196,9 @@ pub mod AssetsComponent {
             get_dep_component!(@self, Roles).only_app_governor();
 
             let synthetic_entry = self.synthetic_config.entry(asset_id);
-            assert(synthetic_entry.read().is_none(), SYNTHETIC_ALREADY_EXISTS);
+            let x: Option<SyntheticConfig> = synthetic_entry.read().into();
+
+            assert(x.is_none(), SYNTHETIC_ALREADY_EXISTS);
             if let Option::Some(collateral_id) = self.collateral_id.read() {
                 assert(collateral_id != asset_id, ASSET_REGISTERED_AS_COLLATERAL);
             }
@@ -208,7 +220,7 @@ pub mod AssetsComponent {
                 :resolution_factor,
             );
 
-            synthetic_entry.write(Option::Some(synthetic_config));
+            synthetic_entry.write(synthetic_config.into());
 
             let synthetic_timely_data = SyntheticTrait::timely_data(
                 // These fields will be updated in the next price tick.
@@ -258,7 +270,7 @@ pub mod AssetsComponent {
             assert(config.status == AssetStatus::ACTIVE, SYNTHETIC_NOT_ACTIVE);
 
             config.status = AssetStatus::INACTIVE;
-            self.synthetic_config.entry(synthetic_id).write(Option::Some(config));
+            self.synthetic_config.entry(synthetic_id).write(config.into());
             self.num_of_active_synthetic_assets.sub_and_write(1);
 
             self.emit(events::SyntheticAssetDeactivated { asset_id: synthetic_id });
@@ -453,7 +465,7 @@ pub mod AssetsComponent {
             let old_quorum = synthetic_config.quorum;
             assert(old_quorum != quorum, INVALID_SAME_QUORUM);
             synthetic_config.quorum = quorum;
-            self.synthetic_config.write(synthetic_id, Option::Some(synthetic_config));
+            self.synthetic_config.write(synthetic_id, synthetic_config.into());
             self
                 .emit(
                     events::AssetQuorumUpdated {
@@ -509,11 +521,13 @@ pub mod AssetsComponent {
         fn get_synthetic_price(
             self: @ComponentState<TContractState>, synthetic_id: AssetId,
         ) -> Price {
-            if let Option::Some(data) = self.synthetic_timely_data.read(synthetic_id) {
-                data.price
-            } else {
-                panic_with_felt252(NOT_SYNTHETIC)
-            }
+            let entry = self.synthetic_timely_data.pointer(key: synthetic_id);
+            let price = storage_read_syscall(
+                0, storage_address_from_base_and_offset(entry.__storage_pointer_address__, 2),
+            )
+                .unwrap_syscall();
+            let price: u64 = price.try_into().unwrap();
+            price.into()
         }
 
         /// Get the risk factor of a synthetic asset.
@@ -530,44 +544,46 @@ pub mod AssetsComponent {
             balance: Balance,
             price: Price,
         ) -> RiskFactor {
-            if let Option::Some(synthetic_config) = self.synthetic_config.read(synthetic_id) {
-                let asset_risk_factor_tiers = self.risk_factor_tiers.entry(synthetic_id);
-                let synthetic_value: u128 = price.mul(rhs: balance).abs();
-                let index = if synthetic_value < synthetic_config.risk_factor_first_tier_boundary {
-                    0_u128
-                } else {
-                    let tier_size = synthetic_config.risk_factor_tier_size;
-                    let first_tier_offset = synthetic_value
-                        - synthetic_config.risk_factor_first_tier_boundary;
-                    min(
-                        1_u128 + (first_tier_offset / tier_size),
-                        asset_risk_factor_tiers.len().into() - 1,
-                    )
-                };
-                asset_risk_factor_tiers
-                    .at(index.try_into().expect('INDEX_SHOULD_NEVER_OVERFLOW'))
-                    .read()
+            let entry = self.synthetic_config.entry(synthetic_id);
+            let risk_factor_first_tier_boundary = entry
+                .risk_factor_first_tier_boundary
+                .read(); // read 1
+
+            let asset_risk_factor_tiers = self.risk_factor_tiers.entry(synthetic_id);
+            let synthetic_value: u128 = price.mul(rhs: balance).abs();
+            let index = if synthetic_value < risk_factor_first_tier_boundary {
+                0_u128
             } else {
-                panic_with_felt252(NOT_SYNTHETIC)
-            }
+                let risk_factor_tier_size = entry.risk_factor_tier_size.read(); //  read 2
+                let first_tier_offset = synthetic_value - risk_factor_first_tier_boundary;
+                min(
+                    1_u128 + (first_tier_offset / risk_factor_tier_size),
+                    asset_risk_factor_tiers.len().into() - 1,
+                )
+            };
+            let con_index: u64 = index.try_into().expect('INDEX_SHOULD_NEVER_OVERFLOW');
+            let risk_factor_entry: StoragePath<RiskFactor> = asset_risk_factor_tiers
+                .update(con_index);
+            risk_factor_entry.read()
         }
 
         fn get_funding_index(
             self: @ComponentState<TContractState>, synthetic_id: AssetId,
         ) -> FundingIndex {
-            if let Option::Some(data) = self.synthetic_timely_data.read(synthetic_id) {
-                data.funding_index
-            } else {
-                panic_with_felt252(NOT_SYNTHETIC)
-            }
+            let entry = self.synthetic_timely_data.pointer(key: synthetic_id);
+            let funding_index = storage_read_syscall(
+                0, storage_address_from_base_and_offset(entry.__storage_pointer_address__, 4),
+            )
+                .unwrap_syscall();
+            let x: i64 = funding_index.try_into().unwrap();
+            x.into()
         }
 
+
         fn validate_active_asset(self: @ComponentState<TContractState>, asset_id: AssetId) {
-            if let Option::Some(config) = self.synthetic_config.read(asset_id) {
-                assert(config.status == AssetStatus::ACTIVE, SYNTHETIC_NOT_ACTIVE);
-            } else {
-                panic_with_felt252(NOT_SYNTHETIC);
-            }
+            let entry = self.synthetic_config.entry(asset_id);
+            let status = entry.status.read();
+            assert(status == AssetStatus::ACTIVE, SYNTHETIC_NOT_ACTIVE);
         }
 
         /// Validates assets integrity prerequisites:
@@ -598,7 +614,8 @@ pub mod AssetsComponent {
         fn _get_synthetic_config(
             self: @ComponentState<TContractState>, synthetic_id: AssetId,
         ) -> SyntheticConfig {
-            self.synthetic_config.read(synthetic_id).expect(SYNTHETIC_NOT_EXISTS)
+            let x: Option<SyntheticConfig> = self.synthetic_config.read(synthetic_id).into();
+            x.expect(SYNTHETIC_NOT_EXISTS)
         }
 
         fn _get_synthetic_timely_data(
@@ -714,7 +731,7 @@ pub mod AssetsComponent {
                 // Activates the synthetic asset.
                 synthetic_config.status = AssetStatus::ACTIVE;
                 self.num_of_active_synthetic_assets.add_and_write(1);
-                self.synthetic_config.write(asset_id, Option::Some(synthetic_config));
+                self.synthetic_config.write(asset_id, synthetic_config.into());
                 self.emit(events::AssetActivated { asset_id });
             }
             self.emit(events::PriceTick { asset_id, price });

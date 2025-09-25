@@ -75,6 +75,7 @@ pub mod Core {
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
     use starkware_utils::time::time::{Time, TimeDelta, Timestamp, validate_expiration};
+    use crate::core::types::asset::synthetic::SyntheticConfig;
 
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
     component!(path: OperatorNonceComponent, storage: operator_nonce, event: OperatorNonceEvent);
@@ -864,7 +865,10 @@ pub mod Core {
             let position_b = self.positions.get_position_snapshot(position_id: position_id_b);
 
             // Validate base asset is inactive synthetic.
-            if let Option::Some(config) = self.assets.synthetic_config.read(base_asset_id) {
+            let x = self.assets.synthetic_config.read(base_asset_id);
+
+            let y: Option<SyntheticConfig> = x.into();
+            if let Option::Some(config) = y {
                 assert(config.status == AssetStatus::INACTIVE, SYNTHETIC_IS_ACTIVE);
             } else {
                 panic_with_felt252(NOT_SYNTHETIC);
