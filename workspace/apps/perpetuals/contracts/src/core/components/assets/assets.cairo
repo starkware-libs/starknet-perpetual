@@ -47,7 +47,8 @@ pub mod AssetsComponent {
     use starkware_utils::math::abs::Abs;
     use starkware_utils::signature::stark::{PublicKey, validate_stark_signature};
     use starkware_utils::storage::iterable_map::{
-        IterableMap, IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
+        IterableMap, IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapTrait,
+        IterableMapWriteAccessImpl,
     };
     use starkware_utils::storage::utils::{AddToStorage, SubFromStorage};
     use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
@@ -509,10 +510,10 @@ pub mod AssetsComponent {
         fn get_synthetic_price(
             self: @ComponentState<TContractState>, synthetic_id: AssetId,
         ) -> Price {
-            if let Option::Some(data) = self.synthetic_timely_data.read(synthetic_id) {
-                data.price
-            } else {
-                panic_with_felt252(NOT_SYNTHETIC)
+            let entry = self.synthetic_timely_data.pointer(synthetic_id);
+            match SyntheticTrait::get_price(entry) {
+                Option::None => panic_with_felt252(NOT_SYNTHETIC),
+                Option::Some(price) => price,
             }
         }
 
@@ -555,10 +556,10 @@ pub mod AssetsComponent {
         fn get_funding_index(
             self: @ComponentState<TContractState>, synthetic_id: AssetId,
         ) -> FundingIndex {
-            if let Option::Some(data) = self.synthetic_timely_data.read(synthetic_id) {
-                data.funding_index
-            } else {
-                panic_with_felt252(NOT_SYNTHETIC)
+            let entry = self.synthetic_timely_data.pointer(synthetic_id);
+            match SyntheticTrait::get_funding_index(entry) {
+                Option::None => panic_with_felt252(NOT_SYNTHETIC),
+                Option::Some(funding_index) => funding_index,
             }
         }
 
