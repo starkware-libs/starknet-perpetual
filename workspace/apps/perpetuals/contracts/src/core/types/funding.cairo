@@ -25,6 +25,12 @@ pub struct FundingIndex {
     pub value: i64,
 }
 
+pub impl I64IntoFundingIndex of Into<i64, FundingIndex> {
+    fn into(self: i64) -> FundingIndex {
+        FundingIndex { value: self }
+    }
+}
+
 pub trait FundingIndexMulTrait {
     /// Multiply the funding index with a balance.
     /// The funding is calculated as: funding = funding_index * balance / 2^32.
