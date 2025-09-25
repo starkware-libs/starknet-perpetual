@@ -21,7 +21,7 @@ const ORACLE_SCALE_SN_PERPS_RATIO: u128 = ORACLE_SCALE / SN_PERPS_SCALE;
 
 const MAX_PRICE_ERROR: felt252 = 'Value must be < 2^56';
 
-#[derive(Copy, Debug, Default, Drop, PartialEq, Serde, starknet::Store)]
+#[derive(Copy, Debug, Default, Drop, Hash, PartialEq, Serde, starknet::Store)]
 /// Price is the price of a synthetic asset in the Perps system.
 /// The price is the price of the minimal unit of the asset in 10^-6 USD.
 pub struct Price {
