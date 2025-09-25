@@ -97,12 +97,15 @@ pub(crate) mod Deposit {
                 .write(key: deposit_hash, value: DepositStatus::PENDING(Time::now()));
             let quantum = assets.get_collateral_quantum();
             let unquantized_amount = quantized_amount * quantum.into();
-            token_contract
-                .transfer_from(
-                    sender: caller_address,
-                    recipient: get_contract_address(),
-                    amount: unquantized_amount.into(),
-                );
+            assert(
+                token_contract
+                    .transfer_from(
+                        sender: caller_address,
+                        recipient: get_contract_address(),
+                        amount: unquantized_amount.into(),
+                    ),
+                errors::TRANSFER_FAILED,
+            );
             self
                 .emit(
                     events::Deposit {
@@ -160,7 +163,11 @@ pub(crate) mod Deposit {
 
             let quantum = assets.get_collateral_quantum();
             let unquantized_amount = quantized_amount * quantum.into();
-            token_contract.transfer(recipient: caller_address, amount: unquantized_amount.into());
+            assert(
+                token_contract
+                    .transfer(recipient: caller_address, amount: unquantized_amount.into()),
+                errors::TRANSFER_FAILED,
+            );
             self
                 .emit(
                     events::DepositCanceled {

@@ -25,6 +25,7 @@ pub const SAME_BASE_QUOTE_ASSET_IDS: felt252 = 'SAME_BASE_QUOTE_ASSET_IDS';
 pub const SHARES_BALANCE_MISMATCH: felt252 = 'SHARES_BALANCE_MISMATCH';
 pub const SYNTHETIC_IS_ACTIVE: felt252 = 'SYNTHETIC_IS_ACTIVE';
 pub const TRANSFER_EXPIRED: felt252 = 'TRANSFER_EXPIRED';
+pub const TRANSFER_FAILED: felt252 = 'TRANSFER_FAILED';
 pub const WITHDRAW_EXPIRED: felt252 = 'WITHDRAW_EXPIRED';
 
 pub fn fulfillment_exceeded_err(position_id: PositionId) -> ByteArray {

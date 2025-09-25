@@ -29,7 +29,7 @@ pub mod Core {
         INVALID_BASE_CHANGE, INVALID_QUOTE_AMOUNT_SIGN, INVALID_QUOTE_FEE_AMOUNT,
         INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT, OPERATION_ALREADY_DONE,
         POSITION_IS_VAULT_POSITION, SHARES_BALANCE_MISMATCH, SYNTHETIC_IS_ACTIVE, TRANSFER_EXPIRED,
-        WITHDRAW_EXPIRED, fulfillment_exceeded_err, order_expired_err,
+        TRANSFER_FAILED, WITHDRAW_EXPIRED, fulfillment_exceeded_err, order_expired_err,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
@@ -336,7 +336,10 @@ pub mod Core {
             let quantum = self.assets.get_collateral_quantum();
             let withdraw_unquantized_amount = quantum * amount;
             let token_contract = self.assets.get_collateral_token_contract();
-            token_contract.transfer(:recipient, amount: withdraw_unquantized_amount.into());
+            assert(
+                token_contract.transfer(:recipient, amount: withdraw_unquantized_amount.into()),
+                TRANSFER_FAILED,
+            );
 
             self
                 .emit(
