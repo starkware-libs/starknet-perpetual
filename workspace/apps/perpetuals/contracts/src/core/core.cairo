@@ -26,9 +26,9 @@ pub mod Core {
         INVALID_ACTUAL_QUOTE_SIGN, INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE,
         INVALID_QUOTE_AMOUNT_SIGN, INVALID_QUOTE_FEE_AMOUNT, INVALID_SAME_POSITIONS,
         INVALID_VAULT_CONTRACT_ADDRESS, INVALID_ZERO_AMOUNT, OPERATION_ALREADY_DONE,
-        POSITION_IS_VAULT_POSITION, SHARES_BALANCE_MISMATCH, SIGNED_TX_EXPIRED, SYNTHETIC_IS_ACTIVE,
-        TRANSFER_FAILED, VAULT_CONTRACT_ALREADY_EXISTS, VAULT_POSITION_ALREADY_EXISTS,
-        fulfillment_exceeded_err, order_expired_err,
+        POSITION_IS_VAULT_POSITION, RECEIVED_AMOUNT_TOO_SMALL, SHARES_BALANCE_MISMATCH,
+        SIGNED_TX_EXPIRED, SYNTHETIC_IS_ACTIVE, TRANSFER_FAILED, VAULT_CONTRACT_ALREADY_EXISTS,
+        VAULT_POSITION_ALREADY_EXISTS, fulfillment_exceeded_err, order_expired_err,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
@@ -44,6 +44,9 @@ pub mod Core {
     use perpetuals::core::types::register_vault::RegisterVaultArgs;
     use perpetuals::core::types::transfer::TransferArgs;
     use perpetuals::core::types::withdraw::WithdrawArgs;
+    use perpetuals::core::types::withdraw_from_vault::{
+        VaultWithdrawOwnerArgs, VaultWithdrawUserArgs,
+    };
     use perpetuals::core::value_risk_calculator::{
         PositionTVTR, assert_healthy_or_healthier, calculate_position_tvtr_before,
         calculate_position_tvtr_change, deleveraged_position_validations,
@@ -1052,6 +1055,28 @@ pub mod Core {
             self.pausable.assert_not_paused();
             self.operator_nonce.use_checked_nonce(:operator_nonce);
             self.assets.validate_assets_integrity();
+
+            let share_id = self.vault_positions_to_assets.read(vault_position_id);
+            let number_of_shares_as_balance: Balance = number_of_shares.into();
+            let actual_received_amount: u64 = vault_share_execution_price
+                .mul(rhs: number_of_shares_as_balance)
+                .abs()
+                .try_into()
+                .expect('PRICE_MUL_OVERFLOW');
+            self
+                ._validate_withdraw_from_vault(
+                    :position_id,
+                    :vault_position_id,
+                    :number_of_shares,
+                    :minimum_received_total_amount,
+                    :vault_share_execution_price,
+                    :expiration,
+                    :salt,
+                    :user_signature,
+                    :vault_owner_signature,
+                    :share_id,
+                    :actual_received_amount,
+                );
             /// Executions:
         }
     }
@@ -1311,6 +1336,43 @@ pub mod Core {
                 );
         }
 
+        fn _validate_register_vault(
+            ref self: ContractState,
+            vault_position_id: PositionId,
+            vault_contract_address: ContractAddress,
+            vault_asset_id: AssetId,
+            expiration: Timestamp,
+            signature: Signature,
+        ) {
+            assert(vault_contract_address.is_non_zero(), INVALID_VAULT_CONTRACT_ADDRESS);
+            validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
+
+            // Validate asset id exists, if not found get_asset_config will panic.
+            self.assets.get_asset_config(asset_id: vault_asset_id);
+
+            let vault_address = self.vault_positions_to_addresses.read(vault_position_id);
+            assert(vault_address.is_zero(), VAULT_POSITION_ALREADY_EXISTS);
+            let vault_position = self.addresses_to_vault_positions.read(vault_contract_address);
+            assert(vault_position.is_zero(), VAULT_CONTRACT_ALREADY_EXISTS);
+
+            //Position check
+            let vault_position = self
+                .positions
+                .get_position_snapshot(position_id: vault_position_id);
+
+            // TODO(Omri): Add check for share assets (vault position should not have any share
+            // assets).
+            // Need to modify the position data to include share assets.
+
+            _validate_signature(
+                public_key: vault_position.get_owner_public_key(),
+                message: RegisterVaultArgs {
+                    vault_position_id, vault_contract_address, vault_asset_id, expiration,
+                },
+                :signature,
+            );
+        }
+
         /// Validates a deposit into a vault.
         ///
         /// This function ensures the transaction is valid by:
@@ -1446,41 +1508,73 @@ pub mod Core {
             vault_shares_amount
         }
 
-        fn _validate_register_vault(
+        fn _validate_withdraw_from_vault(
             ref self: ContractState,
+            position_id: PositionId,
             vault_position_id: PositionId,
-            vault_contract_address: ContractAddress,
-            vault_asset_id: AssetId,
+            number_of_shares: u64,
+            minimum_received_total_amount: u64,
+            vault_share_execution_price: Price,
             expiration: Timestamp,
-            signature: Signature,
-        ) {
-            assert(vault_contract_address.is_non_zero(), INVALID_VAULT_CONTRACT_ADDRESS);
+            salt: felt252,
+            user_signature: Signature,
+            vault_owner_signature: Signature,
+            share_id: AssetId,
+            actual_received_amount: u64,
+        ) -> (StoragePath<Position>, StoragePath<Position>) {
             validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
 
-            // Validate asset id exists, if not found get_asset_config will panic.
-            self.assets.get_asset_config(asset_id: vault_asset_id);
+            assert(number_of_shares.is_non_zero(), INVALID_ZERO_AMOUNT);
+            assert(minimum_received_total_amount.is_non_zero(), INVALID_ZERO_AMOUNT);
+            assert(vault_share_execution_price.is_non_zero(), INVALID_ZERO_AMOUNT);
 
-            let vault_address = self.vault_positions_to_addresses.read(vault_position_id);
-            assert(vault_address.is_zero(), VAULT_POSITION_ALREADY_EXISTS);
-            let vault_position = self.addresses_to_vault_positions.read(vault_contract_address);
-            assert(vault_position.is_zero(), VAULT_CONTRACT_ALREADY_EXISTS);
+            assert(
+                minimum_received_total_amount <= actual_received_amount, RECEIVED_AMOUNT_TOO_SMALL,
+            );
 
-            //Position check
+            // Vault position id is a vault position, and the asset is active.
             let vault_position = self
                 .positions
                 .get_position_snapshot(position_id: vault_position_id);
+            self.assets.validate_active_asset(asset_id: share_id);
 
-            // TODO(Omri): Add check for share assets (vault position should not have any share
-            // assets).
-            // Need to modify the position data to include share assets.
+            // position id is exists and it is not a vault position.
+            let position = self.positions.get_position_snapshot(:position_id);
+            // Make sure the withdrawing position is not a vault position
+            // by asserting that position id is not in the vault map.
+            assert(
+                self.vault_positions_to_addresses.read(position_id).is_zero(),
+                POSITION_IS_VAULT_POSITION,
+            );
+
+            // Signature validation
+            let user_hash = _validate_signature(
+                public_key: position.get_owner_public_key(),
+                message: VaultWithdrawUserArgs {
+                    position_id,
+                    vault_position_id,
+                    number_of_shares,
+                    minimum_received_total_amount,
+                    expiration,
+                    salt,
+                },
+                signature: user_signature,
+            );
 
             _validate_signature(
                 public_key: vault_position.get_owner_public_key(),
-                message: RegisterVaultArgs {
-                    vault_position_id, vault_contract_address, vault_asset_id, expiration,
+                message: VaultWithdrawOwnerArgs {
+                    vault_withdraw_user_hash: user_hash, vault_share_execution_price,
                 },
-                :signature,
+                signature: vault_owner_signature,
             );
+
+            // Update fulfillment:
+            let fulfillment_entry = self.fulfillment.entry(user_hash);
+            assert(fulfillment_entry.read().is_zero(), OPERATION_ALREADY_DONE);
+            fulfillment_entry.write(number_of_shares.into());
+
+            (vault_position, position)
         }
 
         fn _validate_synthetic_shrinks(
