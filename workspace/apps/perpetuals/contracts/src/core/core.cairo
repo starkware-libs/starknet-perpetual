@@ -26,10 +26,11 @@ pub mod Core {
         ASSET_ID_NOT_COLLATERAL, CANT_LIQUIDATE_IF_POSITION, CANT_TRADE_WITH_FEE_POSITION,
         COLLATERAL_BALANCE_MISMATCH, DEPOSIT_INTO_VAULT_EXPIRED, DIFFERENT_BASE_ASSET_IDS,
         INVALID_ACTUAL_BASE_SIGN, INVALID_ACTUAL_QUOTE_SIGN, INVALID_AMOUNT_SIGN,
-        INVALID_BASE_CHANGE, INVALID_QUOTE_AMOUNT_SIGN, INVALID_QUOTE_FEE_AMOUNT,
-        INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT, OPERATION_ALREADY_DONE,
-        POSITION_IS_VAULT_POSITION, SHARES_BALANCE_MISMATCH, SYNTHETIC_IS_ACTIVE, TRANSFER_EXPIRED,
-        TRANSFER_FAILED, WITHDRAW_EXPIRED, fulfillment_exceeded_err, order_expired_err,
+        INVALID_BASE_CHANGE, INVALID_QUANTIZED_AMOUNT, INVALID_QUOTE_AMOUNT_SIGN,
+        INVALID_QUOTE_FEE_AMOUNT, INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT,
+        OPERATION_ALREADY_DONE, POSITION_IS_VAULT_POSITION, SHARES_BALANCE_MISMATCH,
+        SYNTHETIC_IS_ACTIVE, TRANSFER_EXPIRED, TRANSFER_FAILED, WITHDRAW_EXPIRED,
+        WITHDRAW_INTO_VAULT_EXPIRED, fulfillment_exceeded_err, order_expired_err,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
@@ -45,6 +46,9 @@ pub mod Core {
     use perpetuals::core::types::price::{Price, PriceMulTrait};
     use perpetuals::core::types::transfer::TransferArgs;
     use perpetuals::core::types::withdraw::WithdrawArgs;
+    use perpetuals::core::types::withdraw_from_vault::{
+        VaultWithdrawOwnerArgs, VaultWithdrawUserArgs,
+    };
     use perpetuals::core::value_risk_calculator::{
         PositionTVTR, assert_healthy_or_healthier, calculate_position_tvtr_before,
         calculate_position_tvtr_change, deleveraged_position_validations,
@@ -994,6 +998,21 @@ pub mod Core {
             self.pausable.assert_not_paused();
             self.operator_nonce.use_checked_nonce(:operator_nonce);
             self.assets.validate_assets_integrity();
+
+            let share_id = self.vault_positions_to_assets.read(vault_position_id);
+            self
+                ._validate_withdraw_from_vault(
+                    :position_id,
+                    :vault_position_id,
+                    :number_of_shares,
+                    :minimum_quantized_amount,
+                    :vault_share_execution_price,
+                    :expiration,
+                    :salt,
+                    :user_signature,
+                    :vault_owner_signature,
+                    :share_id,
+                );
             /// Executions:
         }
     }
@@ -1387,6 +1406,69 @@ pub mod Core {
             );
 
             shares_amount
+        }
+
+        fn _validate_withdraw_from_vault(
+            ref self: ContractState,
+            position_id: PositionId,
+            vault_position_id: PositionId,
+            number_of_shares: u64,
+            minimum_quantized_amount: u64,
+            vault_share_execution_price: Price,
+            expiration: Timestamp,
+            salt: felt252,
+            user_signature: Signature,
+            vault_owner_signature: Signature,
+            share_id: AssetId,
+        ) {
+            validate_expiration(expiration: expiration, err: WITHDRAW_INTO_VAULT_EXPIRED);
+
+            assert(number_of_shares.is_non_zero(), INVALID_ZERO_AMOUNT);
+            assert(minimum_quantized_amount.is_non_zero(), INVALID_ZERO_AMOUNT);
+            assert(vault_share_execution_price.is_non_zero(), INVALID_ZERO_AMOUNT);
+
+            let number_of_shares_in_balance: Balance = number_of_shares.into();
+            assert(
+                minimum_quantized_amount
+                    .into() <= vault_share_execution_price
+                    .mul(rhs: number_of_shares_in_balance),
+                INVALID_QUANTIZED_AMOUNT,
+            );
+
+            // Vault position id is a vault position, and the asset is active.
+            self.assets.validate_active_asset(asset_id: share_id);
+
+            // position id is exists and it is not a vault position.
+            let position = self.positions.get_position_snapshot(:position_id);
+            let position_address = self.vault_positions_to_addresses.read(position_id);
+            assert(position_address.is_zero(), POSITION_IS_VAULT_POSITION);
+
+            // Signature validation
+            let user_hash = _validate_signature(
+                public_key: position.get_owner_public_key(),
+                order: VaultWithdrawUserArgs {
+                    position_id,
+                    vault_position_id,
+                    number_of_shares,
+                    minimum_quantized_amount,
+                    expiration,
+                    salt,
+                },
+                signature: user_signature,
+            );
+
+            let owner_hash = _validate_signature(
+                public_key: position.get_owner_public_key(),
+                order: VaultWithdrawOwnerArgs {
+                    vault_withdraw_user_hash: user_hash, vault_share_execution_price,
+                },
+                signature: vault_owner_signature,
+            );
+
+            // Update fulfillment:
+            let fulfillment_entry = self.fulfillment.entry(owner_hash);
+            assert(fulfillment_entry.read().is_zero(), OPERATION_ALREADY_DONE);
+            fulfillment_entry.write(number_of_shares.into());
         }
 
         fn _validate_synthetic_shrinks(
