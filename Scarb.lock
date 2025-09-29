@@ -136,6 +136,7 @@ dependencies = [
  "snforge_std",
  "starkware_utils",
  "starkware_utils_testing",
+ "vault",
 ]
 
 [[package]]
