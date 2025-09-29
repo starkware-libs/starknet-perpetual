@@ -1,5 +1,5 @@
 [workspace]
-members = ["workspace/apps/perpetuals/contracts"]
+members = ["workspace/apps/perpetuals/contracts", "workspace/vault/"]
 
 [workspace.dependencies]
 starknet = "2.12.2"
