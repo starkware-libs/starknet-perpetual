@@ -29,6 +29,7 @@ scarb.workspace = true
 unstable-add-statements-code-locations-debug-info = true
 unstable-add-statements-functions-debug-info = true
 inlining-strategy = "avoid"
+panic-backtrace = true
 
 [[test]]
 name = "perpetuals_unittest"

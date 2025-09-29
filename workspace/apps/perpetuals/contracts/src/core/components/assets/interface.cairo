@@ -1,4 +1,4 @@
-use openzeppelin::token::erc20::interface::IERC20Dispatcher;
+use openzeppelin::interfaces::token::erc20::IERC20Dispatcher;
 use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::asset::synthetic::{SyntheticConfig, SyntheticTimelyData};
 use perpetuals::core::types::funding::FundingTick;
