@@ -21,13 +21,14 @@ pub mod Core {
         FEE_POSITION, INSURANCE_FUND_POSITION, InternalTrait as PositionsInternalTrait,
     };
     use perpetuals::core::errors::{
-        ASSET_ID_NOT_COLLATERAL, CANT_LIQUIDATE_IF_POSITION, CANT_TRADE_WITH_FEE_POSITION,
-        COLLATERAL_BALANCE_MISMATCH, DIFFERENT_BASE_ASSET_IDS, INVALID_ACTUAL_BASE_SIGN,
-        INVALID_ACTUAL_QUOTE_SIGN, INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE,
-        INVALID_QUANTIZED_AMOUNT, INVALID_QUOTE_AMOUNT_SIGN, INVALID_QUOTE_FEE_AMOUNT,
-        INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT, OPERATION_ALREADY_DONE,
-        POSITION_IS_VAULT_POSITION, SHARES_BALANCE_MISMATCH, SIGNED_TX_EXPIRED, SYNTHETIC_IS_ACTIVE,
-        TRANSFER_FAILED, fulfillment_exceeded_err, order_expired_err,
+        AMOUNT_OVERFLOW, ASSET_ID_NOT_COLLATERAL, CANT_LIQUIDATE_IF_POSITION,
+        CANT_TRADE_WITH_FEE_POSITION, COLLATERAL_BALANCE_MISMATCH, DIFFERENT_BASE_ASSET_IDS,
+        INVALID_ACTUAL_BASE_SIGN, INVALID_ACTUAL_QUOTE_SIGN, INVALID_AMOUNT_SIGN,
+        INVALID_BASE_CHANGE, INVALID_QUANTIZED_AMOUNT, INVALID_QUOTE_AMOUNT_SIGN,
+        INVALID_QUOTE_FEE_AMOUNT, INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT,
+        OPERATION_ALREADY_DONE, POSITION_IS_VAULT_POSITION, SHARES_BALANCE_MISMATCH,
+        SIGNED_TX_EXPIRED, SYNTHETIC_IS_ACTIVE, TRANSFER_FAILED, fulfillment_exceeded_err,
+        order_expired_err,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
@@ -194,6 +195,7 @@ pub mod Core {
         Withdraw: events::Withdraw,
         WithdrawRequest: events::WithdrawRequest,
         DepositIntoVault: events::DepositIntoVault,
+        WithdrawFromVault: events::WithdrawFromVault,
     }
 
     #[constructor]
@@ -879,7 +881,7 @@ pub mod Core {
                     .get_synthetic_price(synthetic_id: base_asset_id)
                     .mul(rhs: base_balance)
                     .try_into()
-                    .expect('QUOTE_AMOUNT_OVERFLOW');
+                    .expect(AMOUNT_OVERFLOW);
             self
                 ._validate_imposed_reduction_trade(
                     :position_id_a,
@@ -1023,7 +1025,7 @@ pub mod Core {
                 .mul(rhs: number_of_shares_in_balance)
                 .abs()
                 .into();
-            self
+            let (vault_position, position) = self
                 ._validate_withdraw_from_vault(
                     :position_id,
                     :vault_position_id,
@@ -1037,7 +1039,33 @@ pub mod Core {
                     :share_id,
                     :quantized_shares_amount,
                 );
+
             /// Executions:
+            self
+                ._execute_withdraw_from_vault(
+                    :position_id,
+                    :vault_position_id,
+                    :number_of_shares,
+                    :share_id,
+                    :quantized_shares_amount,
+                    :vault_position,
+                    :position,
+                );
+
+            // Emit event.
+            self
+                .emit(
+                    events::WithdrawFromVault {
+                        position_id,
+                        vault_position_id,
+                        collateral_id: self.assets.get_collateral_id(),
+                        quantized_amount: number_of_shares,
+                        expiration,
+                        salt,
+                        quantized_shares_amount: number_of_shares,
+                        price: vault_share_execution_price,
+                    },
+                );
         }
     }
 
@@ -1359,19 +1387,18 @@ pub mod Core {
             vault_share_asset_id: AssetId,
         ) -> u64 {
             let quantum = self.assets.get_collateral_quantum();
-            let unquantized_amount: u256 = quantized_amount.into() * quantum.into();
 
             // Deposit into vault.
             let unquantized_shares_amount = self
                 ._deposit_to_vault_contract(
-                    :vault_address, :unquantized_amount, :vault_share_asset_id,
+                    :vault_address, :quantized_amount, :vault_share_asset_id, :quantum,
                 );
 
             // Build position diffs.
             // TODO(Mohammad): use shares quantom once register_vault is added.
             let quantized_shares_amount: u64 = (unquantized_shares_amount / quantum.into())
                 .try_into()
-                .expect('SHARES_AMOUNT_OVERFLOW');
+                .expect(AMOUNT_OVERFLOW);
             let position_diff = PositionDiff {
                 collateral_diff: -quantized_amount.into(), synthetic_diff: Option::None,
             };
@@ -1399,8 +1426,9 @@ pub mod Core {
         fn _deposit_to_vault_contract(
             ref self: ContractState,
             vault_address: ContractAddress,
-            unquantized_amount: u256,
+            quantized_amount: u64,
             vault_share_asset_id: AssetId,
+            quantum: u64,
         ) -> u256 {
             let contract_address = get_contract_address();
             let erc20_dispatcher = self.assets.get_collateral_token_contract();
@@ -1412,6 +1440,7 @@ pub mod Core {
                 .balance_of(account: contract_address);
 
             // Approve and deposit assets into the vault
+            let unquantized_amount: u256 = quantized_amount.into() * quantum.into();
             erc20_dispatcher.approve(spender: vault_address, amount: unquantized_amount);
             let vault_shares_amount = IERC4626Dispatcher { contract_address: vault_address }
                 .deposit(assets: unquantized_amount, receiver: contract_address);
@@ -1495,6 +1524,87 @@ pub mod Core {
             fulfillment_entry.write(number_of_shares.into());
 
             (vault_position, position)
+        }
+
+        fn _execute_withdraw_from_vault(
+            ref self: ContractState,
+            position_id: PositionId,
+            vault_position_id: PositionId,
+            number_of_shares: u64,
+            share_id: AssetId,
+            quantized_shares_amount: u256,
+            vault_position: StoragePath<Position>,
+            position: StoragePath<Position>,
+        ) -> u64 {
+            let vault_address = self.vault_positions_to_addresses.read(vault_position_id);
+            let quantum = self.assets.get_collateral_quantum();
+
+            // Withdraw from vault.
+            let unquantized_amount = self
+                ._withdraw_from_vault_contract(
+                    :vault_address, :quantized_shares_amount, :share_id, :quantum,
+                );
+
+            // Build position diffs.
+            let quantized_amount: u64 = (unquantized_amount / quantum.into())
+                .try_into()
+                .expect(AMOUNT_OVERFLOW);
+            let position_diff = PositionDiff {
+                collateral_diff: quantized_amount.into(),
+                synthetic_diff: Option::Some((share_id, -number_of_shares.into())),
+            };
+            let vault_diff = PositionDiff {
+                collateral_diff: -quantized_amount.into(), synthetic_diff: Option::None,
+            };
+
+            // Apply diffs.
+            self.positions.apply_diff(:position_id, position_diff: position_diff);
+            self.positions.apply_diff(position_id: vault_position_id, position_diff: vault_diff);
+
+            quantized_amount
+        }
+
+        fn _withdraw_from_vault_contract(
+            ref self: ContractState,
+            vault_address: ContractAddress,
+            quantized_shares_amount: u256,
+            share_id: AssetId,
+            quantum: u64,
+        ) -> u256 {
+            let contract_address = get_contract_address();
+            let erc20_dispatcher = self.assets.get_collateral_token_contract();
+            let erc20_vault_dispatcher = IERC20Dispatcher { contract_address: vault_address };
+
+            // Fetch balances before withdraw
+            let before_withdraw_balance = erc20_dispatcher.balance_of(account: contract_address);
+            let before_withdraw_shares_balance = erc20_vault_dispatcher
+                .balance_of(account: contract_address);
+
+            // TODO(Mohammad): use shares quantom once register_vault is added.
+            let unquantized_shares_amount: u256 = quantized_shares_amount * quantum.into();
+            // Approve and withdraw assets into the vault
+            erc20_dispatcher.approve(spender: vault_address, amount: unquantized_shares_amount);
+            // TODO(Mohammad): use redeem_v2 once it is added.
+            let shares_amount = IERC4626Dispatcher { contract_address: vault_address }
+                .redeem(
+                    shares: unquantized_shares_amount,
+                    receiver: contract_address,
+                    owner: contract_address,
+                );
+
+            // Fetch balances after withdraw
+            let after_withdraw_shares_balance = erc20_vault_dispatcher
+                .balance_of(account: contract_address);
+            let after_withdraw_balance = erc20_dispatcher.balance_of(account: contract_address);
+
+            // Validate balances to ensure correctness
+            assert(after_withdraw_balance == before_withdraw_balance, COLLATERAL_BALANCE_MISMATCH);
+            assert(
+                after_withdraw_shares_balance == before_withdraw_shares_balance + shares_amount,
+                SHARES_BALANCE_MISMATCH,
+            );
+
+            shares_amount
         }
 
         fn _validate_synthetic_shrinks(
