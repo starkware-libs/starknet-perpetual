@@ -36,3 +36,5 @@ panic-backtrace = true
 name = "vault_unittest"
 build-external-contracts = [
 ]
+
+[lib]

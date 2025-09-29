@@ -7,6 +7,7 @@ edition = "2024_07"
 starknet.workspace = true
 starkware_utils.workspace = true
 openzeppelin.workspace = true
+vault = { path = "../../../vault" }
 
 [dev-dependencies]
 assert_macros.workspace = true
