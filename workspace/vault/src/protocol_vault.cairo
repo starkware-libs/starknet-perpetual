@@ -1,6 +1,7 @@
 #[starknet::contract]
 pub mod ProtocolVault {
     use ERC4626Component::Fee;
+    use core::num::traits::Zero;
     use openzeppelin::interfaces::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin::token::erc20::extensions::erc4626::{
         DefaultConfig, ERC4626Component, ERC4626DefaultNoFees, ERC4626DefaultNoLimits,
@@ -15,7 +16,7 @@ pub mod ProtocolVault {
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use starkware_utils::math::abs::Abs;
     use vault::errors::{
-        NEGATIVE_TOTAL_VALUE, ONLY_PERPS_CAN_DEPOSIT, ONLY_PERPS_CAN_RECEIVE,
+        INVALID_ZERO_ADDRESS, NEGATIVE_TOTAL_VALUE, ONLY_PERPS_CAN_DEPOSIT, ONLY_PERPS_CAN_RECEIVE,
         ONLY_PERPS_CAN_WITHDRAW,
     };
     use vault::interface::IProtocolVault;
@@ -64,6 +65,8 @@ pub mod ProtocolVault {
         initial_supply: u256,
         recipient: ContractAddress,
     ) {
+        assert(perps_contract.is_non_zero(), INVALID_ZERO_ADDRESS);
+        assert(owning_position_id.is_non_zero(), INVALID_ZERO_ADDRESS);
         self.perps_contract.write(perps_contract);
         self.owning_position_id.write(owning_position_id);
         self.erc20.initializer(:name, :symbol);
@@ -74,7 +77,10 @@ pub mod ProtocolVault {
     #[abi(embed_v0)]
     pub impl Impl of IProtocolVault<ContractState> {
         fn redeem_with_price(
-            ref self: ContractState, shares: u256, value_of_shares: u256, receiver: ContractAddress,
+            ref self: ContractState,
+            shares: u256,
+            value_of_shares_in_assets: u256,
+            receiver: ContractAddress,
         ) -> u256 {
             let caller = starknet::get_caller_address();
             self
@@ -83,11 +89,11 @@ pub mod ProtocolVault {
                     :caller,
                     :receiver,
                     owner: caller,
-                    assets: value_of_shares,
+                    assets: value_of_shares_in_assets,
                     shares: shares,
                     fee: Option::None,
                 );
-            value_of_shares
+            value_of_shares_in_assets
         }
 
         fn get_owning_position_id(self: @ContractState) -> u32 {
