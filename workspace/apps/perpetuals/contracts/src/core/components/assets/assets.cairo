@@ -14,7 +14,7 @@ pub mod AssetsComponent {
         INVALID_ZERO_ASSET_ID, INVALID_ZERO_ASSET_NAME, INVALID_ZERO_ORACLE_NAME,
         INVALID_ZERO_PUBLIC_KEY, INVALID_ZERO_QUANTUM, INVALID_ZERO_QUORUM,
         INVALID_ZERO_RESOLUTION_FACTOR, INVALID_ZERO_RF_FIRST_BOUNDRY, INVALID_ZERO_RF_TIERS_LEN,
-        INVALID_ZERO_RF_TIER_SIZE, INVALID_ZERO_TOKEN_ADDRESS, ORACLE_ALREADY_EXISTS,
+        INVALID_ZERO_RF_TIER_SIZE, INVALID_ZERO_TOKEN_ADDRESS, NOT_SYNTHETIC, ORACLE_ALREADY_EXISTS,
         ORACLE_NAME_TOO_LONG, ORACLE_NOT_EXISTS, ORACLE_PUBLIC_KEY_NOT_REGISTERED,
         QUORUM_NOT_REACHED, SIGNED_PRICES_UNSORTED, SYNTHETIC_ALREADY_EXISTS,
         SYNTHETIC_EXPIRED_PRICE, SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS,
@@ -259,14 +259,12 @@ pub mod AssetsComponent {
         fn deactivate_synthetic(ref self: ComponentState<TContractState>, synthetic_id: AssetId) {
             get_dep_component!(@self, Roles).only_app_governor();
             let mut config = self._get_asset_config(asset_id: synthetic_id);
+            assert(config.asset_type == AssetType::SYNTHETIC, NOT_SYNTHETIC);
             assert(config.status == AssetStatus::ACTIVE, SYNTHETIC_NOT_ACTIVE);
 
             config.status = AssetStatus::INACTIVE;
             self.asset_config.entry(synthetic_id).write(Option::Some(config));
-            if config.asset_type == AssetType::SYNTHETIC {
-                self.num_of_active_synthetic_assets.sub_and_write(1);
-            }
-
+            self.num_of_active_synthetic_assets.sub_and_write(1);
             self.emit(events::SyntheticAssetDeactivated { asset_id: synthetic_id });
         }
 
