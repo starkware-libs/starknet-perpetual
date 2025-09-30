@@ -263,7 +263,9 @@ pub mod AssetsComponent {
 
             config.status = AssetStatus::INACTIVE;
             self.asset_config.entry(synthetic_id).write(Option::Some(config));
-            self.num_of_active_synthetic_assets.sub_and_write(1);
+            if config.asset_type == AssetType::SYNTHETIC {
+                self.num_of_active_synthetic_assets.sub_and_write(1);
+            }
 
             self.emit(events::SyntheticAssetDeactivated { asset_id: synthetic_id });
         }
