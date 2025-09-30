@@ -16,8 +16,8 @@ pub mod ProtocolVault {
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use starkware_utils::math::abs::Abs;
     use vault::errors::{
-        INVALID_ZERO_ADDRESS, NEGATIVE_TOTAL_VALUE, ONLY_PERPS_CAN_DEPOSIT, ONLY_PERPS_CAN_RECEIVE,
-        ONLY_PERPS_CAN_WITHDRAW,
+        INVALID_ZERO_ADDRESS, NEGATIVE_TOTAL_VALUE, ONLY_PERPS_CAN_DEPOSIT, ONLY_PERPS_CAN_OWN,
+        ONLY_PERPS_CAN_RECEIVE, ONLY_PERPS_CAN_WITHDRAW,
     };
     use vault::interface::IProtocolVault;
 
@@ -192,6 +192,7 @@ pub mod ProtocolVault {
             let perps_contract = self.get_contract().get_perps_contract();
             assert(perps_contract == caller, ONLY_PERPS_CAN_WITHDRAW);
             assert(perps_contract == receiver, ONLY_PERPS_CAN_RECEIVE);
+            assert(perps_contract == owner, ONLY_PERPS_CAN_OWN);
 
             // before withdraw we need to pull the underlying asset from the perps contract
             self.transfer_assets_in(from: perps_contract, :assets);
