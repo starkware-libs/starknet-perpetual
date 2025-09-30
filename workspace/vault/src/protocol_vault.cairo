@@ -11,15 +11,17 @@ pub mod ProtocolVault {
     use perpetuals::core::components::positions::interface::{
         IPositionsDispatcher, IPositionsDispatcherTrait,
     };
+    use starknet::ContractAddress;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
-    use starknet::{ContractAddress, get_caller_address};
     use starkware_utils::math::abs::Abs;
+    use vault::errors::{
+        NEGATIVE_TOTAL_VALUE, ONLY_PERPS_CAN_DEPOSIT, ONLY_PERPS_CAN_RECEIVE,
+        ONLY_PERPS_CAN_WITHDRAW,
+    };
     use vault::interface::IProtocolVault;
 
     component!(path: ERC4626Component, storage: erc4626, event: ERC4626Event);
     component!(path: ERC20Component, storage: erc20, event: ERC20Event);
-
-    const INVALID_CALLER: felt252 = 'INVALID_CALLER';
 
     #[abi(embed_v0)]
     impl ERC4626Impl = ERC4626Component::ERC4626Impl<ContractState>;
@@ -88,8 +90,12 @@ pub mod ProtocolVault {
             value_of_shares
         }
 
-        fn get_owning_position_id(ref self: ContractState) -> u32 {
+        fn get_owning_position_id(self: @ContractState) -> u32 {
             self.owning_position_id.read()
+        }
+
+        fn get_perps_contract(self: @ContractState) -> ContractAddress {
+            self.perps_contract.read()
         }
     }
 
@@ -121,10 +127,11 @@ pub mod ProtocolVault {
         }
 
         fn get_total_assets(self: @ERC4626Component::ComponentState<ContractState>) -> u256 {
-            let asset_storage = self.get_contract().perps_contract.read();
+            let asset_storage = self.get_contract().get_perps_contract();
             let asset_dispatcher = IPositionsDispatcher { contract_address: asset_storage };
             let position_tvtr = asset_dispatcher
-                .get_position_tv_tr(self.get_contract().owning_position_id.read().into());
+                .get_position_tv_tr(self.get_contract().get_owning_position_id().into());
+            assert(position_tvtr.total_value >= 0, NEGATIVE_TOTAL_VALUE);
             return position_tvtr.total_value.abs().into();
         }
     }
@@ -139,8 +146,9 @@ pub mod ProtocolVault {
             shares: u256,
             fee: Option<Fee>,
         ) {
-            let perps_contract = self.get_contract().perps_contract.read();
-            assert(perps_contract == get_caller_address(), INVALID_CALLER);
+            let perps_contract = self.get_contract().get_perps_contract();
+            assert(perps_contract == caller, ONLY_PERPS_CAN_DEPOSIT);
+            assert(perps_contract == receiver, ONLY_PERPS_CAN_RECEIVE);
         }
 
         /// Hooks into `InternalImpl::_deposit`.
@@ -156,7 +164,7 @@ pub mod ProtocolVault {
             shares: u256,
             fee: Option<Fee>,
         ) {
-            let perps_contract = self.get_contract().perps_contract.read();
+            let perps_contract = self.get_contract().get_perps_contract();
 
             // after a deposit we need to send back the underlying asset to the perps contract
             self.transfer_assets_out(to: perps_contract, :assets);
@@ -175,8 +183,9 @@ pub mod ProtocolVault {
             shares: u256,
             fee: Option<Fee>,
         ) {
-            let perps_contract = self.get_contract().perps_contract.read();
-            assert(perps_contract == get_caller_address(), INVALID_CALLER);
+            let perps_contract = self.get_contract().get_perps_contract();
+            assert(perps_contract == caller, ONLY_PERPS_CAN_WITHDRAW);
+            assert(perps_contract == receiver, ONLY_PERPS_CAN_RECEIVE);
 
             // before withdraw we need to pull the underlying asset from the perps contract
             self.transfer_assets_in(from: perps_contract, :assets);
