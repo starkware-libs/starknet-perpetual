@@ -23,7 +23,7 @@ use perpetuals::core::core::Core::SNIP12MetadataImpl;
 use perpetuals::core::errors::SIGNED_TX_EXPIRED;
 use perpetuals::core::events;
 use perpetuals::core::interface::{ICore, ICoreSafeDispatcher, ICoreSafeDispatcherTrait};
-use perpetuals::core::types::asset::{AssetStatus, AssetTrait};
+use perpetuals::core::types::asset::{AssetStatus, AssetTrait, AssetType};
 use perpetuals::core::types::funding::{FUNDING_SCALE, FundingIndex, FundingTick};
 use perpetuals::core::types::order::Order;
 use perpetuals::core::types::position::{POSITION_VERSION, PositionId, PositionMutableTrait};
@@ -3565,7 +3565,7 @@ fn test_failed_deposit_into_vault_scenarios() {
             salt: 0,
             signature: array![].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: 'NOT_SYNTHETIC');
+    assert_panic_with_felt_error(:result, expected_error: 'ASSET_NOT_EXISTS');
 
     // Add the vault asset, without activating it.
     interact_with_state(
@@ -3581,6 +3581,8 @@ fn test_failed_deposit_into_vault_scenarios() {
                 risk_factor_tier_size: Default::default(),
                 quorum: Default::default(),
                 resolution_factor: Default::default(),
+                quantum: Zero::zero(),
+                asset_type: AssetType::SYNTHETIC,
             );
 
             state.assets.asset_config.write(asset_id, Some(asset_config));
@@ -3600,7 +3602,7 @@ fn test_failed_deposit_into_vault_scenarios() {
             salt: 0,
             signature: array![].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: 'SYNTHETIC_NOT_ACTIVE');
+    assert_panic_with_felt_error(:result, expected_error: 'ASSET_NOT_ACTIVE');
 
     // Activate the vault asset.
     interact_with_state(
@@ -3614,6 +3616,8 @@ fn test_failed_deposit_into_vault_scenarios() {
                 risk_factor_tier_size: Default::default(),
                 quorum: Default::default(),
                 resolution_factor: Default::default(),
+                quantum: Zero::zero(),
+                asset_type: AssetType::SYNTHETIC,
             );
 
             state.assets.asset_config.write(asset_id, Some(asset_config));
@@ -3705,6 +3709,8 @@ fn test_register_vault_successful() {
                 risk_factor_tier_size: Default::default(),
                 quorum: Default::default(),
                 resolution_factor: Default::default(),
+                quantum: Zero::zero(),
+                asset_type: AssetType::SYNTHETIC,
             );
 
             state.assets.asset_config.write(vault_asset_id, Some(asset_config));
@@ -3773,6 +3779,8 @@ fn test_register_vault_negative_scenarios() {
                 risk_factor_tier_size: Default::default(),
                 quorum: Default::default(),
                 resolution_factor: Default::default(),
+                quantum: Zero::zero(),
+                asset_type: AssetType::SYNTHETIC,
             );
 
             state.assets.asset_config.write(SYNTHETIC_ASSET_ID_2(), Some(asset_config));
