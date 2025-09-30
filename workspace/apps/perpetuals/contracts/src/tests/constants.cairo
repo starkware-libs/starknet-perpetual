@@ -72,6 +72,7 @@ pub const COLLATERAL_BALANCE_AMOUNT: i64 = 2000;
 pub const SYNTHETIC_BALANCE_AMOUNT: i64 = 20;
 pub const CONTRACT_INIT_BALANCE: u128 = 1_000_000_000;
 pub const USER_INIT_BALANCE: u128 = 10_000_000_000;
+pub const VAULT_SHARE_QUANTUM: u64 = 1_000;
 
 pub const POSITION_ID_1: PositionId = PositionId { value: 2 };
 pub const POSITION_ID_2: PositionId = PositionId { value: 3 };

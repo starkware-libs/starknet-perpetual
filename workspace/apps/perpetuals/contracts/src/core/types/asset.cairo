@@ -3,10 +3,10 @@ use perpetuals::core::types::balance::Balance;
 use perpetuals::core::types::funding::FundingIndex;
 use perpetuals::core::types::price::Price;
 use perpetuals::core::types::risk_factor::RiskFactor;
-use starknet::SyscallResultTrait;
 use starknet::storage::StoragePointer0Offset;
 use starknet::storage_access::storage_address_from_base_and_offset;
 use starknet::syscalls::storage_read_syscall;
+use starknet::{ContractAddress, SyscallResultTrait};
 use starkware_utils::time::time::Timestamp;
 
 #[derive(Copy, Debug, Default, Drop, Hash, PartialEq, Serde, starknet::Store)]
@@ -73,20 +73,21 @@ impl AssetIdlOrd of PartialOrd<AssetId> {
     }
 }
 
-const VERSION: u8 = 1;
+const VERSION: u8 = 2;
 
 #[derive(Copy, Drop, Serde, starknet::Store)]
 pub struct AssetConfig {
     version: u8,
     // Configurable
-    pub status: AssetStatus,
-    pub risk_factor_first_tier_boundary: u128,
-    pub risk_factor_tier_size: u128,
-    pub quorum: u8,
+    pub status: AssetStatus, // V1
+    pub risk_factor_first_tier_boundary: u128, // V1
+    pub risk_factor_tier_size: u128, // V1
+    pub quorum: u8, // V1
     // Smallest unit of a synthetic asset in the system.
-    pub resolution_factor: u64,
-    pub quantum: u64,
-    pub asset_type: AssetType,
+    pub resolution_factor: u64, // V1
+    pub quantum: u64, // V2
+    pub token_contract: ContractAddress, // V2
+    pub asset_type: AssetType // V2
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store)]
@@ -117,14 +118,34 @@ pub struct AssetDiffEnriched {
 
 #[generate_trait]
 pub impl AssetImpl of AssetTrait {
-    fn config(
+    fn synthetic_config(
+        status: AssetStatus,
+        risk_factor_first_tier_boundary: u128,
+        risk_factor_tier_size: u128,
+        quorum: u8,
+        resolution_factor: u64,
+    ) -> AssetConfig {
+        AssetConfig {
+            version: VERSION,
+            status,
+            risk_factor_first_tier_boundary,
+            risk_factor_tier_size,
+            quorum,
+            resolution_factor,
+            quantum: Zero::zero(),
+            token_contract: Zero::zero(),
+            asset_type: AssetType::SYNTHETIC,
+        }
+    }
+
+    fn vault_share_collateral_config(
         status: AssetStatus,
         risk_factor_first_tier_boundary: u128,
         risk_factor_tier_size: u128,
         quorum: u8,
         resolution_factor: u64,
         quantum: u64,
-        asset_type: AssetType,
+        token_contract: ContractAddress,
     ) -> AssetConfig {
         AssetConfig {
             version: VERSION,
@@ -134,9 +155,11 @@ pub impl AssetImpl of AssetTrait {
             quorum,
             resolution_factor,
             quantum,
-            asset_type,
+            token_contract: token_contract,
+            asset_type: AssetType::VAULT_SHARE_COLLATERAL,
         }
     }
+
     fn timely_data(
         price: Price, last_price_update: Timestamp, funding_index: FundingIndex,
     ) -> AssetTimelyData {
