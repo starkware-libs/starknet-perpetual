@@ -23,7 +23,7 @@ use perpetuals::core::core::Core::SNIP12MetadataImpl;
 use perpetuals::core::errors::SIGNED_TX_EXPIRED;
 use perpetuals::core::events;
 use perpetuals::core::interface::{ICore, ICoreSafeDispatcher, ICoreSafeDispatcherTrait};
-use perpetuals::core::types::asset::{AssetStatus, AssetTrait, AssetType};
+use perpetuals::core::types::asset::{AssetStatus, AssetTrait};
 use perpetuals::core::types::funding::{FUNDING_SCALE, FundingIndex, FundingTick};
 use perpetuals::core::types::order::Order;
 use perpetuals::core::types::position::{POSITION_VERSION, PositionId, PositionMutableTrait};
@@ -3575,14 +3575,14 @@ fn test_failed_deposit_into_vault_scenarios() {
 
             state.vault_positions_to_assets.write(vault_user.position_id, asset_id);
 
-            let asset_config = AssetTrait::config(
+            let asset_config = AssetTrait::vault_share_collateral_config(
                 status: AssetStatus::PENDING,
                 risk_factor_first_tier_boundary: Default::default(),
                 risk_factor_tier_size: Default::default(),
                 quorum: Default::default(),
                 resolution_factor: Default::default(),
-                quantum: Zero::zero(),
-                asset_type: AssetType::SYNTHETIC,
+                quantum: VAULT_SHARE_QUANTUM,
+                token_contract: VAULT_CONTRACT_ADDRESS_1(),
             );
 
             state.assets.asset_config.write(asset_id, Some(asset_config));
@@ -3610,14 +3610,14 @@ fn test_failed_deposit_into_vault_scenarios() {
         || {
             let mut state = Core::contract_state_for_testing();
 
-            let asset_config = AssetTrait::config(
+            let asset_config = AssetTrait::vault_share_collateral_config(
                 status: AssetStatus::ACTIVE,
                 risk_factor_first_tier_boundary: Default::default(),
                 risk_factor_tier_size: Default::default(),
                 quorum: Default::default(),
                 resolution_factor: Default::default(),
-                quantum: Zero::zero(),
-                asset_type: AssetType::SYNTHETIC,
+                quantum: VAULT_SHARE_QUANTUM,
+                token_contract: VAULT_CONTRACT_ADDRESS_1(),
             );
 
             state.assets.asset_config.write(asset_id, Some(asset_config));
@@ -3703,14 +3703,14 @@ fn test_register_vault_successful() {
         f: || {
             let mut state = Core::contract_state_for_testing();
 
-            let asset_config = AssetTrait::config(
+            let asset_config = AssetTrait::vault_share_collateral_config(
                 status: AssetStatus::PENDING,
                 risk_factor_first_tier_boundary: Default::default(),
                 risk_factor_tier_size: Default::default(),
                 quorum: Default::default(),
                 resolution_factor: Default::default(),
-                quantum: Zero::zero(),
-                asset_type: AssetType::SYNTHETIC,
+                quantum: VAULT_SHARE_QUANTUM,
+                token_contract: VAULT_CONTRACT_ADDRESS_1(),
             );
 
             state.assets.asset_config.write(vault_asset_id, Some(asset_config));
@@ -3773,14 +3773,14 @@ fn test_register_vault_negative_scenarios() {
         f: || {
             let mut state = Core::contract_state_for_testing();
 
-            let asset_config = AssetTrait::config(
+            let asset_config = AssetTrait::vault_share_collateral_config(
                 status: AssetStatus::PENDING,
                 risk_factor_first_tier_boundary: Default::default(),
                 risk_factor_tier_size: Default::default(),
                 quorum: Default::default(),
                 resolution_factor: Default::default(),
-                quantum: Zero::zero(),
-                asset_type: AssetType::SYNTHETIC,
+                quantum: VAULT_SHARE_QUANTUM,
+                token_contract: VAULT_CONTRACT_ADDRESS_1(),
             );
 
             state.assets.asset_config.write(SYNTHETIC_ASSET_ID_2(), Some(asset_config));
