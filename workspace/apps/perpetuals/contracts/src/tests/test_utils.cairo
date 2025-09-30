@@ -393,7 +393,7 @@ pub fn check_asset_config(
     assert!(asset_config.resolution_factor == resolution_factor);
 }
 
-pub fn check_synthetic_timely_data(
+pub fn check_asset_timely_data(
     state: @Core::ContractState,
     synthetic_id: AssetId,
     price: Price,
@@ -406,7 +406,7 @@ pub fn check_synthetic_timely_data(
     assert!(asset_timely_data.funding_index == funding_index);
 }
 
-pub fn is_asset_in_synthetic_timely_data_list(
+pub fn is_asset_in_asset_timely_data_list(
     state: @Core::ContractState, synthetic_id: AssetId,
 ) -> bool {
     let mut flag = false;
@@ -443,7 +443,7 @@ pub fn check_synthetic_asset(
         :quorum,
         :resolution_factor,
     );
-    check_synthetic_timely_data(
+    check_asset_timely_data(
         :state,
         :synthetic_id,
         price: Zero::zero(),
@@ -451,7 +451,7 @@ pub fn check_synthetic_asset(
         funding_index: Zero::zero(),
     );
     // Check the asset_timely_data list.
-    assert!(is_asset_in_synthetic_timely_data_list(:state, :synthetic_id));
+    assert!(is_asset_in_asset_timely_data_list(:state, :synthetic_id));
 }
 
 pub fn validate_balance(token_state: TokenState, address: ContractAddress, expected_balance: u128) {
