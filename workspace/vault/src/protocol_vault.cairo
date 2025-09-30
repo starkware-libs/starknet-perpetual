@@ -63,15 +63,13 @@ pub mod ProtocolVault {
         perps_contract: ContractAddress,
         owning_position_id: u32,
         initial_supply: u256,
-        recipient: ContractAddress,
     ) {
         assert(perps_contract.is_non_zero(), INVALID_ZERO_ADDRESS);
         assert(owning_position_id.is_non_zero(), INVALID_ZERO_POSITION_ID);
-        assert(pnl_collateral_contract.is_non_zero(), INVALID_ZERO_ADDRESS);
         self.perps_contract.write(perps_contract);
         self.owning_position_id.write(owning_position_id);
         self.erc20.initializer(:name, :symbol);
-        self.erc20.mint(:recipient, amount: initial_supply);
+        self.erc20.mint(recipient: perps_contract, amount: initial_supply);
         self.erc4626.initializer(asset_address: pnl_collateral_contract);
     }
 
