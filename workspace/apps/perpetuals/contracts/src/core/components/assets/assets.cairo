@@ -201,7 +201,7 @@ pub mod AssetsComponent {
             assert(quorum.is_non_zero(), INVALID_ZERO_QUORUM);
             assert(resolution_factor.is_non_zero(), INVALID_ZERO_RESOLUTION_FACTOR);
 
-            let asset_config = AssetTrait::config(
+            let asset_config = AssetTrait::synthetic_config(
                 // It'll be active in the next price tick.
                 status: AssetStatus::PENDING,
                 // It validates the range of the risk factor.
@@ -209,8 +209,6 @@ pub mod AssetsComponent {
                 :risk_factor_tier_size,
                 :quorum,
                 :resolution_factor,
-                quantum: Zero::zero(),
-                asset_type: AssetType::SYNTHETIC,
             );
 
             synthetic_entry.write(Option::Some(asset_config));
