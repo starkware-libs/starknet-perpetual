@@ -1437,8 +1437,8 @@ pub mod Core {
             assert(vault_contract_address.is_non_zero(), INVALID_VAULT_CONTRACT_ADDRESS);
             validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
 
-            // Validate asset id exists, if not found get_synthetic_config will panic.
-            self.assets.get_synthetic_config(synthetic_id: vault_asset_id);
+            // Validate asset id exists, if not found get_asset_config will panic.
+            self.assets.get_asset_config(asset_id: vault_asset_id);
 
             let vault_address = self.vault_positions_to_addresses.read(vault_position_id);
             assert(vault_address.is_zero(), VAULT_POSITION_ALREADY_EXISTS);

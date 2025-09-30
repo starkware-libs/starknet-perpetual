@@ -3569,7 +3569,7 @@ fn test_failed_deposit_into_vault_scenarios() {
 
             state.vault_positions_to_assets.write(vault_user.position_id, asset_id);
 
-            let synthetic_config = AssetTrait::config(
+            let asset_config = AssetTrait::config(
                 status: AssetStatus::PENDING,
                 risk_factor_first_tier_boundary: Default::default(),
                 risk_factor_tier_size: Default::default(),
@@ -3577,7 +3577,7 @@ fn test_failed_deposit_into_vault_scenarios() {
                 resolution_factor: Default::default(),
             );
 
-            state.assets.asset_config.write(asset_id, Some(synthetic_config));
+            state.assets.asset_config.write(asset_id, Some(asset_config));
         },
     );
 
@@ -3602,7 +3602,7 @@ fn test_failed_deposit_into_vault_scenarios() {
         || {
             let mut state = Core::contract_state_for_testing();
 
-            let synthetic_config = AssetTrait::config(
+            let asset_config = AssetTrait::config(
                 status: AssetStatus::ACTIVE,
                 risk_factor_first_tier_boundary: Default::default(),
                 risk_factor_tier_size: Default::default(),
@@ -3610,7 +3610,7 @@ fn test_failed_deposit_into_vault_scenarios() {
                 resolution_factor: Default::default(),
             );
 
-            state.assets.asset_config.write(asset_id, Some(synthetic_config));
+            state.assets.asset_config.write(asset_id, Some(asset_config));
         },
     );
 

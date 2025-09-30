@@ -61,7 +61,7 @@ classDiagram
         collateral_token_contract: IERC20Dispatcher,
         collateral_quantum: u64,
         num_of_active_synthetic_assets: usize,
-        pub synthetic_config: Map< AssetId, Option [AssetConfig]>,
+        pub asset_config: Map< AssetId, Option [AssetConfig]>,
         pub asset_timely_data: IterableMap< AssetId, AssetTimelyData>,
         pub risk_factor_tiers: Map<AssetId, Vec [FixedTwoDecimal] >,
         asset_oracle: Map< AssetId, Map [PublicKey, felt252 ]>,
@@ -1359,7 +1359,7 @@ pub struct Storage {
     collateral_token_contract: IERC20Dispatcher,
     collateral_quantum: u64,
     num_of_active_synthetic_assets: usize,
-    pub synthetic_config: Map<AssetId, Option<AssetConfig>>,
+    pub asset_config: Map<AssetId, Option<AssetConfig>>,
     pub asset_timely_data: IterableMap<AssetId, AssetTimelyData>,
     pub collateral_timely_data: IterableMap<AssetId, AssetTimelyData>,
     pub risk_factor_tiers: Map<AssetId, Vec<FixedTwoDecimal>>,
@@ -1609,7 +1609,7 @@ Only the Operator can execute.
 1. [Pausable check](#pausable)
 2. [Operator Nonce check](#operator-nonce)
 3. Timestamps are at most `max_oracle_price_validity`
-4. `signed_prices` length >= synthetic_config[asset_id].quorum
+4. `signed_prices` length >= asset_config[asset_id].quorum
 5. `signed_prices` is sorted according to the signers public key
 6. Validate that the `oracle_price` is actually the median price (odd: the middle; even: between middles)
 
