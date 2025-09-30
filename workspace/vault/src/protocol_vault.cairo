@@ -16,8 +16,8 @@ pub mod ProtocolVault {
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use starkware_utils::math::abs::Abs;
     use vault::errors::{
-        INVALID_ZERO_ADDRESS, NEGATIVE_TOTAL_VALUE, ONLY_PERPS_CAN_DEPOSIT, ONLY_PERPS_CAN_OWN,
-        ONLY_PERPS_CAN_RECEIVE, ONLY_PERPS_CAN_WITHDRAW,
+        INVALID_ZERO_ADDRESS, INVALID_ZERO_POSITION_ID, NEGATIVE_TOTAL_VALUE,
+        ONLY_PERPS_CAN_DEPOSIT, ONLY_PERPS_CAN_OWN, ONLY_PERPS_CAN_RECEIVE, ONLY_PERPS_CAN_WITHDRAW,
     };
     use vault::interface::IProtocolVault;
 
@@ -66,7 +66,8 @@ pub mod ProtocolVault {
         recipient: ContractAddress,
     ) {
         assert(perps_contract.is_non_zero(), INVALID_ZERO_ADDRESS);
-        assert(owning_position_id.is_non_zero(), INVALID_ZERO_ADDRESS);
+        assert(owning_position_id.is_non_zero(), INVALID_ZERO_POSITION_ID);
+        assert(pnl_collateral_contract.is_non_zero(), INVALID_ZERO_ADDRESS);
         self.perps_contract.write(perps_contract);
         self.owning_position_id.write(owning_position_id);
         self.erc20.initializer(:name, :symbol);
