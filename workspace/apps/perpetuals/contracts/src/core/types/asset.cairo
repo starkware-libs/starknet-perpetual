@@ -91,6 +91,14 @@ pub struct AssetConfig {
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store)]
+pub struct RiskConfig {
+    pub risk_factor_first_tier_boundary: u128,
+    pub risk_factor_tier_size: u128,
+    pub len: u32,
+}
+
+
+#[derive(Copy, Drop, Serde, starknet::Store)]
 pub struct AssetTimelyData {
     version: u8,
     pub price: Price,

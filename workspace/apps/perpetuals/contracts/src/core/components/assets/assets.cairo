@@ -52,6 +52,7 @@ pub mod AssetsComponent {
     };
     use starkware_utils::storage::utils::{AddToStorage, SubFromStorage};
     use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
+    use crate::core::types::asset::RiskConfig;
 
     #[storage]
     pub struct Storage {
@@ -68,6 +69,7 @@ pub mod AssetsComponent {
         num_of_active_synthetic_assets: usize,
         #[rename("synthetic_config")]
         pub asset_config: Map<AssetId, Option<AssetConfig>>,
+        pub risk_config: Map<AssetId, RiskConfig>,
         #[rename("synthetic_timely_data")]
         pub asset_timely_data: IterableMap<AssetId, AssetTimelyData>,
         pub risk_factor_tiers: Map<AssetId, Vec<RiskFactor>>,
@@ -544,26 +546,17 @@ pub mod AssetsComponent {
             balance: Balance,
             price: Price,
         ) -> RiskFactor {
-            if let Option::Some(asset_config) = self.asset_config.read(asset_id) {
-                let asset_risk_factor_tiers = self.risk_factor_tiers.entry(asset_id);
-                let synthetic_value: u128 = price.mul(rhs: balance).abs();
-                let index = if synthetic_value < asset_config.risk_factor_first_tier_boundary {
-                    0_u128
-                } else {
-                    let tier_size = asset_config.risk_factor_tier_size;
-                    let first_tier_offset = synthetic_value
-                        - asset_config.risk_factor_first_tier_boundary;
-                    min(
-                        1_u128 + (first_tier_offset / tier_size),
-                        asset_risk_factor_tiers.len().into() - 1,
-                    )
-                };
-                asset_risk_factor_tiers
-                    .at(index.try_into().expect('INDEX_SHOULD_NEVER_OVERFLOW'))
-                    .read()
+            let risk_config = self.risk_config.read(asset_id);
+            let synthetic_value: u128 = price.mul(rhs: balance).abs();
+            let index = if synthetic_value < risk_config.risk_factor_first_tier_boundary {
+                0_u128
             } else {
-                panic_with_felt252(ASSET_NOT_EXISTS)
-            }
+                let first_tier_offset = synthetic_value
+                    - risk_config.risk_factor_first_tier_boundary;
+                min(1_u128 + (first_tier_offset / risk_config.risk_factor_tier_size), risk_config.len.into() - 1)
+            };
+            self.risk_factor_tiers.entry(asset_id).at(index.try_into().expect('INDEX_SHOULD_NEVER_OVERFLOW'))
+                .read()
         }
 
         fn get_funding_index(
