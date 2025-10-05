@@ -636,5 +636,5 @@ fn test_performance() {
     assetdispatcher.migrate_risk();
 
     cheat_caller_address_once(contract_address: CONTRACT_ADDRESS, caller_address: OPERATOR_ADDRESS);
-    // dispatcher.multi_trade(operator_nonce: CURRENT_OPERATOR_NONCE, :trades);
+    dispatcher.multi_trade(operator_nonce: CURRENT_OPERATOR_NONCE, :trades);
 }
