@@ -98,6 +98,17 @@ pub struct AssetTimelyData {
     pub funding_index: FundingIndex,
 }
 
+impl AssetTimelyDataDefault of Default<AssetTimelyData> {
+    fn default() -> AssetTimelyData {
+        AssetTimelyData {
+            version: VERSION,
+            price: Zero::zero(),
+            last_price_update: Zero::zero(),
+            funding_index: Zero::zero(),
+        }
+    }
+}
+
 #[derive(Copy, Debug, Drop, Serde, PartialEq)]
 pub struct Asset {
     pub id: AssetId,

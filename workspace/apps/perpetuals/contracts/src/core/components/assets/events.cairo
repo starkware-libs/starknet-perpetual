@@ -1,6 +1,7 @@
 use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::funding::FundingIndex;
 use perpetuals::core::types::price::Price;
+use starknet::ContractAddress;
 use starkware_utils::signature::stark::PublicKey;
 
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
@@ -22,6 +23,20 @@ pub struct SyntheticAdded {
     pub risk_factor_tier_size: u128,
     pub resolution_factor: u64,
     pub quorum: u8,
+}
+
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct VaultShareCollateralAdded {
+    #[key]
+    pub asset_id: AssetId,
+    pub risk_factor_tiers: Span<u16>,
+    pub risk_factor_first_tier_boundary: u128,
+    pub risk_factor_tier_size: u128,
+    pub resolution_factor: u64,
+    pub quorum: u8,
+    #[key]
+    pub erc20_contract_address: ContractAddress,
+    pub quantum: u64,
 }
 
 #[derive(Debug, Drop, PartialEq, starknet::Event)]

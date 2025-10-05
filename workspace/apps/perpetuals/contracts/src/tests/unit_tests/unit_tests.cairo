@@ -1063,7 +1063,7 @@ fn test_successful_add_synthetic_asset() {
 }
 
 #[test]
-#[should_panic(expected: 'SYNTHETIC_ALREADY_EXISTS')]
+#[should_panic(expected: 'ASSET_ALREADY_EXISTS')]
 fn test_add_synthetic_asset_existed_asset() {
     // Setup state, token:
     let cfg: PerpetualsInitConfig = Default::default();
