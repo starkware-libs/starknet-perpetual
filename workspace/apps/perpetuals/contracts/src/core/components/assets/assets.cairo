@@ -150,6 +150,28 @@ pub mod AssetsComponent {
             self.emit(events::OracleAdded { asset_id, asset_name, oracle_public_key, oracle_name });
         }
 
+        fn migrate_risk(ref self: ComponentState<TContractState>) {
+            for (asset_id, _) in self.asset_timely_data {
+                // pub risk_factor_first_tier_boundary: u128,
+                // /// - `risk_factor_tier_size` — 92-bit field stored in a `u128`.
+                // pub risk_factor_tier_size: u128,
+                // pub len: u32,
+                let x = self.asset_config.read(asset_id).unwrap();
+
+                self
+                    .risk_config
+                    .write(
+                        asset_id,
+                        RiskConfig {
+                            risk_factor_first_tier_boundary: x.risk_factor_first_tier_boundary,
+                            risk_factor_tier_size: x.risk_factor_tier_size,
+                            len: self.risk_factor_tiers.entry(asset_id).len().try_into().unwrap(),
+                        },
+                    );
+            }
+        }
+
+
         /// Add asset is called by the app governer to add a new synthetic asset.
         ///
         /// Validations:
@@ -537,9 +559,15 @@ pub mod AssetsComponent {
             } else {
                 let first_tier_offset = synthetic_value
                     - risk_config.risk_factor_first_tier_boundary;
-                min(1_u128 + (first_tier_offset / risk_config.risk_factor_tier_size), risk_config.len.into() - 1)
+                min(
+                    1_u128 + (first_tier_offset / risk_config.risk_factor_tier_size),
+                    risk_config.len.into() - 1,
+                )
             };
-            self.risk_factor_tiers.entry(asset_id).at(index.try_into().expect('INDEX_SHOULD_NEVER_OVERFLOW'))
+            self
+                .risk_factor_tiers
+                .entry(asset_id)
+                .at(index.try_into().expect('INDEX_SHOULD_NEVER_OVERFLOW'))
                 .read()
         }
 
