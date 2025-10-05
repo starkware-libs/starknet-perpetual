@@ -457,7 +457,7 @@ pub(crate) mod Positions {
                 if synthetic.balance.is_zero() {
                     continue;
                 }
-                let global_funding_index = assets.get_funding_index(synthetic_id);
+                let global_funding_index = assets.get_funding_index_unsafe(synthetic_id);
                 collateral_provisional_balance +=
                     calculate_funding(
                         old_funding_index: synthetic.funding_index,
@@ -490,17 +490,18 @@ pub(crate) mod Positions {
                 if balance.is_zero() {
                     continue;
                 }
+                let (price, funding_index) = assets
+                    .get_price_and_funding_index(asset_id: synthetic_id);
+
                 provisional_delta +=
                     calculate_funding(
                         old_funding_index: synthetic.funding_index,
-                        new_funding_index: assets.get_funding_index(synthetic_id),
+                        new_funding_index: funding_index,
                         balance: synthetic.balance,
                     );
                 if synthetic_diff_id == synthetic_id {
                     continue;
                 }
-
-                let price = assets.get_asset_price(asset_id: synthetic_id);
                 let risk_factor = assets.get_asset_risk_factor(synthetic_id, balance, price);
                 unchanged_synthetics
                     .append(Asset { id: synthetic_id, balance, price, risk_factor });

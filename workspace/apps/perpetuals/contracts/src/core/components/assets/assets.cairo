@@ -514,6 +514,24 @@ pub mod AssetsComponent {
             }
         }
 
+        /// Returns the stored price directly without checking whether it exists.
+        fn get_asset_price_unsafe(
+            self: @ComponentState<TContractState>, asset_id: AssetId,
+        ) -> Price {
+            let entry = self.asset_timely_data.pointer(asset_id);
+            AssetTrait::at_price(entry)
+        }
+
+
+        /// Returns both the stored price and funding index directly without checking their
+        /// existence.
+        fn get_price_and_funding_index(
+            self: @ComponentState<TContractState>, asset_id: AssetId,
+        ) -> (Price, FundingIndex) {
+            let entry = self.asset_timely_data.pointer(asset_id);
+            (AssetTrait::at_price(entry), AssetTrait::at_funding_index(entry))
+        }
+
         /// Get the risk factor of a synthetic asset.
         ///   - synthetic_value = |price * balance|
         ///   - If the synthetic value is less than or equal to the first tier boundary, return the
@@ -558,6 +576,14 @@ pub mod AssetsComponent {
                 Option::None => panic_with_felt252(ASSET_NOT_EXISTS),
                 Option::Some(funding_index) => funding_index,
             }
+        }
+
+        /// Returns the stored funding index directly without checking whether it exists.
+        fn get_funding_index_unsafe(
+            self: @ComponentState<TContractState>, synthetic_id: AssetId,
+        ) -> FundingIndex {
+            let entry = self.asset_timely_data.pointer(synthetic_id);
+            AssetTrait::at_funding_index(entry)
         }
 
         fn validate_active_asset(self: @ComponentState<TContractState>, asset_id: AssetId) {
