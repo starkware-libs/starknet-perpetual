@@ -1953,15 +1953,14 @@ Only the Operator can execute.
 **Validations:**
 
 1. [signature validation](#signature) for vault register request by the vault_position_id public key
-2. [Pausable check](#pausable)
-3. [Operator Nonce check](#operator-nonce)
-4. [Position check](#position) for `vault_position_id`
-5. [Expiration validation](#expiration)
-6. Caller is the operator.
-7. `vault_position_id` is not a registered position.
-8. `vault_position_id` is not a registered vault position.
-9. `vault_contract_address` is not zero.
-10. `vault_asset_id` is not zero and registered.
+2. [Operator Nonce check](#operator-nonce)
+3. [Position check](#position) for `vault_position_id`
+4. [Expiration validation](#expiration)
+5. Caller is the operator.
+6. `vault_position_id` is a registered position that is not a vault position.
+7. `vault_position_id` corresponding postion data has no vault shares of any kind.
+8. `vault_contract_address` is not zero and not already linked to another vault.
+9. `vault_asset_id` is not zero and registered.
 
 **Logic:**
 
