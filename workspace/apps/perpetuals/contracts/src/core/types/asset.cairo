@@ -1,13 +1,16 @@
+use core::num::traits::Pow;
 use core::num::traits::zero::Zero;
 use perpetuals::core::types::balance::Balance;
 use perpetuals::core::types::funding::FundingIndex;
 use perpetuals::core::types::price::Price;
 use perpetuals::core::types::risk_factor::RiskFactor;
 use starknet::storage::StoragePointer0Offset;
-use starknet::storage_access::storage_address_from_base_and_offset;
+use starknet::storage_access::{StorePacking, storage_address_from_base_and_offset};
 use starknet::syscalls::storage_read_syscall;
 use starknet::{ContractAddress, SyscallResultTrait};
 use starkware_utils::time::time::Timestamp;
+const TWO_POW_92: u128 = 2_u128.pow(92);
+const MASK_92: u128 = TWO_POW_92 - 1;
 
 #[derive(Copy, Debug, Default, Drop, Hash, PartialEq, Serde, starknet::Store)]
 pub struct AssetId {
@@ -100,6 +103,42 @@ pub struct AssetConfig {
     pub token_contract: ContractAddress, // V2
     pub asset_type: AssetType // V2
 }
+
+
+#[derive(Copy, Drop, Serde)]
+pub struct RiskConfig {
+    /// - `risk_factor_first_tier_boundary` — 92-bit field stored in a `u128`.
+    pub risk_factor_first_tier_boundary: u128,
+    /// - `risk_factor_tier_size` — 92-bit field stored in a `u128`.
+    pub risk_factor_tier_size: u128,
+    pub len: u32,
+}
+
+/// ┌──────────────────────────────────────────────────────────────┐
+/// │ 252-bit felt (interpreted as uint256)                        │
+/// ├─────────────────────────┬─────────────────┬──────────────────┤
+/// │ bitadd s 1–92               │ bits 93–124     │ bits 129–220     │
+/// │ risk_factor_first_tier_boundary (92 bits) │ len (32 bits)    │
+/// │ risk_factor_tier_size (92 bits)           │                  │
+/// └─────────────────────────┴─────────────────┴──────────────────┘
+impl StorePackingRiskConfig of StorePacking<RiskConfig, felt252> {
+    fn pack(value: RiskConfig) -> felt252 {
+        let low = value.risk_factor_first_tier_boundary + (value.len.into()) * TWO_POW_92;
+        let high = value.risk_factor_tier_size;
+        let result = u256 { low, high };
+        result.try_into().unwrap()
+    }
+
+    /// Unpacks a storage representation back into the original type.
+    fn unpack(value: felt252) -> RiskConfig {
+        let u256 { low, high } = value.into();
+        let risk_factor_first_tier_boundary = low & MASK_92;
+        let risk_factor_tier_size = high;
+        let len: u32 = (low / TWO_POW_92).try_into().unwrap();
+        RiskConfig { risk_factor_first_tier_boundary, risk_factor_tier_size, len }
+    }
+}
+
 
 #[derive(Copy, Drop, Serde, starknet::Store)]
 pub struct AssetTimelyData {

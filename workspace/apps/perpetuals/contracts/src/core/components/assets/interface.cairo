@@ -55,6 +55,8 @@ pub trait IAssets<TContractState> {
     );
     fn update_asset_quorum(ref self: TContractState, asset_id: AssetId, quorum: u8);
 
+    fn migrate_risk(ref self: TContractState);
+
     // View functions.
     fn get_collateral_token_contract(self: @TContractState) -> IERC20Dispatcher;
     fn get_collateral_quantum(self: @TContractState) -> u64;
