@@ -1,6 +1,7 @@
 #[starknet::contract]
 pub mod Core {
-    use core::dict::{Felt252Dict, Felt252DictTrait};
+    use core::panics::panic_with_byte_array;
+use core::dict::{Felt252Dict, Felt252DictTrait};
     use core::nullable::{FromNullableResult, match_nullable};
     use core::num::traits::Zero;
     use core::panic_with_felt252;
@@ -1258,7 +1259,17 @@ pub mod Core {
             fulfillment_entry.write(total_amount);
         }
 
-        fn _validate_order(ref self: ContractState, order: Order) {
+        fn _validate_order(ref self: ContractState, order: Order, now: Option<Timestamp>, collateral_id: Option<AssetId>) -> (Timestamp, AssetId) {
+            let now = if now.is_none() {
+                Time::now()
+            } else {
+                now.unwrap()
+            };
+            let collateral_id = if collateral_id.is_none() {
+                self.assets.get_collateral_id()
+            } else {
+                collateral_id.unwrap()
+            };
             // Verify that position is not fee position.
             assert(order.position_id != FEE_POSITION, CANT_TRADE_WITH_FEE_POSITION);
             // This is to make sure that the fee is relative to the quote amount.
@@ -1278,9 +1289,9 @@ pub mod Core {
             assert(!have_same_sign(order.quote_amount, order.base_amount), INVALID_AMOUNT_SIGN);
 
             // Validate asset ids.
-            let collateral_id = self.assets.get_collateral_id();
             assert(order.quote_asset_id == collateral_id, ASSET_ID_NOT_COLLATERAL);
             assert(order.fee_asset_id == collateral_id, ASSET_ID_NOT_COLLATERAL);
+            (now, collateral_id)
         }
 
         fn _validate_trade(
@@ -1294,12 +1305,12 @@ pub mod Core {
         ) {
             // Base asset check.
             assert(order_a.base_asset_id == order_b.base_asset_id, DIFFERENT_BASE_ASSET_IDS);
-            self.assets.validate_active_asset(asset_id: order_a.base_asset_id);
+            // self.assets.validate_active_asset(asset_id: order_a.base_asset_id);
 
             assert(order_a.position_id != order_b.position_id, INVALID_SAME_POSITIONS);
 
-            self._validate_order(order: order_a);
-            self._validate_order(order: order_b);
+            let (now, collateral_id) = self._validate_order(order: order_a, now: Default::default(), collateral_id: Default::default());
+            self._validate_order(order: order_b, now: Option::Some(now), collateral_id: Option::Some(collateral_id));
 
             // Non-zero actual amount check.
             assert(actual_amount_base_a.is_non_zero(), INVALID_ZERO_AMOUNT);

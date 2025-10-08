@@ -94,7 +94,8 @@ pub impl OrderImpl of OrderTrait {
         let order_fee_to_quote_ratio = FractionTrait::new(
             numerator: (*self.fee_amount).into(), denominator: (*self.quote_amount).abs().into(),
         );
-        if (actual_fee_to_quote_ratio > order_fee_to_quote_ratio) {
+
+        if actual_fee_to_quote_ratio > order_fee_to_quote_ratio {
             let err = @illegal_fee_to_quote_ratio_err(*self.position_id);
             panic_with_byte_array(:err);
         }
