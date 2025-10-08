@@ -108,10 +108,10 @@ pub fn assert_healthy_or_healthier(position_id: PositionId, tvtr: TVTRChange) {
     }
     let before_ratio = FractionTrait::new(tvtr.before.total_value, tvtr.before.total_risk);
     let after_ratio = FractionTrait::new(tvtr.after.total_value, tvtr.after.total_risk);
-
-    assert_with_byte_array(
-        after_ratio >= before_ratio, position_not_healthy_nor_healthier(:position_id),
-    );
+    if after_ratio < before_ratio {
+        let err = @position_not_healthy_nor_healthier(:position_id);
+        panic_with_byte_array(:err);
+    }
 }
 
 pub fn liquidated_position_validations(
