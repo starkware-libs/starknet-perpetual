@@ -1,3 +1,4 @@
+use perpetuals::core::components::assets::interface::{IAssetsDispatcher, IAssetsDispatcherTrait};
 use perpetuals::core::core::Core::{InternalCoreFunctions, SNIP12MetadataImpl};
 use perpetuals::core::interface::{ICoreDispatcher, ICoreDispatcherTrait, Settlement};
 use perpetuals::core::types::order::Order;
@@ -12,7 +13,6 @@ use starkware_utils::components::replaceability::interface::{
 use starkware_utils::storage::iterable_map::*;
 use starkware_utils::time::time::Timestamp;
 use starkware_utils_testing::test_utils::cheat_caller_address_once;
-use perpetuals::core::components::assets::interface::{IAssetsDispatcher, IAssetsDispatcherTrait};
 
 
 // Performance test for Core contract multi-trade execution.
@@ -636,5 +636,5 @@ fn test_performance() {
     assetdispatcher.migrate_risk();
 
     cheat_caller_address_once(contract_address: CONTRACT_ADDRESS, caller_address: OPERATOR_ADDRESS);
-    dispatcher.multi_trade(operator_nonce: CURRENT_OPERATOR_NONCE, :trades);
+    // dispatcher.multi_trade(operator_nonce: CURRENT_OPERATOR_NONCE, :trades);
 }

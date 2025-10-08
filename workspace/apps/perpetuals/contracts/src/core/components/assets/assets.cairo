@@ -70,6 +70,7 @@ pub mod AssetsComponent {
         #[rename("synthetic_config")]
         pub asset_config: Map<AssetId, Option<AssetConfig>>,
         pub risk_config: Map<AssetId, RiskConfig>,
+        pub risk_factor_tiers_opt: Map<AssetId, Map<u64, RiskFactor>>,
         #[rename("synthetic_timely_data")]
         pub asset_timely_data: IterableMap<AssetId, AssetTimelyData>,
         pub risk_factor_tiers: Map<AssetId, Vec<RiskFactor>>,
@@ -168,6 +169,11 @@ pub mod AssetsComponent {
                             len: self.risk_factor_tiers.entry(asset_id).len().try_into().unwrap(),
                         },
                     );
+                let vec = self.risk_factor_tiers.entry(asset_id);
+                for i in 0..vec.len() {
+                    let value = vec.at(i.into()).read();
+                    self.risk_factor_tiers_opt.entry(asset_id).write(i.into(), value);
+                }
             }
         }
 
@@ -583,10 +589,9 @@ pub mod AssetsComponent {
                 )
             };
             self
-                .risk_factor_tiers
+                .risk_factor_tiers_opt
                 .entry(asset_id)
-                .at(index.try_into().expect('INDEX_SHOULD_NEVER_OVERFLOW'))
-                .read()
+                .read(index.try_into().expect('INDEX_SHOULD_NEVER_OVERFLOW'))
         }
 
         fn get_funding_index(
