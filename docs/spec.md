@@ -950,19 +950,16 @@ impl StructHashImpl of StructHash<WithdrawFromVaultUserArgs> {
 ```rust
 pub struct WithdrawFromVaultOwnerArgs {
     user_hash: HashType,
-    vault_share_execution_price: Price
+    collateral_asset_amount: u64
 }
 
 /// selector!(
 ///   "\"WithdrawFromVaultOwnerArgs\"(
 ///    \"user_hash\":\"HashType\",
-///    \"vault_share_execution_price\":\"Price\",
+///    \"collateral_asset_amount\":\"u64\",
 ///    )
 ///    \"HashType\"(
 ///    \"value\":\"felt\"
-///    )"
-///    \"vault_share_execution_price\"(
-///    \"value\":\"u64\"
 ///    )"
 /// );
 
@@ -980,7 +977,7 @@ impl StructHashImpl of StructHash<WithdrawFromVaultOwnerArgs> {
 
 ```rust
 pub struct LiquidateVaultSharesArgs {
-    vault_share_execution_price: Price,
+    collateral_asset_amount: u64,
     vault_position_id: PositionId,
     collateral_id: AssetId,
     number_of_shares: u64,
@@ -990,7 +987,7 @@ pub struct LiquidateVaultSharesArgs {
 
 /// selector!(
 ///   "\"LiquidateVaultSharesArgs\"(
-///    \"vault_share_execution_price\":\"Price\",
+///    \"collateral_asset_amount\":\"Price\",
 ///    \"vault_position_id\":\"PositionId\",
 ///    \"collateral_id\":\"AssetId\",
 ///    \"number_of_shares\":\"u64\",
@@ -2940,7 +2937,7 @@ pub struct WithdrawnFromVault {
     pub collateral_id: AssetId,
     pub number_of_shares: u64,
     pub minimum_received_total_amount: u64,
-    pub vault_share_execution_price: Price,
+    pub collateral_asset_amount: u64,
     pub expiration: Timestamp,
     pub salt: felt252,
 }
@@ -2959,7 +2956,7 @@ pub struct LiquidatedFromVault {
     pub collateral_id: AssetId,
     pub number_of_shares: u64,
     pub minimum_received_total_amount: u64,
-    pub vault_share_execution_price: Price,
+    pub collateral_asset_amount: u64,
     pub expiration: Timestamp,
     pub salt: felt252,
 }
@@ -3658,7 +3655,7 @@ fn withdraw_from_vault(
     vault_position_id: PositionId,
     number_of_shares: u64,
     minimum_received_total_amount: u64,
-    vault_share_execution_price: Price,
+    collateral_asset_amount: u64,
     expiration: Timestamp,
     salt: felt252,
     user_signature: Signature,
@@ -3688,20 +3685,20 @@ Only the Operator can execute.
 8. position id is not a vault position and exists.
 9. number_of_shares is non zero.
 10. minimum_received_total_amount is non zero.
-11. vault_share_execution_price is non zero.
+11. collateral_asset_amount is non zero.
 12. Caller is the operator.
 13. Request is new (check user payload hash not exists in the fulfillment map).
-14. `number_of_shares * vault_share_execution_price >= minimum_received_total_amount`
+14. `number_of_shares * collateral_asset_amount >= minimum_received_total_amount`
 
 **Logic:**
 
 1. Run validations
 2. transfer vault_asset_id: number_of_shares from the perps contract to the vault contract (for burning the vault shares)
 3. reduce the position id vault share balance by number_of_shares
-4. transfer collateral_id: vault_share_execution_price*number_of_shares from the perps contract to the vault contract (for transferring back the shares value)
+4. transfer collateral_id: collateral_asset_amount*number_of_shares from the perps contract to the vault contract (for transferring back the shares value)
 5. call the new redeem function of the vault contract (a version where the price of a vault share is dicateded by the operator) which burns the vault shares and transfers the assets from the vault contract to the perps contract
-6. increase the position_id collateral_id balance by vault_share_execution_price*number_of_shares
-7. reduce the vault_position_id collateral_id balance by vault_share_execution_price*number_of_shares
+6. increase the position_id collateral_id balance by collateral_asset_amount*number_of_shares
+7. reduce the vault_position_id collateral_id balance by collateral_asset_amount*number_of_shares
 
 **Emits:**
 
@@ -3721,7 +3718,7 @@ fn liquidate_vault_shares(
     vault_position_id: PositionId,
     collateral_id: AssetId,
     number_of_shares: u64,
-    vault_share_execution_price: Price,
+    collateral_asset_amount: u64,
     expiration: Timestamp,
     salt: felt252,
     vault_owner_signature: Signature,
@@ -3748,7 +3745,7 @@ Only the Operator can execute.
 8. position id is not a vault position and exists.
 9. number_of_shares is non zero.
 10. position id is liquidatable.
-11. vault_share_execution_price is non zero.
+11. collateral_asset_amount is non zero.
 12. Caller is the operator.
 
 **Logic:**
@@ -3756,10 +3753,10 @@ Only the Operator can execute.
 1. Run validations
 2. transfer vault_asset_id: number_of_shares from the perps contract to the vault contract (for burning the vault shares)
 3. reduce the position id vault share balance by number_of_shares
-4. transfer collateral_id: vault_share_execution_price*number_of_shares from the perps contract to the vault contract (for transferring back the shares value)
+4. transfer collateral_id: collateral_asset_amount*number_of_shares from the perps contract to the vault contract (for transferring back the shares value)
 5. call the new redeem function of the vault contract (a version where the price of a vault share is dicateded by the operator) which burns the vault shares and transfers the assets from the vault contract to the perps contract
-6. increase the position_id collateral_id balance by vault_share_execution_price*number_of_shares
-7. reduce the vault_position_id collateral_id balance by vault_share_execution_price*number_of_shares
+6. increase the position_id collateral_id balance by collateral_asset_amount*number_of_shares
+7. reduce the vault_position_id collateral_id balance by collateral_asset_amount*number_of_shares
 8. position id is healthier
 
 **Emits:**
