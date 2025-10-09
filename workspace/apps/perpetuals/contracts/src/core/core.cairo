@@ -1003,6 +1003,21 @@ pub mod Core {
                 );
         }
 
+        /// Registers a vault.
+        ///
+        /// Validations:
+        /// - Validates the operator nonce (and operator is the caller).
+        /// - Validates the vault parameters including vault_position, vault_position id,
+        /// vault_contract address, vault_asset_id, expiration,
+        ///   and signature. Refer to `_validate_register_vault` for detailed validation steps.
+        ///
+        /// Execution:
+        /// - Writes (vault_contract_address, vault_position_id) to the vault_positions_to_addresses
+        /// map.
+        /// - Writes (vault_asset_id, vault_position_id) to the vault_positions_to_assets map.
+        /// - Writes (vault_contract_address, vault_position_id) to the addresses_to_vault_positions
+        /// map.
+        /// - Emits the event.
         fn register_vault(
             ref self: ContractState,
             operator_nonce: u64,
@@ -1449,6 +1464,17 @@ pub mod Core {
             vault_shares_amount
         }
 
+
+        /// Validates a vault registration.
+        ///
+        /// This function ensures the transaction is valid by:
+        /// - Checking the vault contract address is not zero.
+        /// - Validating the expiration.
+        /// - Checking the vault asset id is registered.
+        /// - Checking the vault position id is not already registered.
+        /// - Checking the vault position is not a vault position.
+        /// - Checking the vault position has no share assets.
+        /// - Validating the signature.
         fn _validate_register_vault(
             ref self: ContractState,
             vault_position_id: PositionId,
