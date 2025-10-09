@@ -1044,7 +1044,7 @@ pub mod Core {
             vault_position_id: PositionId,
             number_of_shares: u64,
             minimum_received_total_amount: u64,
-            vault_share_execution_price: Price,
+            collateral_asset_amount: u64,
             expiration: Timestamp,
             salt: felt252,
             user_signature: Signature,

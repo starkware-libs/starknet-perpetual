@@ -2,7 +2,6 @@ use core::hash::{HashStateExTrait, HashStateTrait};
 use core::poseidon::PoseidonTrait;
 use openzeppelin::utils::snip12::StructHash;
 use perpetuals::core::types::position::PositionId;
-use perpetuals::core::types::price::Price;
 use starkware_utils::signature::stark::HashType;
 use starkware_utils::time::time::Timestamp;
 
@@ -45,20 +44,17 @@ impl UserStructHashImpl of StructHash<VaultWithdrawUserArgs> {
 #[derive(Copy, Drop, Hash, Serde)]
 pub struct VaultWithdrawOwnerArgs {
     pub vault_withdraw_user_hash: HashType,
-    pub vault_share_execution_price: Price,
+    pub collateral_asset_amount: u64,
 }
 
 /// selector!(
 ///   "\"VaultWithdrawOwnerArgs\"(
 ///    \"vault_withdraw_user_hash\":\"HashType\",
-///    \"vault_share_execution_price\":\"Price\",
+///    \"collateral_asset_amount\":\"u64\",
 ///    )
-///    \"Price\"(
-///    \"value\":\"u64\"
-///    )"
 /// );
 const VAULT_WITHDRAW_OWNER_ARGS_TYPE_HASH: HashType =
-    0x037f85f245c0b515ca413672793e5ee960312c38c98891898f8ad23ba3f60b38;
+    0x008e71c2a345df58451e82f585a92b717ebc0df7335af831ed356573df04c639;
 
 impl OwnerStructHashImpl of StructHash<VaultWithdrawOwnerArgs> {
     fn hash_struct(self: @VaultWithdrawOwnerArgs) -> HashType {
@@ -86,7 +82,7 @@ mod tests {
     #[test]
     fn test_vault_withdraw_owner_args_type_hash() {
         let expected = selector!(
-            "\"VaultWithdrawOwnerArgs\"(\"vault_withdraw_user_hash\":\"HashType\",\"vault_share_execution_price\":\"Price\")\"Price\"(\"value\":\"u64\")",
+            "\"VaultWithdrawOwnerArgs\"(\"vault_withdraw_user_hash\":\"HashType\",\"collateral_asset_amount\":\"u64\")",
         );
         assert_eq!(
             to_base_16_string(VAULT_WITHDRAW_OWNER_ARGS_TYPE_HASH), to_base_16_string(expected),
