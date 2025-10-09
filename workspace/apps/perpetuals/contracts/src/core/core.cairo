@@ -1052,6 +1052,26 @@ pub mod Core {
                 )
         }
 
+        /// Withdraws vault shares into collateral.
+        ///
+        /// Validations:
+        /// - Ensures the contract is not paused.
+        /// - Validates the operator nonce.
+        /// - Checks price integrity.
+        /// - Non-zero `number_of_shares`, `minimum_received_total_amount`,
+        /// `vault_share_execution_price`.
+        /// - Retrieves the vault share asset ID associated with the vault position.
+        /// - Validates the withdraw parameters including position IDs, amount, expiration,
+        ///   and signature.
+        ///
+        /// Execution:
+        /// - Redeem shares from the vault; convert unquantized to quantized using collateral
+        /// quantum.
+        /// - Apply diffs: `position_id` (+collateral, −shares), `vault_position_id`
+        /// (−collateral).
+        /// - Validate both positions remain healthy or healthier; enforce vault collateral safety
+        /// limit.
+        /// - Emit `WithdrawFromVault`.
         fn withdraw_from_vault(
             ref self: ContractState,
             operator_nonce: u64,
