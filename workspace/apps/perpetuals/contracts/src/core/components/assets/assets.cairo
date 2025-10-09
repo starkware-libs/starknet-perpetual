@@ -617,6 +617,22 @@ pub mod AssetsComponent {
                 self.last_price_validation.write(current_time);
             }
         }
+
+        fn get_token_contract_and_quantum(
+            self: @ComponentState<TContractState>, asset_id: AssetId,
+        ) -> (AssetType, IERC20Dispatcher, u64) {
+            if (self.get_collateral_id() == asset_id) {
+                let token_contract = self.get_collateral_token_contract();
+                let quantum = self.get_collateral_quantum();
+                (AssetType::SPOT_COLLATERAL, token_contract, quantum)
+            } else {
+                let asset_config = self._get_asset_config(asset_id);
+                let token_contract = IERC20Dispatcher {
+                    contract_address: asset_config.token_contract,
+                };
+                (asset_config.asset_type, token_contract, asset_config.quantum)
+            }
+        }
     }
 
     #[generate_trait]
