@@ -978,10 +978,10 @@ pub mod Core {
                     :vault_share_asset_id,
                 );
 
-            // TODO(Mohammad): add `assetType` to `deposit` once it is added.
             self
                 .deposits
                 .deposit(
+                    asset_id: vault_share_asset_id,
                     :position_id,
                     quantized_amount: quantized_shares_amount,
                     // As the operator nonce is unique, it can be used as salt.
