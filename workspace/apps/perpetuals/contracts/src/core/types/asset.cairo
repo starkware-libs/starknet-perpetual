@@ -30,6 +30,17 @@ pub enum AssetType {
     VAULT_SHARE_COLLATERAL,
 }
 
+pub impl Felt252TryIntoAssetType of TryInto<felt252, AssetType> {
+    fn try_into(self: felt252) -> Option<AssetType> {
+        match self {
+            0 => Option::Some(AssetType::SYNTHETIC),
+            1 => Option::Some(AssetType::SPOT_COLLATERAL),
+            2 => Option::Some(AssetType::VAULT_SHARE_COLLATERAL),
+            _ => Option::None,
+        }
+    }
+}
+
 #[generate_trait]
 pub impl AssetIdImpl of AssetIdTrait {
     fn new(value: felt252) -> AssetId {
@@ -191,6 +202,19 @@ pub impl AssetImpl of AssetTrait {
             .unwrap_syscall()
     }
 
+    /// Reads the Option<AssetConfig> from the storage.
+    /// The offset is used to read specific fields of the struct.
+    #[inline]
+    fn read_config(
+        entry: StoragePointer0Offset<Option<AssetConfig>>, offset: OptionAssetConfigOffset,
+    ) -> felt252 {
+        storage_read_syscall(
+            0,
+            storage_address_from_base_and_offset(entry.__storage_pointer_address__, offset.into()),
+        )
+            .unwrap_syscall()
+    }
+
     /// Reads the variant of the Option<AssetTimelyData>.
     /// The variant mark if the Option is Some or None.
     #[inline]
@@ -228,6 +252,11 @@ pub impl AssetImpl of AssetTrait {
         let funding_index = Self::read(entry, OptionAssetTimelyDataOffset::FUNDING_INDEX);
         let funding_index: i64 = funding_index.try_into().unwrap();
         funding_index.into()
+    }
+
+    fn at_asset_type(entry: StoragePointer0Offset<Option<AssetConfig>>) -> Option<AssetType> {
+        let asset_type = Self::read_config(entry, OptionAssetConfigOffset::ASSET_TYPE);
+        asset_type.try_into()
     }
 
     /// Gets the price from the Option<AssetTimelyData>.
@@ -277,6 +306,37 @@ pub impl OptionAssetTimelyDataOffsetIntoU8 of Into<OptionAssetTimelyDataOffset, 
             OptionAssetTimelyDataOffset::PRICE => 2_u8,
             OptionAssetTimelyDataOffset::LAST_PRICE_UPDATE => 3_u8,
             OptionAssetTimelyDataOffset::FUNDING_INDEX => 4_u8,
+        }
+    }
+}
+
+#[derive(Copy, Drop, Debug, PartialEq, Serde)]
+pub enum OptionAssetConfigOffset {
+    VARIANT,
+    VERSION,
+    STATUS,
+    RISK_FACTOR_FIRST_TIER_BOUNDARY,
+    RISK_FACTOR_TIER_SIZE,
+    QUORUM,
+    RESOLUTION_FACTOR,
+    QUANTUM,
+    TOKEN_CONTRACT,
+    ASSET_TYPE,
+}
+
+pub impl OptionAssetConfigOffsetIntoU8 of Into<OptionAssetConfigOffset, u8> {
+    fn into(self: OptionAssetConfigOffset) -> u8 {
+        match self {
+            OptionAssetConfigOffset::VARIANT => 0_u8,
+            OptionAssetConfigOffset::VERSION => 1_u8,
+            OptionAssetConfigOffset::STATUS => 2_u8,
+            OptionAssetConfigOffset::RISK_FACTOR_FIRST_TIER_BOUNDARY => 3_u8,
+            OptionAssetConfigOffset::RISK_FACTOR_TIER_SIZE => 4_u8,
+            OptionAssetConfigOffset::QUORUM => 5_u8,
+            OptionAssetConfigOffset::RESOLUTION_FACTOR => 6_u8,
+            OptionAssetConfigOffset::QUANTUM => 7_u8,
+            OptionAssetConfigOffset::TOKEN_CONTRACT => 8_u8,
+            OptionAssetConfigOffset::ASSET_TYPE => 9_u8,
         }
     }
 }

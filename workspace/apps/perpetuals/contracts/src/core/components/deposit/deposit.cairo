@@ -244,11 +244,11 @@ pub(crate) mod Deposit {
 
             let position_diff = match asset_type {
                 AssetType::SPOT_COLLATERAL => PositionDiff {
-                    collateral_diff: quantized_amount.into(), synthetic_diff: Option::None,
+                    collateral_diff: quantized_amount.into(), asset_diff: Option::None,
                 },
                 AssetType::VAULT_SHARE_COLLATERAL => PositionDiff {
                     collateral_diff: Zero::zero(),
-                    synthetic_diff: Option::Some((asset_id, quantized_amount.into())),
+                    asset_diff: Option::Some((asset_id, quantized_amount.into())),
                 },
                 AssetType::SYNTHETIC => { panic_with_felt252(errors::CANT_DEPOSIT_SYNTHETIC) },
             };
