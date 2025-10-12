@@ -30,7 +30,7 @@ pub mod Core {
         NOT_VAULT_SHARE_ASSET, OPERATION_ALREADY_DONE, POSITION_IS_VAULT_POSITION,
         RECEIVED_AMOUNT_TOO_SMALL, SHARES_BALANCE_MISMATCH, SIGNED_TX_EXPIRED, SYNTHETIC_IS_ACTIVE,
         TRANSFER_FAILED, VAULT_CONTRACT_ALREADY_EXISTS, VAULT_POSITION_ALREADY_EXISTS,
-        fulfillment_exceeded_err, order_expired_err,
+        VAULT_POSITION_HAS_SHARES, fulfillment_exceeded_err, order_expired_err,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
@@ -1574,9 +1574,11 @@ pub mod Core {
                 .positions
                 .get_position_snapshot(position_id: vault_position_id);
 
-            // TODO(Omri): Add check for share assets (vault position should not have any share
-            // assets).
-            // Need to modify the position data to include share assets.
+            for (asset_id, asset_balance) in vault_position.assets_balance {
+                if self.assets.get_asset_type(asset_id) == AssetType::VAULT_SHARE_COLLATERAL {
+                    assert(asset_balance.is_zero(), VAULT_POSITION_HAS_SHARES);
+                }
+            }
 
             _validate_signature(
                 public_key: vault_position.get_owner_public_key(),

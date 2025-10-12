@@ -24,11 +24,31 @@ pub struct Position {
 /// Asset balance in a position.
 /// - balance: The amount of the synthetic asset held in the position.
 /// - funding_index: The funding index for asset at the time of the last update.
-#[derive(Copy, Drop, Serde, starknet::Store)]
+#[derive(Copy, Debug, Drop, Serde, starknet::Store)]
 pub struct AssetBalance {
     pub version: u8,
     pub balance: Balance,
     pub funding_index: FundingIndex,
+}
+
+pub impl AssetBalanceZeroImpl of Zero<AssetBalance> {
+    fn zero() -> AssetBalance {
+        AssetBalance {
+            version: POSITION_VERSION, balance: Zero::zero(), funding_index: Zero::zero(),
+        }
+    }
+    fn is_zero(self: @AssetBalance) -> bool {
+        self.balance.is_zero()
+    }
+    fn is_non_zero(self: @AssetBalance) -> bool {
+        !self.is_zero()
+    }
+}
+
+pub impl AssetBalanceDefault of Default<AssetBalance> {
+    fn default() -> AssetBalance {
+        Zero::zero()
+    }
 }
 
 #[derive(Copy, Debug, Drop, Hash, PartialEq, Serde, starknet::Store)]
