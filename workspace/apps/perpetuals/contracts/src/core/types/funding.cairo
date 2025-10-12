@@ -11,7 +11,7 @@ pub const FUNDING_SCALE: i64 = 2_i64.pow(32);
 const MAX_FUNDING_ERROR: felt252 = 'Value must be < 2^64';
 const MIN_FUNDING_ERROR: felt252 = 'Value must be > -2^64';
 
-#[derive(Copy, Debug, Drop, PartialEq, starknet::Store, Serde)]
+#[derive(Copy, Debug, Default, Drop, PartialEq, starknet::Store, Serde)]
 /// `FundingIndex` represents a global funding rate tracker for each synthetic asset in the system.
 /// It's used to calculate funding payments between long and short position holders.
 /// To optimize performance, positions are only updated with the latest funding index when their
