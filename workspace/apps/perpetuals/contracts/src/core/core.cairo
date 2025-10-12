@@ -1,7 +1,6 @@
 #[starknet::contract]
 pub mod Core {
-    use core::panics::panic_with_byte_array;
-use core::dict::{Felt252Dict, Felt252DictTrait};
+    use core::dict::{Felt252Dict, Felt252DictTrait};
     use core::nullable::{FromNullableResult, match_nullable};
     use core::num::traits::Zero;
     use core::panic_with_felt252;
@@ -1259,7 +1258,12 @@ use core::dict::{Felt252Dict, Felt252DictTrait};
             fulfillment_entry.write(total_amount);
         }
 
-        fn _validate_order(ref self: ContractState, order: Order, now: Option<Timestamp>, collateral_id: Option<AssetId>) -> (Timestamp, AssetId) {
+        fn _validate_order(
+            ref self: ContractState,
+            order: Order,
+            now: Option<Timestamp>,
+            collateral_id: Option<AssetId>,
+        ) -> (Timestamp, AssetId) {
             let now = if now.is_none() {
                 Time::now()
             } else {
@@ -1309,8 +1313,16 @@ use core::dict::{Felt252Dict, Felt252DictTrait};
 
             assert(order_a.position_id != order_b.position_id, INVALID_SAME_POSITIONS);
 
-            let (now, collateral_id) = self._validate_order(order: order_a, now: Default::default(), collateral_id: Default::default());
-            self._validate_order(order: order_b, now: Option::Some(now), collateral_id: Option::Some(collateral_id));
+            let (now, collateral_id) = self
+                ._validate_order(
+                    order: order_a, now: Default::default(), collateral_id: Default::default(),
+                );
+            self
+                ._validate_order(
+                    order: order_b,
+                    now: Option::Some(now),
+                    collateral_id: Option::Some(collateral_id),
+                );
 
             // Non-zero actual amount check.
             assert(actual_amount_base_a.is_non_zero(), INVALID_ZERO_AMOUNT);
