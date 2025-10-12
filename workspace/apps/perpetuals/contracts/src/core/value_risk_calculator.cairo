@@ -7,7 +7,7 @@ use perpetuals::core::errors::{
 use perpetuals::core::types::asset::Asset;
 use perpetuals::core::types::balance::{Balance, BalanceDiff};
 use perpetuals::core::types::position::{
-    PositionDiffEnriched, PositionId, SyntheticEnrichedPositionDiff,
+    AssetEnrichedPositionDiff, PositionDiffEnriched, PositionId,
 };
 use perpetuals::core::types::price::{Price, PriceMulTrait};
 use perpetuals::core::types::risk_factor::RiskFactorTrait;
@@ -77,11 +77,9 @@ fn is_fair_deleverage(before: PositionTVTR, after: PositionTVTR) -> bool {
 
 /// Returns the state of a position.
 pub fn evaluate_position(
-    unchanged_synthetics: Span<Asset>, collateral_balance: Balance,
+    unchanged_assets: Span<Asset>, collateral_balance: Balance,
 ) -> PositionState {
-    let tvtr = calculate_position_tvtr(
-        unchanged_synthetics: unchanged_synthetics, collateral_balance: collateral_balance,
-    );
+    let tvtr = calculate_position_tvtr(:unchanged_assets, :collateral_balance);
     get_position_state(position_tvtr: tvtr)
 }
 
@@ -116,14 +114,12 @@ pub fn assert_healthy_or_healthier(position_id: PositionId, tvtr: TVTRChange) {
 
 pub fn liquidated_position_validations(
     position_id: PositionId,
-    unchanged_synthetics: Span<Asset>,
+    unchanged_assets: Span<Asset>,
     position_diff_enriched: PositionDiffEnriched,
 ) {
-    let tvtr_before = calculate_position_tvtr_before(
-        :unchanged_synthetics, :position_diff_enriched,
-    );
+    let tvtr_before = calculate_position_tvtr_before(:unchanged_assets, :position_diff_enriched);
     let tvtr = calculate_position_tvtr_change(
-        :tvtr_before, synthetic_enriched_position_diff: position_diff_enriched.into(),
+        :tvtr_before, asset_enriched_position_diff: position_diff_enriched.into(),
     );
     let position_state_before_change = get_position_state(position_tvtr: tvtr.before);
 
@@ -138,14 +134,12 @@ pub fn liquidated_position_validations(
 
 pub fn deleveraged_position_validations(
     position_id: PositionId,
-    unchanged_synthetics: Span<Asset>,
+    unchanged_assets: Span<Asset>,
     position_diff_enriched: PositionDiffEnriched,
 ) {
-    let tvtr_before = calculate_position_tvtr_before(
-        :unchanged_synthetics, :position_diff_enriched,
-    );
+    let tvtr_before = calculate_position_tvtr_before(:unchanged_assets, :position_diff_enriched);
     let tvtr = calculate_position_tvtr_change(
-        :tvtr_before, synthetic_enriched_position_diff: position_diff_enriched.into(),
+        :tvtr_before, asset_enriched_position_diff: position_diff_enriched.into(),
     );
     let position_state_before_change = get_position_state(position_tvtr: tvtr.before);
     if (position_state_before_change != PositionState::Deleveragable) {
@@ -161,13 +155,13 @@ pub fn deleveraged_position_validations(
 }
 
 pub fn calculate_position_tvtr(
-    unchanged_synthetics: Span<Asset>, collateral_balance: Balance,
+    unchanged_assets: Span<Asset>, collateral_balance: Balance,
 ) -> PositionTVTR {
     let position_diff_enriched = PositionDiffEnriched {
         collateral_enriched: BalanceDiff { before: collateral_balance, after: collateral_balance },
-        synthetic_enriched: Option::None,
+        asset_enriched: Option::None,
     };
-    calculate_position_tvtr_before(:unchanged_synthetics, :position_diff_enriched)
+    calculate_position_tvtr_before(:unchanged_assets, :position_diff_enriched)
 }
 
 /// Calculates the total value and total risk change for a position, taking into account both
@@ -187,12 +181,12 @@ pub fn calculate_position_tvtr(
 /// 2. Calculates value and risk changes for collateral assets
 /// 3. Combines all calculations into final before/after totals
 pub fn calculate_position_tvtr_change(
-    tvtr_before: PositionTVTR, synthetic_enriched_position_diff: SyntheticEnrichedPositionDiff,
+    tvtr_before: PositionTVTR, asset_enriched_position_diff: AssetEnrichedPositionDiff,
 ) -> TVTRChange {
     let mut total_value_after = tvtr_before.total_value;
     let mut total_risk_after = tvtr_before.total_risk;
 
-    if let Option::Some(asset_diff) = synthetic_enriched_position_diff.synthetic_enriched {
+    if let Option::Some(asset_diff) = asset_enriched_position_diff.asset_enriched {
         // asset_value is in units of 10^-6 USD.
         let asset_value_before = asset_diff.price.mul(rhs: asset_diff.balance_before);
         let asset_value_after = asset_diff.price.mul(rhs: asset_diff.balance_after);
@@ -208,7 +202,7 @@ pub fn calculate_position_tvtr_change(
     let price: Price = One::one();
 
     // asset_value is in units of 10^-6 USD.
-    total_value_after += price.mul(rhs: synthetic_enriched_position_diff.collateral_diff);
+    total_value_after += price.mul(rhs: asset_enriched_position_diff.collateral_diff);
 
     TVTRChange {
         before: tvtr_before,
@@ -217,18 +211,18 @@ pub fn calculate_position_tvtr_change(
 }
 
 pub fn calculate_position_tvtr_before(
-    unchanged_synthetics: Span<Asset>, position_diff_enriched: PositionDiffEnriched,
+    unchanged_assets: Span<Asset>, position_diff_enriched: PositionDiffEnriched,
 ) -> PositionTVTR {
     let mut total_value = 0_i128;
     let mut total_risk = 0_u128;
-    for synthetic in unchanged_synthetics {
+    for asset in unchanged_assets {
         // asset_value is in units of 10^-6 USD.
-        let asset_value: i128 = (*synthetic.price).mul(rhs: *synthetic.balance);
+        let asset_value: i128 = (*asset.price).mul(rhs: *asset.balance);
         total_value += asset_value;
-        total_risk += (*synthetic.risk_factor).mul(asset_value.abs());
+        total_risk += (*asset.risk_factor).mul(asset_value.abs());
     }
 
-    if let Option::Some(asset_diff) = position_diff_enriched.synthetic_enriched {
+    if let Option::Some(asset_diff) = position_diff_enriched.asset_enriched {
         // asset_value is in units of 10^-6 USD.
         let asset_value_before = asset_diff.price.mul(rhs: asset_diff.balance_before);
         total_value += asset_value_before;
@@ -322,13 +316,13 @@ mod tests {
             risk_factor_after: RISK_FACTOR_1(),
         };
         let position_diff_enriched = PositionDiffEnriched {
-            collateral_enriched: Default::default(), synthetic_enriched: Option::Some(asset_diff),
+            collateral_enriched: Default::default(), asset_enriched: Option::Some(asset_diff),
         };
         let tvtr_before = calculate_position_tvtr_before(
-            unchanged_synthetics: position_data, position_diff_enriched: position_diff_enriched,
+            unchanged_assets: position_data, position_diff_enriched: position_diff_enriched,
         );
         let position_tvtr_change = calculate_position_tvtr_change(
-            tvtr_before, synthetic_enriched_position_diff: position_diff_enriched.into(),
+            tvtr_before, asset_enriched_position_diff: position_diff_enriched.into(),
         );
 
         /// Ensures `total_value` before the change is `54,000`, calculated as `balance_before *
@@ -375,14 +369,14 @@ mod tests {
             risk_factor_after: RISK_FACTOR_1(),
         };
         let position_diff_enriched = PositionDiffEnriched {
-            collateral_enriched: Default::default(), synthetic_enriched: Option::Some(asset_diff),
+            collateral_enriched: Default::default(), asset_enriched: Option::Some(asset_diff),
         };
 
         let tvtr_before = calculate_position_tvtr_before(
-            unchanged_synthetics: position_data, position_diff_enriched: position_diff_enriched,
+            unchanged_assets: position_data, position_diff_enriched: position_diff_enriched,
         );
         let position_tvtr_change = calculate_position_tvtr_change(
-            tvtr_before, synthetic_enriched_position_diff: position_diff_enriched.into(),
+            tvtr_before, asset_enriched_position_diff: position_diff_enriched.into(),
         );
 
         /// Ensures `total_value` before the change is `-54,000`, calculated as `balance_before *
@@ -455,14 +449,14 @@ mod tests {
         };
 
         let position_diff_enriched = PositionDiffEnriched {
-            collateral_enriched: Default::default(), synthetic_enriched: Option::Some(asset_diff_1),
+            collateral_enriched: Default::default(), asset_enriched: Option::Some(asset_diff_1),
         };
 
         let tvtr_before = calculate_position_tvtr_before(
-            unchanged_synthetics: position_data, position_diff_enriched: position_diff_enriched,
+            unchanged_assets: position_data, position_diff_enriched: position_diff_enriched,
         );
         let position_tvtr_change = calculate_position_tvtr_change(
-            tvtr_before, synthetic_enriched_position_diff: position_diff_enriched.into(),
+            tvtr_before, asset_enriched_position_diff: position_diff_enriched.into(),
         );
 
         /// Ensures `total_value` before the change is `121,500`, calculated as `balance_1_before *
@@ -515,10 +509,10 @@ mod tests {
         let position_diff_enriched = Default::default();
 
         let tvtr_before = calculate_position_tvtr_before(
-            unchanged_synthetics: position_data, position_diff_enriched: position_diff_enriched,
+            unchanged_assets: position_data, position_diff_enriched: position_diff_enriched,
         );
         let position_tvtr_change = calculate_position_tvtr_change(
-            tvtr_before, synthetic_enriched_position_diff: position_diff_enriched.into(),
+            tvtr_before, asset_enriched_position_diff: position_diff_enriched.into(),
         );
 
         /// Ensures `total_value` before the change is `54,000`, calculated as `balance_before *
@@ -552,10 +546,10 @@ mod tests {
         let position_diff_enriched = Default::default();
 
         let tvtr_before = calculate_position_tvtr_before(
-            unchanged_synthetics: position_data, position_diff_enriched: position_diff_enriched,
+            unchanged_assets: position_data, position_diff_enriched: position_diff_enriched,
         );
         let position_tvtr_change = calculate_position_tvtr_change(
-            tvtr_before, synthetic_enriched_position_diff: position_diff_enriched.into(),
+            tvtr_before, asset_enriched_position_diff: position_diff_enriched.into(),
         );
 
         /// Ensures `total_value` before the change is `0`.
@@ -578,7 +572,7 @@ mod tests {
         // Create an empty position.
 
         let evaluated_position = evaluate_position(
-            unchanged_synthetics: array![].span(), collateral_balance: Zero::zero(),
+            unchanged_assets: array![].span(), collateral_balance: Zero::zero(),
         );
         assert!(evaluated_position == PositionState::Healthy);
     }
@@ -592,11 +586,10 @@ mod tests {
             price: PRICE_1(),
             risk_factor: RISK_FACTOR_1(),
         };
-        let unchanged_synthetics = array![asset].span();
+        let unchanged_assets = array![asset].span();
         let position_diff_enriched = Default::default();
         let tvtr_before = calculate_position_tvtr_before(
-            unchanged_synthetics: unchanged_synthetics,
-            position_diff_enriched: position_diff_enriched,
+            :unchanged_assets, :position_diff_enriched,
         );
         //tvtr_before.total_value = balance * PRICE_1() = 50 * 900 = 45_000
         //tvtr_before.total_risk = balance * PRICE_1() * RISK_FACTOR_1() = 50 * 900 *
@@ -629,13 +622,13 @@ mod tests {
             price: PRICE_3(),
             risk_factor: RISK_FACTOR_3(),
         };
-        let unchanged_synthetics = array![asset_1, asset_2].span();
+        let unchanged_assets = array![asset_1, asset_2].span();
         let position_diff_enriched = PositionDiffEnriched {
             collateral_enriched: BalanceDiff {
                 before: BalanceTrait::new(value: collateral_balance_before),
                 after: BalanceTrait::new(value: 0),
             },
-            synthetic_enriched: Option::Some(
+            asset_enriched: Option::Some(
                 AssetDiffEnriched {
                     asset_id: asset_3.id,
                     balance_before: asset_3.balance,
@@ -647,8 +640,7 @@ mod tests {
             ),
         };
         let tvtr_before = calculate_position_tvtr_before(
-            unchanged_synthetics: unchanged_synthetics,
-            position_diff_enriched: position_diff_enriched,
+            :unchanged_assets, :position_diff_enriched,
         );
         //tvtr_before.total_value = balance_1 * PRICE_1() + balance_2 * PRICE_2()
         // + balance_3 * PRICE_3()  + collateral_balance_before  = 50 * 900 + 100 * 1000  + 150 *
@@ -663,7 +655,7 @@ mod tests {
     }
 
     #[test]
-    fn test_calculate_position_tvtr_before_no_unchanged_synthetics() {
+    fn test_calculate_position_tvtr_before_no_unchanged_assets() {
         let collateral_balance_before = 50;
         let synthetic_balance_before = 200;
         let asset = Asset {
@@ -672,13 +664,13 @@ mod tests {
             price: PRICE_1(),
             risk_factor: RISK_FACTOR_1(),
         };
-        let unchanged_synthetics = array![].span();
+        let unchanged_assets = array![].span();
         let position_diff_enriched = PositionDiffEnriched {
             collateral_enriched: BalanceDiff {
                 before: BalanceTrait::new(value: collateral_balance_before),
                 after: BalanceTrait::new(value: 0),
             },
-            synthetic_enriched: Option::Some(
+            asset_enriched: Option::Some(
                 AssetDiffEnriched {
                     asset_id: asset.id,
                     balance_before: asset.balance,
@@ -690,8 +682,7 @@ mod tests {
             ),
         };
         let tvtr_before = calculate_position_tvtr_before(
-            unchanged_synthetics: unchanged_synthetics,
-            position_diff_enriched: position_diff_enriched,
+            :unchanged_assets, :position_diff_enriched,
         );
         //tvtr_before.total_value = asset.balance * asset.price + collateral_balance_before
         //= 200 * 900  + 50  = 180_050
@@ -703,10 +694,10 @@ mod tests {
 
     #[test]
     fn test_calculate_position_tvtr_before_no_assets() {
-        let unchanged_synthetics = array![].span();
+        let unchanged_assets = array![].span();
         let position_diff_enriched = Default::default();
         let tvtr_before = calculate_position_tvtr_before(
-            :unchanged_synthetics, :position_diff_enriched,
+            :unchanged_assets, :position_diff_enriched,
         );
         assert!(tvtr_before.total_value == 0);
         assert!(tvtr_before.total_risk == 0);
@@ -721,10 +712,10 @@ mod tests {
             price: PRICE_1(),
             risk_factor: RISK_FACTOR_1(),
         };
-        let unchanged_synthetics = array![asset].span();
+        let unchanged_assets = array![asset].span();
         let position_diff_enriched = Default::default();
         let tvtr_before = calculate_position_tvtr_before(
-            :unchanged_synthetics, :position_diff_enriched,
+            :unchanged_assets, :position_diff_enriched,
         );
         assert!(tvtr_before.total_value == -45_000);
         assert!(tvtr_before.total_risk == 22_500);
@@ -739,10 +730,10 @@ mod tests {
             price: PRICE_1(),
             risk_factor: RISK_FACTOR_1(),
         };
-        let unchanged_synthetics = array![].span();
+        let unchanged_assets = array![].span();
         let position_diff_enriched = PositionDiffEnriched {
             collateral_enriched: Default::default(),
-            synthetic_enriched: Option::Some(
+            asset_enriched: Option::Some(
                 AssetDiffEnriched {
                     asset_id: asset.id,
                     balance_before: asset.balance,
@@ -754,7 +745,7 @@ mod tests {
             ),
         };
         let tvtr_before = calculate_position_tvtr_before(
-            :unchanged_synthetics, :position_diff_enriched,
+            :unchanged_assets, :position_diff_enriched,
         );
         //tvtr_before.total_value = asset.balance * asset.price = -50 * 900 = -45_000
         //tvtr_before.total_risk = abs(asset.balance) * asset.price * RISK_FACTOR_1()
