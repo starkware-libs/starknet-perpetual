@@ -1,5 +1,5 @@
 use core::num::traits::Zero;
-use perpetuals::core::components::assets::errors::SYNTHETIC_NOT_EXISTS;
+use perpetuals::core::components::assets::errors::ASSET_NOT_EXISTS;
 use perpetuals::core::components::assets::interface::{
     IAssets, IAssetsDispatcher, IAssetsDispatcherTrait, IAssetsSafeDispatcher,
     IAssetsSafeDispatcherTrait,
@@ -1123,7 +1123,7 @@ fn test_successful_deactivate_synthetic_asset() {
 }
 
 #[test]
-#[should_panic(expected: 'SYNTHETIC_NOT_EXISTS')]
+#[should_panic(expected: 'ASSET_NOT_EXISTS')]
 fn test_deactivate_nonexistent_synthetic_asset() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -3883,7 +3883,7 @@ fn test_register_vault_negative_scenarios() {
             :expiration,
             :signature,
         );
-    assert_panic_with_felt_error(:result, expected_error: SYNTHETIC_NOT_EXISTS);
+    assert_panic_with_felt_error(:result, expected_error: ASSET_NOT_EXISTS);
 
     // Setup parameters:
     let non_existent_vault_position_id = PositionId { value: 100 };

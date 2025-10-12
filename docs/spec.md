@@ -27,13 +27,13 @@ classDiagram
         deposit_into_vault()
         withdraw_from_vault()
     }
+    //TODO(Omri): Ask Roee about doc for position and IterableMap name
     class Position{
         version: u8,
         owner_account: Option< ContractAddress>,
         owner_public_key: PublicKey,
         collateral_balance: Balance,
-        synthetic_balance: IterableMap< AssetId, SyntheticBalance>,
-        collateral_balance: IterableMap< AssetId, Balance>,
+        asset_balance: IterableMap< AssetId, AssetBalance>,
     }
     class Positions{
         positions: Map< PositionId, Position>
@@ -175,7 +175,7 @@ classDiagram
         funding_index: FundingIndex
     }
 
-    class SyntheticBalance {
+    class AssetBalance {
         pub version: u8,
         pub balance: Balance,
         pub funding_index: FundingIndex,
@@ -192,7 +192,7 @@ classDiagram
     Assets o-- AssetConfig
     Assets o-- AssetTimelyData
     Positions o-- Position
-    Position o-- SyntheticBalance
+    Position o-- AssetBalance
 ```
 
 ## Core contract
@@ -341,9 +341,8 @@ pub struct Position {
     pub owner_public_key: PublicKey,
     // main collateral balance (USDC)
     pub collateral_balance: Balance,
-    pub synthetic_balance: IterableMap<AssetId, SyntheticBalance>,
-    // other collateral balances (vault shares, spot assets)
-    pub collateral_balance: IterableMap<AssetId, Balance>,
+    // other collateral balances (vault_shares, spot_assets) and synthetics
+    pub asset_balance: IterableMap<AssetId, AssetBalance>,
 }
 ```
 
@@ -401,9 +400,8 @@ pub struct Asset {
 
 ```rust
 pub struct PositionData {
-    pub base_collateral_balance: Balance,
-    pub synthetic_balance: Span<Asset>,
-    pub other_collateral_balance: Span<Asset>,
+    pub collateral_balance: Balance,
+    pub assets: Span<Asset>,
 }
 ```
 
@@ -424,10 +422,10 @@ pub struct FundingIndex {
 }
 ```
 
-#### SyntheticBalance
+#### AssetBalance
 
 ```rust
-pub struct SyntheticBalance {
+pub struct AssetBalance {
     pub version: u8,
     pub balance: Balance,
     pub funding_index: FundingIndex,

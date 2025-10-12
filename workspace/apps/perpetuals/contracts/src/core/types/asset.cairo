@@ -30,6 +30,17 @@ pub enum AssetType {
     VAULT_SHARE_COLLATERAL,
 }
 
+pub impl U8TryIntoAssetType of TryInto<u8, AssetType> {
+    fn try_into(self: u8) -> Option<AssetType> {
+        match self {
+            0_u8 => Option::Some(AssetType::SYNTHETIC),
+            1_u8 => Option::Some(AssetType::SPOT_COLLATERAL),
+            2_u8 => Option::Some(AssetType::VAULT_SHARE_COLLATERAL),
+            _ => Option::None,
+        }
+    }
+}
+
 #[generate_trait]
 pub impl AssetIdImpl of AssetIdTrait {
     fn new(value: felt252) -> AssetId {
@@ -74,6 +85,7 @@ impl AssetIdlOrd of PartialOrd<AssetId> {
 }
 
 const VERSION: u8 = 2;
+const ASSET_TYPE_OFFSET: u8 = 9;
 
 #[derive(Copy, Drop, Serde, starknet::Store)]
 pub struct AssetConfig {
@@ -228,6 +240,18 @@ pub impl AssetImpl of AssetTrait {
         let funding_index = Self::read(entry, OptionAssetTimelyDataOffset::FUNDING_INDEX);
         let funding_index: i64 = funding_index.try_into().unwrap();
         funding_index.into()
+    }
+
+    fn at_asset_type(entry: StoragePointer0Offset<Option<AssetConfig>>) -> Option<AssetType> {
+        let asset_type = storage_read_syscall(
+            0,
+            storage_address_from_base_and_offset(
+                entry.__storage_pointer_address__, ASSET_TYPE_OFFSET,
+            ),
+        )
+            .unwrap_syscall();
+        let asset_type: u8 = asset_type.try_into().unwrap();
+        asset_type.try_into()
     }
 
     /// Gets the price from the Option<AssetTimelyData>.
