@@ -563,9 +563,9 @@ pub mod AssetsComponent {
         }
 
         fn get_funding_index(
-            self: @ComponentState<TContractState>, synthetic_id: AssetId,
+            self: @ComponentState<TContractState>, asset_id: AssetId,
         ) -> FundingIndex {
-            let entry = self.asset_timely_data.pointer(synthetic_id);
+            let entry = self.asset_timely_data.pointer(asset_id);
             match AssetTrait::get_funding_index(entry) {
                 Option::None => panic_with_felt252(ASSET_NOT_EXISTS),
                 Option::Some(funding_index) => funding_index,
@@ -574,9 +574,9 @@ pub mod AssetsComponent {
 
         /// Returns the stored funding index directly without checking whether it exists.
         fn get_funding_index_unsafe(
-            self: @ComponentState<TContractState>, synthetic_id: AssetId,
+            self: @ComponentState<TContractState>, asset_id: AssetId,
         ) -> FundingIndex {
-            let entry = self.asset_timely_data.pointer(synthetic_id);
+            let entry = self.asset_timely_data.pointer(asset_id);
             AssetTrait::at_funding_index(entry)
         }
 
