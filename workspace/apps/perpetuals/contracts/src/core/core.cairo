@@ -4,6 +4,7 @@ pub mod Core {
     use core::nullable::{FromNullableResult, match_nullable};
     use core::num::traits::Zero;
     use core::panic_with_felt252;
+    use core::panics::panic_with_byte_array;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin::interfaces::token::erc4626::{IERC4626Dispatcher, IERC4626DispatcherTrait};
@@ -63,7 +64,6 @@ pub mod Core {
     use starkware_utils::components::request_approvals::RequestApprovalsComponent::InternalTrait as RequestApprovalsInternal;
     use starkware_utils::components::roles::RolesComponent;
     use starkware_utils::components::roles::RolesComponent::InternalTrait as RolesInternal;
-    use starkware_utils::errors::assert_with_byte_array;
     use starkware_utils::hash::message_hash::OffchainMessageHash;
     use starkware_utils::math::abs::Abs;
     use starkware_utils::math::utils::have_same_sign;
@@ -1251,9 +1251,10 @@ pub mod Core {
         ) {
             let fulfillment_entry = self.fulfillment.entry(hash);
             let total_amount = fulfillment_entry.read() + actual_base_amount.abs();
-            assert_with_byte_array(
-                total_amount <= order_base_amount.abs(), fulfillment_exceeded_err(:position_id),
-            );
+            if (total_amount > order_base_amount.abs()) {
+                let err = @fulfillment_exceeded_err(:position_id);
+                panic_with_byte_array(:err);
+            }
             fulfillment_entry.write(total_amount);
         }
 
@@ -1268,7 +1269,10 @@ pub mod Core {
 
             // Expiration check.
             let now = Time::now();
-            assert_with_byte_array(now <= order.expiration, order_expired_err(order.position_id));
+            if (now > order.expiration) {
+                let err = @order_expired_err(order.position_id);
+                panic_with_byte_array(:err);
+            }
 
             // Sign Validation for amounts.
             assert(!have_same_sign(order.quote_amount, order.base_amount), INVALID_AMOUNT_SIGN);

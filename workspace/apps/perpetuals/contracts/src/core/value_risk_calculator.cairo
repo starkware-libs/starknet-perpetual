@@ -11,7 +11,6 @@ use perpetuals::core::types::position::{
 };
 use perpetuals::core::types::price::{Price, PriceMulTrait};
 use perpetuals::core::types::risk_factor::RiskFactorTrait;
-use starkware_utils::errors::assert_with_byte_array;
 use starkware_utils::math::abs::Abs;
 use starkware_utils::math::fraction::FractionTrait;
 
@@ -109,9 +108,10 @@ pub fn assert_healthy_or_healthier(position_id: PositionId, tvtr: TVTRChange) {
     let before_ratio = FractionTrait::new(tvtr.before.total_value, tvtr.before.total_risk);
     let after_ratio = FractionTrait::new(tvtr.after.total_value, tvtr.after.total_risk);
 
-    assert_with_byte_array(
-        after_ratio >= before_ratio, position_not_healthy_nor_healthier(:position_id),
-    );
+    if (after_ratio < before_ratio) {
+        let err = @position_not_healthy_nor_healthier(:position_id);
+        panic_with_byte_array(:err);
+    }
 }
 
 pub fn liquidated_position_validations(
@@ -128,11 +128,11 @@ pub fn liquidated_position_validations(
     let position_state_before_change = get_position_state(position_tvtr: tvtr.before);
 
     // Validate that the position isn't healthy before the change.
-    assert_with_byte_array(
-        position_state_before_change == PositionState::Liquidatable
-            || position_state_before_change == PositionState::Deleveragable,
-        position_not_liquidatable(:position_id),
-    );
+    if (position_state_before_change != PositionState::Liquidatable
+        && position_state_before_change != PositionState::Deleveragable) {
+        let err = @position_not_liquidatable(:position_id);
+        panic_with_byte_array(:err);
+    }
     assert_healthy_or_healthier(:position_id, :tvtr);
 }
 
@@ -148,17 +148,16 @@ pub fn deleveraged_position_validations(
         :tvtr_before, synthetic_enriched_position_diff: position_diff_enriched.into(),
     );
     let position_state_before_change = get_position_state(position_tvtr: tvtr.before);
-
-    assert_with_byte_array(
-        position_state_before_change == PositionState::Deleveragable,
-        position_not_deleveragable(:position_id),
-    );
+    if (position_state_before_change != PositionState::Deleveragable) {
+        let err = @position_not_deleveragable(:position_id);
+        panic_with_byte_array(:err);
+    }
 
     assert_healthy_or_healthier(:position_id, :tvtr);
-    assert_with_byte_array(
-        is_fair_deleverage(before: tvtr.before, after: tvtr.after),
-        position_not_fair_deleverage(:position_id),
-    );
+    if (!is_fair_deleverage(before: tvtr.before, after: tvtr.after)) {
+        let err = @position_not_fair_deleverage(:position_id);
+        panic_with_byte_array(:err);
+    }
 }
 
 pub fn calculate_position_tvtr(
