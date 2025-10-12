@@ -20,9 +20,9 @@ pub mod AssetsComponent {
         INVALID_ZERO_RF_TIER_SIZE, INVALID_ZERO_TOKEN_ADDRESS, MISMATCHED_RESOLUTION, NOT_SYNTHETIC,
         NO_TOKEN_CONTRACT, ORACLE_ALREADY_EXISTS, ORACLE_NAME_TOO_LONG, ORACLE_NOT_EXISTS,
         ORACLE_PUBLIC_KEY_NOT_REGISTERED, QUORUM_NOT_REACHED, SIGNED_PRICES_UNSORTED,
-        SYNTHETIC_EXPIRED_PRICE, SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS,
-        UNSORTED_RISK_FACTOR_TIERS, ZERO_MAX_FUNDING_INTERVAL, ZERO_MAX_FUNDING_RATE,
-        ZERO_MAX_ORACLE_PRICE, ZERO_MAX_PRICE_INTERVAL,
+        SYNTHETIC_EXPIRED_PRICE, SYNTHETIC_NOT_ACTIVE, UNSORTED_RISK_FACTOR_TIERS,
+        ZERO_MAX_FUNDING_INTERVAL, ZERO_MAX_FUNDING_RATE, ZERO_MAX_ORACLE_PRICE,
+        ZERO_MAX_PRICE_INTERVAL,
     };
     use perpetuals::core::components::assets::events;
     use perpetuals::core::components::assets::interface::IAssets;
@@ -39,8 +39,8 @@ pub mod AssetsComponent {
     use perpetuals::core::types::risk_factor::{RiskFactor, RiskFactorTrait};
     use starknet::ContractAddress;
     use starknet::storage::{
-        Map, MutableVecTrait, StorageMapReadAccess, StoragePathEntry, StoragePointerReadAccess,
-        StoragePointerWriteAccess, Vec, VecTrait,
+        Map, MutableVecTrait, StorageAsPointer, StorageMapReadAccess, StoragePathEntry,
+        StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
@@ -526,6 +526,14 @@ pub mod AssetsComponent {
             (AssetTrait::at_price(entry), AssetTrait::at_funding_index(entry))
         }
 
+        fn get_asset_type(self: @ComponentState<TContractState>, asset_id: AssetId) -> AssetType {
+            let entry = self.asset_config.entry(asset_id).as_ptr();
+            match AssetTrait::get_asset_type(entry) {
+                Option::None => panic_with_felt252(ASSET_NOT_EXISTS),
+                Option::Some(asset_type) => asset_type,
+            }
+        }
+
         /// Get the risk factor of a synthetic asset.
         ///   - synthetic_value = |price * balance|
         ///   - If the synthetic value is less than or equal to the first tier boundary, return the
@@ -563,9 +571,9 @@ pub mod AssetsComponent {
         }
 
         fn get_funding_index(
-            self: @ComponentState<TContractState>, synthetic_id: AssetId,
+            self: @ComponentState<TContractState>, asset_id: AssetId,
         ) -> FundingIndex {
-            let entry = self.asset_timely_data.pointer(synthetic_id);
+            let entry = self.asset_timely_data.pointer(asset_id);
             match AssetTrait::get_funding_index(entry) {
                 Option::None => panic_with_felt252(ASSET_NOT_EXISTS),
                 Option::Some(funding_index) => funding_index,
@@ -574,9 +582,9 @@ pub mod AssetsComponent {
 
         /// Returns the stored funding index directly without checking whether it exists.
         fn get_funding_index_unsafe(
-            self: @ComponentState<TContractState>, synthetic_id: AssetId,
+            self: @ComponentState<TContractState>, asset_id: AssetId,
         ) -> FundingIndex {
-            let entry = self.asset_timely_data.pointer(synthetic_id);
+            let entry = self.asset_timely_data.pointer(asset_id);
             AssetTrait::at_funding_index(entry)
         }
 
@@ -646,13 +654,13 @@ pub mod AssetsComponent {
         fn _get_asset_config(
             self: @ComponentState<TContractState>, asset_id: AssetId,
         ) -> AssetConfig {
-            self.asset_config.read(asset_id).expect(SYNTHETIC_NOT_EXISTS)
+            self.asset_config.read(asset_id).expect(ASSET_NOT_EXISTS)
         }
 
         fn _get_asset_timely_data(
             self: @ComponentState<TContractState>, asset_id: AssetId,
         ) -> AssetTimelyData {
-            self.asset_timely_data.read(asset_id).expect(SYNTHETIC_NOT_EXISTS)
+            self.asset_timely_data.read(asset_id).expect(ASSET_NOT_EXISTS)
         }
 
         fn _process_funding_tick(

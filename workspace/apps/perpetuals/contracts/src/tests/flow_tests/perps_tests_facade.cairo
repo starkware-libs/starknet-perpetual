@@ -766,13 +766,13 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             .get_position_assets(position_id: order_a.position_id);
         let user_a_collateral_balance_before = user_a_balance_before.collateral_balance;
         let user_a_synthetic_balance_before = get_asset_balance(
-            assets: user_a_balance_before.synthetics, :asset_id,
+            assets: user_a_balance_before.assets, :asset_id,
         );
         let user_b_balance_before = dispatcher
             .get_position_assets(position_id: order_b.position_id);
         let user_b_collateral_balance_before = user_b_balance_before.collateral_balance;
         let user_b_synthetic_balance_before = get_asset_balance(
-            assets: user_b_balance_before.synthetics, :asset_id,
+            assets: user_b_balance_before.assets, :asset_id,
         );
         let fee_position_balance_before = dispatcher
             .get_position_assets(position_id: FEE_POSITION)
@@ -876,39 +876,39 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         asset_id: AssetId,
         settlement: Settlement,
     ) -> (PositionData, PositionData) {
-        let mut new_synthetics_a = ArrayTrait::new();
-        for synthetic in position_data_a.synthetics {
-            if *synthetic.id == asset_id {
-                let new_balance = *synthetic.balance + settlement.actual_amount_base_a.into();
-                new_synthetics_a
+        let mut new_assets_a = ArrayTrait::new();
+        for asset in position_data_a.assets {
+            if *asset.id == asset_id {
+                let new_balance = *asset.balance + settlement.actual_amount_base_a.into();
+                new_assets_a
                     .append(
                         Asset {
-                            id: *synthetic.id,
+                            id: *asset.id,
                             balance: new_balance,
-                            price: *synthetic.price,
-                            risk_factor: *synthetic.risk_factor,
+                            price: *asset.price,
+                            risk_factor: *asset.risk_factor,
                         },
                     );
             } else {
-                new_synthetics_a.append(*synthetic);
+                new_assets_a.append(*asset);
             }
         }
 
-        let mut new_synthetics_b = ArrayTrait::new();
-        for synthetic in position_data_b.synthetics {
-            if *synthetic.id == asset_id {
-                let new_balance = *synthetic.balance - settlement.actual_amount_base_a.into();
-                new_synthetics_b
+        let mut new_assets_b = ArrayTrait::new();
+        for asset in position_data_b.assets {
+            if *asset.id == asset_id {
+                let new_balance = *asset.balance - settlement.actual_amount_base_a.into();
+                new_assets_b
                     .append(
                         Asset {
-                            id: *synthetic.id,
+                            id: *asset.id,
                             balance: new_balance,
-                            price: *synthetic.price,
-                            risk_factor: *synthetic.risk_factor,
+                            price: *asset.price,
+                            risk_factor: *asset.risk_factor,
                         },
                     );
             } else {
-                new_synthetics_b.append(*synthetic);
+                new_assets_b.append(*asset);
             }
         }
 
@@ -917,13 +917,13 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 collateral_balance: position_data_a.collateral_balance
                     + settlement.actual_amount_quote_a.into()
                     - settlement.actual_fee_a.into(),
-                synthetics: new_synthetics_a.span(),
+                assets: new_assets_a.span(),
             },
             PositionData {
                 collateral_balance: position_data_b.collateral_balance
                     - settlement.actual_amount_quote_a.into()
                     - settlement.actual_fee_b.into(),
-                synthetics: new_synthetics_b.span(),
+                assets: new_assets_b.span(),
             },
         )
     }
@@ -1002,10 +1002,10 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                     :position_id, expected_balance: position_data.collateral_balance,
                 );
 
-            for synthetic in position_data.synthetics {
+            for asset in position_data.assets {
                 self
                     .validate_synthetic_balance(
-                        :position_id, asset_id: *synthetic.id, expected_balance: *synthetic.balance,
+                        :position_id, asset_id: *asset.id, expected_balance: *asset.balance,
                     );
             }
         }
@@ -1029,13 +1029,13 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             .get_position_assets(position_id: liquidated_user.position_id);
         let liquidated_collateral_balance_before = liquidated_balance_before.collateral_balance;
         let liquidated_synthetic_balance_before = get_asset_balance(
-            assets: liquidated_balance_before.synthetics, :asset_id,
+            assets: liquidated_balance_before.assets, :asset_id,
         );
         let liquidator_balance_before = dispatcher
             .get_position_assets(position_id: liquidator_order.position_id);
         let liquidator_collateral_balance_before = liquidator_balance_before.collateral_balance;
         let liquidator_synthetic_balance_before = get_asset_balance(
-            assets: liquidator_balance_before.synthetics, :asset_id,
+            assets: liquidator_balance_before.assets, :asset_id,
         );
         let fee_position_balance_before = dispatcher
             .get_position_assets(position_id: FEE_POSITION)
@@ -1132,13 +1132,13 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             .get_position_assets(position_id: deleveraged_user.position_id);
         let deleveraged_collateral_balance_before = deleveraged_balance_before.collateral_balance;
         let deleveraged_synthetic_balance_before = get_asset_balance(
-            assets: deleveraged_balance_before.synthetics, asset_id: base_asset_id,
+            assets: deleveraged_balance_before.assets, asset_id: base_asset_id,
         );
         let deleverager_balance_before = dispatcher
             .get_position_assets(position_id: deleverager_user.position_id);
         let deleverager_collateral_balance_before = deleverager_balance_before.collateral_balance;
         let deleverager_synthetic_balance_before = get_asset_balance(
-            assets: deleverager_balance_before.synthetics, asset_id: base_asset_id,
+            assets: deleverager_balance_before.assets, asset_id: base_asset_id,
         );
 
         let operator_nonce = self.get_nonce();
@@ -1276,7 +1276,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
     ) -> Balance {
         let assets = IPositionsDispatcher { contract_address: *self.perpetuals_contract }
             .get_position_assets(position_id);
-        get_asset_balance(assets: assets.synthetics, asset_id: synthetic_id)
+        get_asset_balance(assets: assets.assets, asset_id: synthetic_id)
     }
 
     fn get_position_collateral_balance(
@@ -1342,7 +1342,7 @@ pub impl PerpsTestsFacadeValidationsImpl of PerpsTestsFacadeValidationsTrait {
     ) {
         let synthetic_assets = IPositionsDispatcher { contract_address: *self.perpetuals_contract }
             .get_position_assets(:position_id)
-            .synthetics;
+            .assets;
         let assets_balance = get_asset_balance(assets: synthetic_assets, :asset_id);
 
         assert_eq!(assets_balance, expected_balance);
