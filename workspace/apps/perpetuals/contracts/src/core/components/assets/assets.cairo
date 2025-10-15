@@ -18,7 +18,7 @@ pub mod AssetsComponent {
         INVALID_ZERO_PUBLIC_KEY, INVALID_ZERO_QUANTUM, INVALID_ZERO_QUORUM,
         INVALID_ZERO_RESOLUTION_FACTOR, INVALID_ZERO_RF_FIRST_BOUNDRY, INVALID_ZERO_RF_TIERS_LEN,
         INVALID_ZERO_RF_TIER_SIZE, INVALID_ZERO_TOKEN_ADDRESS, MISMATCHED_RESOLUTION, NOT_SYNTHETIC,
-        ORACLE_ALREADY_EXISTS, ORACLE_NAME_TOO_LONG, ORACLE_NOT_EXISTS,
+        NO_TOKEN_CONTRACT, ORACLE_ALREADY_EXISTS, ORACLE_NAME_TOO_LONG, ORACLE_NOT_EXISTS,
         ORACLE_PUBLIC_KEY_NOT_REGISTERED, QUORUM_NOT_REACHED, SIGNED_PRICES_UNSORTED,
         SYNTHETIC_EXPIRED_PRICE, SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS,
         UNSORTED_RISK_FACTOR_TIERS, ZERO_MAX_FUNDING_INTERVAL, ZERO_MAX_FUNDING_RATE,
@@ -623,6 +623,7 @@ pub mod AssetsComponent {
                 (AssetType::SPOT_COLLATERAL, token_contract, quantum)
             } else {
                 let asset_config = self._get_asset_config(asset_id);
+                assert(asset_config.token_contract.is_non_zero(), NO_TOKEN_CONTRACT);
                 let token_contract = IERC20Dispatcher {
                     contract_address: asset_config.token_contract,
                 };
