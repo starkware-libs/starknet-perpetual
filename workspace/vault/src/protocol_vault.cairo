@@ -100,7 +100,7 @@ pub mod ProtocolVault {
                     receiver: perps_contract,
                     owner: perps_contract,
                     assets: value_of_shares_in_assets,
-                    shares: shares,
+                    :shares,
                     fee: Option::None,
                 );
             value_of_shares_in_assets
