@@ -36,12 +36,6 @@ pub impl U64IntoPrice of Into<u64, Price> {
     }
 }
 
-pub impl PriceIntoU164 of Into<Price, u64> {
-    fn into(self: Price) -> u64 {
-        self.value
-    }
-}
-
 #[derive(Copy, Debug, Drop, Serde)]
 pub struct SignedPrice {
     pub signature: Signature,
