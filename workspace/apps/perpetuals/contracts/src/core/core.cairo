@@ -27,10 +27,10 @@ pub mod Core {
         INVALID_ACTUAL_BASE_SIGN, INVALID_ACTUAL_QUOTE_SIGN, INVALID_AMOUNT_SIGN,
         INVALID_BASE_CHANGE, INVALID_QUOTE_AMOUNT_SIGN, INVALID_QUOTE_FEE_AMOUNT,
         INVALID_SAME_POSITIONS, INVALID_VAULT_CONTRACT_ADDRESS, INVALID_ZERO_AMOUNT,
-        OPERATION_ALREADY_DONE, POSITION_IS_VAULT_POSITION, RECEIVED_AMOUNT_TOO_SMALL,
-        SHARES_BALANCE_MISMATCH, SIGNED_TX_EXPIRED, SYNTHETIC_IS_ACTIVE, TRANSFER_FAILED,
-        VAULT_CONTRACT_ALREADY_EXISTS, VAULT_POSITION_ALREADY_EXISTS, fulfillment_exceeded_err,
-        order_expired_err,
+        NOT_VAULT_SHARE_ASSET, OPERATION_ALREADY_DONE, POSITION_IS_VAULT_POSITION,
+        RECEIVED_AMOUNT_TOO_SMALL, SHARES_BALANCE_MISMATCH, SIGNED_TX_EXPIRED, SYNTHETIC_IS_ACTIVE,
+        TRANSFER_FAILED, VAULT_CONTRACT_ALREADY_EXISTS, VAULT_POSITION_ALREADY_EXISTS,
+        fulfillment_exceeded_err, order_expired_err,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
@@ -1098,12 +1098,7 @@ pub mod Core {
             self.assets.validate_price_interval_integrity(:current_time);
 
             let vault_share_asset_id = self.vault_positions_to_assets.read(vault_position_id);
-            let number_of_shares_as_balance: Balance = number_of_shares.into();
-            let actual_received_amount: u64 = vault_share_execution_price
-                .mul(rhs: number_of_shares_as_balance)
-                .abs()
-                .try_into()
-                .expect(AMOUNT_OVERFLOW);
+
             let (vault_position, position) = self
                 ._validate_withdraw_from_vault(
                     :position_id,
@@ -1116,11 +1111,10 @@ pub mod Core {
                     :user_signature,
                     :vault_owner_signature,
                     :vault_share_asset_id,
-                    :actual_received_amount,
                 );
 
             /// Executions:
-            self
+            let quantized_amount = self
                 ._execute_withdraw_from_vault(
                     :position_id,
                     :vault_position_id,
@@ -1138,7 +1132,7 @@ pub mod Core {
                         position_id,
                         vault_position_id,
                         collateral_id: self.assets.get_collateral_id(),
-                        quantized_amount: number_of_shares,
+                        quantized_amount,
                         expiration,
                         salt,
                         quantized_shares_amount: number_of_shares,
@@ -1514,22 +1508,24 @@ pub mod Core {
             quantum: u64,
         ) -> u256 {
             let contract_address = get_contract_address();
-            let erc20_dispatcher = self.assets.get_collateral_token_contract();
+            let erc20_collateral_dispatcher = self.assets.get_collateral_token_contract();
             let erc20_vault_dispatcher = IERC20Dispatcher { contract_address: vault_address };
 
             // Fetch balances before deposit
-            let before_deposit_balance = erc20_dispatcher.balance_of(account: contract_address);
+            let before_deposit_balance = erc20_collateral_dispatcher
+                .balance_of(account: contract_address);
             let before_deposit_shares_balance = erc20_vault_dispatcher
                 .balance_of(account: contract_address);
 
             // Approve and deposit assets into the vault
             let unquantized_amount: u256 = quantized_amount.into() * quantum.into();
-            erc20_dispatcher.approve(spender: vault_address, amount: unquantized_amount);
+            erc20_collateral_dispatcher.approve(spender: vault_address, amount: unquantized_amount);
             let vault_shares_amount = IERC4626Dispatcher { contract_address: vault_address }
                 .deposit(assets: unquantized_amount, receiver: contract_address);
 
             // Fetch balances after deposit
-            let after_deposit_balance = erc20_dispatcher.balance_of(account: contract_address);
+            let after_deposit_balance = erc20_collateral_dispatcher
+                .balance_of(account: contract_address);
             let after_deposit_shares_balance = erc20_vault_dispatcher
                 .balance_of(account: contract_address);
 
@@ -1603,13 +1599,19 @@ pub mod Core {
             user_signature: Signature,
             vault_owner_signature: Signature,
             vault_share_asset_id: AssetId,
-            actual_received_amount: u64,
         ) -> (StoragePath<Position>, StoragePath<Position>) {
             validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
 
             assert(number_of_shares.is_non_zero(), INVALID_ZERO_AMOUNT);
             assert(minimum_received_total_amount.is_non_zero(), INVALID_ZERO_AMOUNT);
             assert(vault_share_execution_price.is_non_zero(), INVALID_ZERO_AMOUNT);
+
+            let number_of_shares_as_balance: Balance = number_of_shares.into();
+            let actual_received_amount: u64 = vault_share_execution_price
+                .mul(rhs: number_of_shares_as_balance)
+                .abs()
+                .try_into()
+                .expect(AMOUNT_OVERFLOW);
 
             assert(
                 minimum_received_total_amount <= actual_received_amount, RECEIVED_AMOUNT_TOO_SMALL,
@@ -1629,7 +1631,6 @@ pub mod Core {
                 self.vault_positions_to_addresses.read(position_id).is_zero(),
                 POSITION_IS_VAULT_POSITION,
             );
-
             // Signature validation
             let user_hash = _validate_signature(
                 public_key: position.get_owner_public_key(),
@@ -1655,7 +1656,7 @@ pub mod Core {
             // Update fulfillment:
             let fulfillment_entry = self.fulfillment.entry(user_hash);
             assert(fulfillment_entry.read().is_zero(), OPERATION_ALREADY_DONE);
-            fulfillment_entry.write(number_of_shares.into());
+            fulfillment_entry.write(number_of_shares);
 
             (vault_position, position)
         }
@@ -1670,17 +1671,21 @@ pub mod Core {
             vault_position: StoragePath<Position>,
             position: StoragePath<Position>,
         ) -> u64 {
-            let vault_address = self.vault_positions_to_addresses.read(vault_position_id);
-            let quantum = self.assets.get_collateral_quantum();
-
+            let (asset_type, erc20_vault_dispatcher, quantum) = self
+                .assets
+                .get_token_contract_and_quantum(asset_id: vault_share_asset_id);
+            assert(asset_type == AssetType::VAULT_SHARE_COLLATERAL, NOT_VAULT_SHARE_ASSET);
             // Withdraw from vault.
-            let unquantized_amount = self
+            let unquantized_vault_share_received_amount = self
                 ._withdraw_from_vault_contract(
-                    :vault_address, :number_of_shares, :vault_share_execution_price, :quantum,
+                    vault_address: erc20_vault_dispatcher.contract_address,
+                    :number_of_shares,
+                    :vault_share_execution_price,
+                    :quantum,
                 );
 
             // Build position diffs.
-            let quantized_amount: u64 = (unquantized_amount / quantum.into())
+            let quantized_amount: u64 = (unquantized_vault_share_received_amount / quantum.into())
                 .try_into()
                 .expect(AMOUNT_OVERFLOW);
             let position_diff = PositionDiff {
@@ -1690,6 +1695,14 @@ pub mod Core {
             let vault_diff = PositionDiff {
                 collateral_diff: -quantized_amount.into(), synthetic_diff: Option::None,
             };
+
+            self
+                ._validate_healthy_or_healthier_position(
+                    :position_id,
+                    :position,
+                    position_diff: position_diff,
+                    tvtr_before: Default::default(),
+                );
 
             // Apply diffs.
             self.positions.apply_diff(:position_id, position_diff: position_diff);
@@ -1705,43 +1718,55 @@ pub mod Core {
             vault_share_execution_price: Price,
             quantum: u64,
         ) -> u256 {
-            let contract_address = get_contract_address();
-            let erc20_dispatcher = self.assets.get_collateral_token_contract();
+            let perps_address = get_contract_address();
+            let collateral_dispatcher = self.assets.get_collateral_token_contract();
             let erc20_vault_dispatcher = IERC20Dispatcher { contract_address: vault_address };
 
             // Fetch balances before withdraw
-            let before_withdraw_balance = erc20_dispatcher.balance_of(account: contract_address);
+            let before_withdraw_balance = collateral_dispatcher.balance_of(account: perps_address);
             let before_withdraw_shares_balance = erc20_vault_dispatcher
-                .balance_of(account: contract_address);
+                .balance_of(account: perps_address);
 
-            // TODO(Mohammad): use shares quantom once register_vault is added.
-            let vault_share_execution_price_in_u64: u64 = vault_share_execution_price.into();
-            let unquantized_received_amount: u256 = number_of_shares.into()
-                * vault_share_execution_price_in_u64.into()
-                * quantum.into();
-            // TODO(Mohammad): use redeem_v2 once it is added.
-            let unquantized_amount = IProtocolVaultDispatcher { contract_address: vault_address }
+            let number_of_shares_as_balance: Balance = number_of_shares.into();
+            let quantized_vault_share_received_amount = vault_share_execution_price
+                .mul(number_of_shares_as_balance);
+            let expected_unquantized_vault_share_received_amount: u256 =
+                (quantized_vault_share_received_amount
+                .abs()
+                * quantum.into())
+                .into();
+            collateral_dispatcher
+                .approve(
+                    spender: vault_address,
+                    amount: expected_unquantized_vault_share_received_amount,
+                );
+            let actual_unquantized_vault_share_received_amount = IProtocolVaultDispatcher {
+                contract_address: vault_address,
+            }
                 .redeem_with_price(
-                    shares: unquantized_received_amount,
-                    value_of_shares_in_assets: vault_share_execution_price_in_u64.into(),
+                    shares: (quantized_vault_share_received_amount.abs()).into(),
+                    value_of_shares_in_assets: expected_unquantized_vault_share_received_amount,
                 );
 
-            assert(unquantized_amount == unquantized_received_amount, SHARES_BALANCE_MISMATCH);
+            assert(
+                actual_unquantized_vault_share_received_amount == expected_unquantized_vault_share_received_amount,
+                SHARES_BALANCE_MISMATCH,
+            );
 
             // Fetch balances after withdraw
             let after_withdraw_shares_balance = erc20_vault_dispatcher
-                .balance_of(account: contract_address);
-            let after_withdraw_balance = erc20_dispatcher.balance_of(account: contract_address);
+                .balance_of(account: perps_address);
+            let after_withdraw_balance = collateral_dispatcher.balance_of(account: perps_address);
 
             // Validate balances to ensure correctness
             assert(after_withdraw_balance == before_withdraw_balance, COLLATERAL_BALANCE_MISMATCH);
             assert(
                 after_withdraw_shares_balance == before_withdraw_shares_balance
-                    - unquantized_received_amount,
+                    - actual_unquantized_vault_share_received_amount,
                 SHARES_BALANCE_MISMATCH,
             );
 
-            unquantized_amount
+            actual_unquantized_vault_share_received_amount
         }
 
         fn _validate_synthetic_shrinks(
