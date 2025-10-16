@@ -1,13 +1,11 @@
 #[starknet::contract]
 pub mod Core {
     use core::dict::{Felt252Dict, Felt252DictTrait};
-    use core::nullable::{FromNullableResult, match_nullable};
-    use core::num::traits::{WideMul, Zero};
+    use core::num::traits::Zero;
     use core::panic_with_felt252;
     use core::panics::panic_with_byte_array;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
-    use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
-    use openzeppelin::interfaces::token::erc4626::{IERC4626Dispatcher, IERC4626DispatcherTrait};
+    use openzeppelin::interfaces::token::erc20::IERC20DispatcherTrait;
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::utils::snip12::SNIP12Metadata;
     use perpetuals::core::components::assets::AssetsComponent;
@@ -21,45 +19,34 @@ pub mod Core {
     use perpetuals::core::components::positions::Positions::{
         FEE_POSITION, INSURANCE_FUND_POSITION, InternalTrait as PositionsInternalTrait,
     };
+    use perpetuals::core::components::vault::VaultComponent;
     use perpetuals::core::errors::{
         AMOUNT_OVERFLOW, ASSET_ID_NOT_COLLATERAL, CANT_LIQUIDATE_IF_POSITION,
-        CANT_TRADE_WITH_FEE_POSITION, COLLATERAL_BALANCE_MISMATCH, DIFFERENT_BASE_ASSET_IDS,
-        INVALID_ACTUAL_BASE_SIGN, INVALID_ACTUAL_QUOTE_SIGN, INVALID_AMOUNT_SIGN,
-        INVALID_BASE_CHANGE, INVALID_QUOTE_AMOUNT_SIGN, INVALID_QUOTE_FEE_AMOUNT,
-        INVALID_SAME_POSITIONS, INVALID_VAULT_CONTRACT_ADDRESS, INVALID_ZERO_AMOUNT,
-        NOT_VAULT_SHARE_ASSET, OPERATION_ALREADY_DONE, POSITION_IS_VAULT_POSITION,
-        RECEIVED_AMOUNT_TOO_SMALL, SHARES_BALANCE_MISMATCH, SIGNED_TX_EXPIRED, SYNTHETIC_IS_ACTIVE,
-        TRANSFER_FAILED, VAULT_CONTRACT_ALREADY_EXISTS, VAULT_POSITION_ALREADY_EXISTS,
-        VAULT_POSITION_HAS_SHARES, fulfillment_exceeded_err, order_expired_err,
+        CANT_TRADE_WITH_FEE_POSITION, DIFFERENT_BASE_ASSET_IDS, INVALID_ACTUAL_BASE_SIGN,
+        INVALID_ACTUAL_QUOTE_SIGN, INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE,
+        INVALID_QUOTE_AMOUNT_SIGN, INVALID_QUOTE_FEE_AMOUNT, INVALID_SAME_POSITIONS,
+        INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED, SYNTHETIC_IS_ACTIVE, TRANSFER_FAILED,
+        fulfillment_exceeded_err, order_expired_err,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
-    use perpetuals::core::types::asset::{AssetDiffEnriched, AssetId, AssetStatus, AssetType};
-    use perpetuals::core::types::balance::{Balance, BalanceDiff};
-    use perpetuals::core::types::deposit_into_vault::VaultDepositArgs;
+    use perpetuals::core::types::asset::{AssetId, AssetStatus, AssetType};
+    use perpetuals::core::types::balance::Balance;
     use perpetuals::core::types::order::{Order, OrderTrait};
-    use perpetuals::core::types::position::{
-        AssetEnrichedPositionDiff, Position, PositionDiff, PositionDiffEnriched, PositionId,
-        PositionTrait,
-    };
-    use perpetuals::core::types::price::{Price, PriceMulTrait};
-    use perpetuals::core::types::register_vault::RegisterVaultArgs;
+    use perpetuals::core::types::position::{Position, PositionDiff, PositionId, PositionTrait};
+    use perpetuals::core::types::price::PriceMulTrait;
     use perpetuals::core::types::transfer::TransferArgs;
     use perpetuals::core::types::withdraw::WithdrawArgs;
-    use perpetuals::core::types::withdraw_from_vault::{
-        VaultWithdrawOwnerArgs, VaultWithdrawUserArgs,
-    };
+    use perpetuals::core::utils::validate_signature;
     use perpetuals::core::value_risk_calculator::{
-        PositionTVTR, assert_healthy_or_healthier, calculate_position_tvtr_before,
-        calculate_position_tvtr_change, deleveraged_position_validations,
-        liquidated_position_validations,
+        PositionTVTR, deleveraged_position_validations, liquidated_position_validations,
     };
+    use starknet::ContractAddress;
     use starknet::event::EventEmitter;
     use starknet::storage::{
         Map, StorageMapReadAccess, StoragePath, StoragePathEntry, StoragePointerReadAccess,
         StoragePointerWriteAccess,
     };
-    use starknet::{ContractAddress, get_contract_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
@@ -68,17 +55,13 @@ pub mod Core {
     use starkware_utils::components::request_approvals::RequestApprovalsComponent::InternalTrait as RequestApprovalsInternal;
     use starkware_utils::components::roles::RolesComponent;
     use starkware_utils::components::roles::RolesComponent::InternalTrait as RolesInternal;
-    use starkware_utils::hash::message_hash::OffchainMessageHash;
     use starkware_utils::math::abs::Abs;
     use starkware_utils::math::utils::have_same_sign;
-    use starkware_utils::signature::stark::{
-        HashType, PublicKey, Signature, validate_stark_signature,
-    };
+    use starkware_utils::signature::stark::{HashType, PublicKey, Signature};
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
     use starkware_utils::time::time::{Time, TimeDelta, Timestamp, validate_expiration};
-    use vault::interface::{IProtocolVaultDispatcher, IProtocolVaultDispatcherTrait};
 
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
     component!(path: OperatorNonceComponent, storage: operator_nonce, event: OperatorNonceEvent);
@@ -92,6 +75,7 @@ pub mod Core {
         path: RequestApprovalsComponent, storage: request_approvals, event: RequestApprovalsEvent,
     );
     component!(path: Positions, storage: positions, event: PositionsEvent);
+    component!(path: VaultComponent, storage: vault, event: VaultEvent);
 
     #[abi(embed_v0)]
     impl OperatorNonceImpl =
@@ -120,6 +104,9 @@ pub mod Core {
     #[abi(embed_v0)]
     impl PositionsImpl = Positions::PositionsImpl<ContractState>;
 
+    #[abi(embed_v0)]
+    impl VaultImpl = VaultComponent::VaultImpl<ContractState>;
+
     const NAME: felt252 = 'Perpetuals';
     const VERSION: felt252 = 'v0';
 
@@ -137,14 +124,6 @@ pub mod Core {
     struct Storage {
         // Order hash to fulfilled absolute base amount.
         fulfillment: Map<HashType, u64>,
-        // vault position to contract address of tokenized vault contract.
-        pub vault_positions_to_addresses: Map<PositionId, ContractAddress>,
-        // vault position to vault position asset_id.
-        // i.e. positions holding share of vault position, will have this asset_id in the position.
-        pub vault_positions_to_assets: Map<PositionId, AssetId>,
-        // Maps vault contract address to its vault position.
-        // Ensures each vault contract is assigned to only one position.
-        pub addresses_to_vault_positions: Map<ContractAddress, PositionId>,
         // --- Components ---
         #[substorage(v0)]
         accesscontrol: AccessControlComponent::Storage,
@@ -166,6 +145,8 @@ pub mod Core {
         pub request_approvals: RequestApprovalsComponent::Storage,
         #[substorage(v0)]
         pub positions: Positions::Storage,
+        #[substorage(v0)]
+        pub vault: VaultComponent::Storage,
     }
 
     #[event]
@@ -191,6 +172,8 @@ pub mod Core {
         RequestApprovalsEvent: RequestApprovalsComponent::Event,
         #[flat]
         PositionsEvent: Positions::Event,
+        #[flat]
+        VaultEvent: VaultComponent::Event,
         Deleverage: events::Deleverage,
         InactiveAssetPositionReduced: events::InactiveAssetPositionReduced,
         Liquidate: events::Liquidate,
@@ -199,9 +182,6 @@ pub mod Core {
         TransferRequest: events::TransferRequest,
         Withdraw: events::Withdraw,
         WithdrawRequest: events::WithdrawRequest,
-        DepositIntoVault: events::DepositIntoVault,
-        WithdrawFromVault: events::WithdrawFromVault,
-        VaultRegistered: events::VaultRegistered,
     }
 
     #[constructor]
@@ -339,7 +319,8 @@ pub mod Core {
             };
 
             self
-                ._validate_healthy_or_healthier_position(
+                .positions
+                .validate_healthy_or_healthier_position(
                     :position_id, :position, :position_diff, tvtr_before: Default::default(),
                 );
 
@@ -641,7 +622,7 @@ pub mod Core {
                 .get_position_snapshot(position_id: liquidated_position_id);
 
             // Signatures validation:
-            let liquidator_order_hash = _validate_signature(
+            let liquidator_order_hash = validate_signature(
                 public_key: liquidator_position.get_owner_public_key(),
                 message: liquidator_order,
                 signature: liquidator_signature,
@@ -689,7 +670,8 @@ pub mod Core {
                     position_diff: liquidated_position_diff,
                 );
             self
-                ._validate_healthy_or_healthier_position(
+                .positions
+                .validate_healthy_or_healthier_position(
                     position_id: liquidator_position_id,
                     position: liquidator_position,
                     position_diff: liquidator_position_diff,
@@ -811,7 +793,8 @@ pub mod Core {
                     position_diff: deleveraged_position_diff,
                 );
             self
-                ._validate_healthy_or_healthier_position(
+                .positions
+                .validate_healthy_or_healthier_position(
                     position_id: deleverager_position_id,
                     position: deleverager_position,
                     position_diff: deleverager_position_diff,
@@ -927,219 +910,6 @@ pub mod Core {
                     },
                 )
         }
-
-        /// Deposits a specified amount into a vault.
-        ///
-        /// Validations:
-        /// - Ensures the contract is not paused.
-        /// - Validates the operator nonce.
-        /// - Checks price integrity.
-        /// - Retrieves the vault share asset ID associated with the vault position.
-        /// - Validates the deposit parameters including position IDs, amount, expiration,
-        ///   and signature. Refer to `_validate_deposit_into_vault` for detailed validation steps.
-        ///
-        /// Execution:
-        /// - Calculates the unquantized amount.
-        /// - Deposits the unquantized amount into the vault contract.
-        /// - Retrieves the shares amount from the vault contract.
-        /// - Runs fundamental validation on the position ID.
-        /// - Applies the diff in the collateral only.
-        /// - Emits the event.
-        fn deposit_into_vault(
-            ref self: ContractState,
-            operator_nonce: u64,
-            position_id: PositionId,
-            vault_position_id: PositionId,
-            quantized_amount: u64,
-            expiration: Timestamp,
-            salt: felt252,
-            signature: Signature,
-        ) {
-            /// Validations:
-            self.pausable.assert_not_paused();
-            self.operator_nonce.use_checked_nonce(:operator_nonce);
-            let current_time = Time::now();
-            self.assets.validate_price_interval_integrity(:current_time);
-
-            let vault_share_asset_id = self.vault_positions_to_assets.read(vault_position_id);
-            self
-                ._validate_deposit_into_vault(
-                    :position_id,
-                    :vault_position_id,
-                    :quantized_amount,
-                    :expiration,
-                    :salt,
-                    :signature,
-                    :vault_share_asset_id,
-                );
-
-            /// Executions:
-            let vault_address = self.vault_positions_to_addresses.read(vault_position_id);
-            let quantized_shares_amount = self
-                ._execute_deposit_into_vault(
-                    :position_id,
-                    :vault_position_id,
-                    :quantized_amount,
-                    :vault_address,
-                    :vault_share_asset_id,
-                );
-
-            self
-                .deposits
-                .deposit(
-                    asset_id: vault_share_asset_id,
-                    :position_id,
-                    quantized_amount: quantized_shares_amount,
-                    // As the operator nonce is unique, it can be used as salt.
-                    salt: operator_nonce.into(),
-                );
-
-            // Emit event.
-            self
-                .emit(
-                    events::DepositIntoVault {
-                        position_id,
-                        vault_position_id,
-                        collateral_id: self.assets.get_collateral_id(),
-                        quantized_amount,
-                        expiration,
-                        salt,
-                        quantized_shares_amount,
-                    },
-                );
-        }
-
-        /// Registers a vault.
-        ///
-        /// Validations:
-        /// - Validates the operator nonce (and operator is the caller).
-        /// - Validates the vault parameters including vault_position, vault_position id,
-        /// vault_contract address, vault_asset_id, expiration,
-        ///   and signature. Refer to `_validate_register_vault` for detailed validation steps.
-        ///
-        /// Execution:
-        /// - Writes (vault_contract_address, vault_position_id) to the vault_positions_to_addresses
-        /// map.
-        /// - Writes (vault_asset_id, vault_position_id) to the vault_positions_to_assets map.
-        /// - Writes (vault_contract_address, vault_position_id) to the addresses_to_vault_positions
-        /// map.
-        /// - Emits the event.
-        fn register_vault(
-            ref self: ContractState,
-            operator_nonce: u64,
-            vault_position_id: PositionId,
-            vault_contract_address: ContractAddress,
-            vault_asset_id: AssetId,
-            expiration: Timestamp,
-            signature: Signature,
-        ) {
-            /// Validations:
-            self.operator_nonce.use_checked_nonce(:operator_nonce);
-            self
-                ._validate_register_vault(
-                    :vault_position_id,
-                    :vault_contract_address,
-                    :vault_asset_id,
-                    :expiration,
-                    :signature,
-                );
-
-            /// Execution:
-            self.vault_positions_to_addresses.write(vault_position_id, vault_contract_address);
-            self.vault_positions_to_assets.write(vault_position_id, vault_asset_id);
-            self.addresses_to_vault_positions.write(vault_contract_address, vault_position_id);
-
-            // Emit event:
-            self
-                .emit(
-                    events::VaultRegistered {
-                        vault_position_id, vault_contract_address, vault_asset_id, expiration,
-                    },
-                )
-        }
-
-        /// Withdraws vault shares into collateral.
-        ///
-        /// Validations:
-        /// - Ensures the contract is not paused.
-        /// - Validates the operator nonce.
-        /// - Checks price integrity.
-        /// - Non-zero `number_of_shares`, `minimum_received_total_amount`,
-        /// `vault_share_execution_price`.
-        /// - Retrieves the vault share asset ID associated with the vault position.
-        /// - Validates the withdraw parameters including position IDs, amount, expiration,
-        ///   and signature.
-        ///
-        /// Execution:
-        /// - Redeem shares from the vault; convert unquantized to quantized using collateral
-        /// quantum.
-        /// - Apply diffs: `position_id` (+collateral, −shares), `vault_position_id`
-        /// (−collateral).
-        /// - Validate both positions remain healthy or healthier; enforce vault collateral safety
-        /// limit.
-        /// - Emit `WithdrawFromVault`.
-        fn withdraw_from_vault(
-            ref self: ContractState,
-            operator_nonce: u64,
-            position_id: PositionId,
-            vault_position_id: PositionId,
-            number_of_shares: u64,
-            minimum_received_total_amount: u64,
-            vault_share_execution_price: Price,
-            expiration: Timestamp,
-            salt: felt252,
-            user_signature: Signature,
-            vault_owner_signature: Signature,
-        ) {
-            /// Validations:
-            self.pausable.assert_not_paused();
-            self.operator_nonce.use_checked_nonce(:operator_nonce);
-            let current_time = Time::now();
-            self.assets.validate_price_interval_integrity(:current_time);
-
-            let vault_share_asset_id = self.vault_positions_to_assets.read(vault_position_id);
-
-            let (vault_position, position) = self
-                ._validate_withdraw_from_vault(
-                    :position_id,
-                    :vault_position_id,
-                    :number_of_shares,
-                    :minimum_received_total_amount,
-                    :vault_share_execution_price,
-                    :expiration,
-                    :salt,
-                    :user_signature,
-                    :vault_owner_signature,
-                    :vault_share_asset_id,
-                );
-
-            /// Executions:
-            let quantized_amount = self
-                ._execute_withdraw_from_vault(
-                    :position_id,
-                    :vault_position_id,
-                    :number_of_shares,
-                    :vault_share_execution_price,
-                    :vault_share_asset_id,
-                    :vault_position,
-                    :position,
-                );
-
-            // Emit event.
-            self
-                .emit(
-                    events::WithdrawFromVault {
-                        position_id,
-                        vault_position_id,
-                        collateral_id: self.assets.get_collateral_id(),
-                        quantized_amount,
-                        expiration,
-                        salt,
-                        quantized_shares_amount: number_of_shares,
-                        price: vault_share_execution_price,
-                    },
-                );
-        }
     }
 
     #[generate_trait]
@@ -1173,12 +943,12 @@ pub mod Core {
             let position_a = self.positions.get_position_snapshot(position_id_a);
             let position_b = self.positions.get_position_snapshot(position_id_b);
             // Signatures validation:
-            let hash_a = _validate_signature(
+            let hash_a = validate_signature(
                 public_key: position_a.get_owner_public_key(),
                 message: order_a,
                 signature: signature_a,
             );
-            let hash_b = _validate_signature(
+            let hash_b = validate_signature(
                 public_key: position_b.get_owner_public_key(),
                 message: order_b,
                 signature: signature_b,
@@ -1222,14 +992,16 @@ pub mod Core {
 
             /// Validations - Fundamentals:
             let tvtr_a_after = self
-                ._validate_healthy_or_healthier_position(
+                .positions
+                .validate_healthy_or_healthier_position(
                     position_id: order_a.position_id,
                     position: position_a,
                     position_diff: position_diff_a,
                     tvtr_before: tvtr_a_before,
                 );
             let tvtr_b_after = self
-                ._validate_healthy_or_healthier_position(
+                .positions
+                .validate_healthy_or_healthier_position(
                     position_id: order_b.position_id,
                     position: position_b,
                     position_diff: position_diff_b,
@@ -1295,7 +1067,8 @@ pub mod Core {
             /// Validations - Fundamentals:
             let position = self.positions.get_position_snapshot(:position_id);
             self
-                ._validate_healthy_or_healthier_position(
+                .positions
+                .validate_healthy_or_healthier_position(
                     :position_id,
                     :position,
                     position_diff: position_diff_sender,
@@ -1401,375 +1174,6 @@ pub mod Core {
                 );
         }
 
-        /// Validates a deposit into a vault.
-        ///
-        /// This function ensures the transaction is valid by:
-        /// - Checking tx expiration.
-        /// - Verifying the vault asset is active, meaning vault asset has already a price.
-        /// - Ensuring the position is not a vault position itself.
-        /// - Confirming the deposit amount is non-zero.
-        /// - Checking the signature.
-        /// - Ensuring the operation hasn't been previously fulfilled.
-        fn _validate_deposit_into_vault(
-            ref self: ContractState,
-            position_id: PositionId,
-            vault_position_id: PositionId,
-            quantized_amount: u64,
-            expiration: Timestamp,
-            salt: felt252,
-            signature: Signature,
-            vault_share_asset_id: AssetId,
-        ) {
-            validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
-
-            self.assets.validate_active_asset(asset_id: vault_share_asset_id);
-
-            // Depositing position must not be a vault position.
-            assert(!self.is_vault_position(:position_id), POSITION_IS_VAULT_POSITION);
-
-            assert(quantized_amount.is_non_zero(), INVALID_ZERO_AMOUNT);
-
-            // Signature validation
-            let position = self.positions.get_position_snapshot(:position_id);
-            let hash = _validate_signature(
-                public_key: position.get_owner_public_key(),
-                message: VaultDepositArgs {
-                    position_id, vault_position_id, quantized_amount, expiration, salt,
-                },
-                signature: signature,
-            );
-
-            // Update fulfillment:
-            let fulfillment_entry = self.fulfillment.entry(hash);
-            assert(fulfillment_entry.read().is_zero(), OPERATION_ALREADY_DONE);
-            fulfillment_entry.write(quantized_amount.into());
-        }
-
-        /// Executes a deposit into vault by transferring collateral and receiving vault shares.
-        ///
-        /// - Converts quantized amount to unquantized amount using collateral quantum.
-        /// - Deposits collateral into the vault contract and receives shares (using deposit flow).
-        /// - Updates position balances: reduces collateral.
-        /// - adding synthetic shares is part of the deposit flow.
-        /// - Updates position diffs.
-        ///
-        /// Returns:
-        /// - The amount of vault shares received from the deposit.
-        fn _execute_deposit_into_vault(
-            ref self: ContractState,
-            position_id: PositionId,
-            vault_position_id: PositionId,
-            quantized_amount: u64,
-            vault_address: ContractAddress,
-            vault_share_asset_id: AssetId,
-        ) -> u64 {
-            let quantum = self.assets.get_collateral_quantum();
-
-            // Deposit into vault.
-            let unquantized_shares_amount = self
-                ._deposit_to_vault_contract(
-                    :vault_address, :quantized_amount, :vault_share_asset_id, :quantum,
-                );
-
-            // Build position diffs.
-            // TODO(Mohammad): use shares quantom once register_vault is added.
-            let quantized_shares_amount: u64 = (unquantized_shares_amount / quantum.into())
-                .try_into()
-                .expect(AMOUNT_OVERFLOW);
-            let position_diff = PositionDiff {
-                collateral_diff: -quantized_amount.into(), asset_diff: Option::None,
-            };
-            let vault_diff = PositionDiff {
-                collateral_diff: quantized_amount.into(), asset_diff: Option::None,
-            };
-
-            /// Validations - Fundamentals:
-            let position = self.positions.get_position_snapshot(:position_id);
-            self
-                ._validate_healthy_or_healthier_position(
-                    :position_id,
-                    :position,
-                    position_diff: position_diff,
-                    tvtr_before: Default::default(),
-                );
-
-            // Apply diffs.
-            self.positions.apply_diff(:position_id, position_diff: position_diff);
-            self.positions.apply_diff(position_id: vault_position_id, position_diff: vault_diff);
-
-            quantized_shares_amount
-        }
-
-        fn _deposit_to_vault_contract(
-            ref self: ContractState,
-            vault_address: ContractAddress,
-            quantized_amount: u64,
-            vault_share_asset_id: AssetId,
-            quantum: u64,
-        ) -> u256 {
-            let contract_address = get_contract_address();
-            let erc20_collateral_dispatcher = self.assets.get_collateral_token_contract();
-            let erc20_vault_dispatcher = IERC20Dispatcher { contract_address: vault_address };
-
-            // Fetch balances before deposit
-            let before_deposit_balance = erc20_collateral_dispatcher
-                .balance_of(account: contract_address);
-            let before_deposit_shares_balance = erc20_vault_dispatcher
-                .balance_of(account: contract_address);
-
-            // Approve and deposit assets into the vault
-            let unquantized_amount: u256 = quantized_amount.into() * quantum.into();
-            erc20_collateral_dispatcher.approve(spender: vault_address, amount: unquantized_amount);
-            let vault_shares_amount = IERC4626Dispatcher { contract_address: vault_address }
-                .deposit(assets: unquantized_amount, receiver: contract_address);
-
-            // Fetch balances after deposit
-            let after_deposit_balance = erc20_collateral_dispatcher
-                .balance_of(account: contract_address);
-            let after_deposit_shares_balance = erc20_vault_dispatcher
-                .balance_of(account: contract_address);
-
-            // Validate balances to ensure correctness
-            assert(after_deposit_balance == before_deposit_balance, COLLATERAL_BALANCE_MISMATCH);
-            assert(
-                after_deposit_shares_balance == before_deposit_shares_balance + vault_shares_amount,
-                SHARES_BALANCE_MISMATCH,
-            );
-
-            vault_shares_amount
-        }
-
-
-        /// Validates a vault registration.
-        ///
-        /// This function ensures the transaction is valid by:
-        /// - Checking the vault contract address is not zero.
-        /// - Validating the expiration.
-        /// - Checking the vault asset id is registered.
-        /// - Checking the vault position id is not already registered.
-        /// - Checking the vault position is not a vault position.
-        /// - Checking the vault position has no share assets.
-        /// - Validating the signature.
-        fn _validate_register_vault(
-            ref self: ContractState,
-            vault_position_id: PositionId,
-            vault_contract_address: ContractAddress,
-            vault_asset_id: AssetId,
-            expiration: Timestamp,
-            signature: Signature,
-        ) {
-            assert(vault_contract_address.is_non_zero(), INVALID_VAULT_CONTRACT_ADDRESS);
-            validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
-
-            // Validate asset id exists, if not found get_asset_config will panic.
-            self.assets.get_asset_config(asset_id: vault_asset_id);
-
-            let vault_address = self.vault_positions_to_addresses.read(vault_position_id);
-            assert(vault_address.is_zero(), VAULT_POSITION_ALREADY_EXISTS);
-            let vault_position = self.addresses_to_vault_positions.read(vault_contract_address);
-            assert(vault_position.is_zero(), VAULT_CONTRACT_ALREADY_EXISTS);
-
-            //Position check
-            let vault_position = self
-                .positions
-                .get_position_snapshot(position_id: vault_position_id);
-
-            for (asset_id, asset_balance) in vault_position.assets_balance {
-                if self.assets.get_asset_type(asset_id) == AssetType::VAULT_SHARE_COLLATERAL {
-                    assert(asset_balance.is_zero(), VAULT_POSITION_HAS_SHARES);
-                }
-            }
-
-            _validate_signature(
-                public_key: vault_position.get_owner_public_key(),
-                message: RegisterVaultArgs {
-                    vault_position_id, vault_contract_address, vault_asset_id, expiration,
-                },
-                :signature,
-            );
-        }
-
-        fn _validate_withdraw_from_vault(
-            ref self: ContractState,
-            position_id: PositionId,
-            vault_position_id: PositionId,
-            number_of_shares: u64,
-            minimum_received_total_amount: u64,
-            vault_share_execution_price: Price,
-            expiration: Timestamp,
-            salt: felt252,
-            user_signature: Signature,
-            vault_owner_signature: Signature,
-            vault_share_asset_id: AssetId,
-        ) -> (StoragePath<Position>, StoragePath<Position>) {
-            validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
-
-            assert(number_of_shares.is_non_zero(), INVALID_ZERO_AMOUNT);
-            assert(minimum_received_total_amount.is_non_zero(), INVALID_ZERO_AMOUNT);
-            assert(vault_share_execution_price.is_non_zero(), INVALID_ZERO_AMOUNT);
-
-            let number_of_shares_as_balance: Balance = number_of_shares.into();
-            let actual_received_amount: u64 = vault_share_execution_price
-                .mul(rhs: number_of_shares_as_balance)
-                .abs()
-                .try_into()
-                .expect(AMOUNT_OVERFLOW);
-
-            assert(
-                minimum_received_total_amount <= actual_received_amount, RECEIVED_AMOUNT_TOO_SMALL,
-            );
-
-            // Vault position id is a vault position, and the asset is active.
-            let vault_position = self
-                .positions
-                .get_position_snapshot(position_id: vault_position_id);
-            self.assets.validate_active_asset(asset_id: vault_share_asset_id);
-
-            // position id is exists and it is not a vault position.
-            let position = self.positions.get_position_snapshot(:position_id);
-            // Make sure the withdrawing position is not a vault position
-            // by asserting that position id is not in the vault map.
-            assert(
-                self.vault_positions_to_addresses.read(position_id).is_zero(),
-                POSITION_IS_VAULT_POSITION,
-            );
-            // Signature validation
-            let user_hash = _validate_signature(
-                public_key: position.get_owner_public_key(),
-                message: VaultWithdrawUserArgs {
-                    position_id,
-                    vault_position_id,
-                    number_of_shares,
-                    minimum_received_total_amount,
-                    expiration,
-                    salt,
-                },
-                signature: user_signature,
-            );
-
-            _validate_signature(
-                public_key: vault_position.get_owner_public_key(),
-                message: VaultWithdrawOwnerArgs {
-                    vault_withdraw_user_hash: user_hash, vault_share_execution_price,
-                },
-                signature: vault_owner_signature,
-            );
-
-            // Update fulfillment:
-            let fulfillment_entry = self.fulfillment.entry(user_hash);
-            assert(fulfillment_entry.read().is_zero(), OPERATION_ALREADY_DONE);
-            fulfillment_entry.write(number_of_shares);
-
-            (vault_position, position)
-        }
-
-        fn _execute_withdraw_from_vault(
-            ref self: ContractState,
-            position_id: PositionId,
-            vault_position_id: PositionId,
-            number_of_shares: u64,
-            vault_share_execution_price: Price,
-            vault_share_asset_id: AssetId,
-            vault_position: StoragePath<Position>,
-            position: StoragePath<Position>,
-        ) -> u64 {
-            let (asset_type, erc20_vault_dispatcher, quantum) = self
-                .assets
-                .get_token_contract_and_quantum(asset_id: vault_share_asset_id);
-            assert(asset_type == AssetType::VAULT_SHARE_COLLATERAL, NOT_VAULT_SHARE_ASSET);
-            // Withdraw from vault.
-            let unquantized_vault_share_received_amount = self
-                ._withdraw_from_vault_contract(
-                    vault_address: erc20_vault_dispatcher.contract_address,
-                    :number_of_shares,
-                    :vault_share_execution_price,
-                    :quantum,
-                );
-
-            // Build position diffs.
-            let quantized_amount: u64 = (unquantized_vault_share_received_amount / quantum.into())
-                .try_into()
-                .expect(AMOUNT_OVERFLOW);
-            let position_diff = PositionDiff {
-                collateral_diff: quantized_amount.into(),
-                asset_diff: Option::Some((vault_share_asset_id, -number_of_shares.into())),
-            };
-            let vault_diff = PositionDiff {
-                collateral_diff: -quantized_amount.into(), asset_diff: Option::None,
-            };
-
-            self
-                ._validate_healthy_or_healthier_position(
-                    :position_id,
-                    :position,
-                    position_diff: position_diff,
-                    tvtr_before: Default::default(),
-                );
-
-            // Apply diffs.
-            self.positions.apply_diff(:position_id, position_diff: position_diff);
-            self.positions.apply_diff(position_id: vault_position_id, position_diff: vault_diff);
-
-            quantized_amount
-        }
-
-        fn _withdraw_from_vault_contract(
-            ref self: ContractState,
-            vault_address: ContractAddress,
-            number_of_shares: u64,
-            vault_share_execution_price: Price,
-            quantum: u64,
-        ) -> u256 {
-            let perps_address = get_contract_address();
-            let collateral_dispatcher = self.assets.get_collateral_token_contract();
-            let erc20_vault_dispatcher = IERC20Dispatcher { contract_address: vault_address };
-
-            // Fetch balances before withdraw
-            let before_withdraw_balance = collateral_dispatcher.balance_of(account: perps_address);
-            let before_withdraw_shares_balance = erc20_vault_dispatcher
-                .balance_of(account: perps_address);
-
-            let number_of_shares_as_balance: Balance = number_of_shares.into();
-            let quantized_vault_share_received_amount = vault_share_execution_price
-                .mul(number_of_shares_as_balance);
-            let expected_unquantized_vault_share_received_amount: u256 =
-                quantized_vault_share_received_amount
-                .abs()
-                .wide_mul(quantum.into());
-            collateral_dispatcher
-                .approve(
-                    spender: vault_address,
-                    amount: expected_unquantized_vault_share_received_amount,
-                );
-            let actual_unquantized_vault_share_received_amount = IProtocolVaultDispatcher {
-                contract_address: vault_address,
-            }
-                .redeem_with_price(
-                    shares: number_of_shares.into(),
-                    value_of_shares_in_assets: expected_unquantized_vault_share_received_amount,
-                );
-
-            assert(
-                actual_unquantized_vault_share_received_amount == expected_unquantized_vault_share_received_amount,
-                SHARES_BALANCE_MISMATCH,
-            );
-
-            // Fetch balances after withdraw
-            let after_withdraw_shares_balance = erc20_vault_dispatcher
-                .balance_of(account: perps_address);
-            let after_withdraw_balance = collateral_dispatcher.balance_of(account: perps_address);
-
-            // Validate balances to ensure correctness
-            assert(after_withdraw_balance == before_withdraw_balance, COLLATERAL_BALANCE_MISMATCH);
-            assert(
-                after_withdraw_shares_balance == before_withdraw_shares_balance
-                    - actual_unquantized_vault_share_received_amount,
-                SHARES_BALANCE_MISMATCH,
-            );
-
-            actual_unquantized_vault_share_received_amount
-        }
-
         fn _validate_asset_shrinks(
             ref self: ContractState,
             position: StoragePath<Position>,
@@ -1816,35 +1220,6 @@ pub mod Core {
                 );
         }
 
-        fn _validate_healthy_or_healthier_position(
-            self: @ContractState,
-            position_id: PositionId,
-            position: StoragePath<Position>,
-            position_diff: PositionDiff,
-            tvtr_before: Nullable<PositionTVTR>,
-        ) -> PositionTVTR {
-            let asset_enriched_position_diff = self.enrich_asset(:position, :position_diff);
-            let tvtr_before = match match_nullable(tvtr_before) {
-                FromNullableResult::Null => {
-                    let (provisional_delta, unchanged_assets) = self
-                        .positions
-                        .derive_funding_delta_and_unchanged_assets(:position, :position_diff);
-                    let position_diff_enriched = self
-                        .enrich_collateral(
-                            :position,
-                            position_diff: asset_enriched_position_diff,
-                            provisional_delta: Option::Some(provisional_delta),
-                        );
-
-                    calculate_position_tvtr_before(:unchanged_assets, :position_diff_enriched)
-                },
-                FromNullableResult::NotNull(value) => value.unbox(),
-            };
-            let tvtr = calculate_position_tvtr_change(:tvtr_before, :asset_enriched_position_diff);
-            assert_healthy_or_healthier(:position_id, :tvtr);
-            tvtr.after
-        }
-
         fn _validate_liquidated_position(
             ref self: ContractState,
             position_id: PositionId,
@@ -1865,8 +1240,11 @@ pub mod Core {
             let (provisional_delta, unchanged_assets) = self
                 .positions
                 .derive_funding_delta_and_unchanged_assets(:position, :position_diff);
-            let asset_enriched_position_diff = self.enrich_asset(:position, :position_diff);
+            let asset_enriched_position_diff = self
+                .positions
+                .enrich_asset(:position, :position_diff);
             let position_diff_enriched = self
+                .positions
                 .enrich_collateral(
                     :position,
                     position_diff: asset_enriched_position_diff,
@@ -1888,8 +1266,11 @@ pub mod Core {
                 .positions
                 .derive_funding_delta_and_unchanged_assets(:position, :position_diff);
 
-            let asset_enriched_position_diff = self.enrich_asset(:position, :position_diff);
+            let asset_enriched_position_diff = self
+                .positions
+                .enrich_asset(:position, :position_diff);
             let position_diff_enriched = self
+                .positions
                 .enrich_collateral(
                     :position,
                     position_diff: asset_enriched_position_diff,
@@ -1900,72 +1281,5 @@ pub mod Core {
                 :position_id, :unchanged_assets, :position_diff_enriched,
             );
         }
-
-        /// Enriches collateral, producing a fully enriched diff.
-        /// This computation is relatively expensive due to the funding mechanism.
-        /// If the calculation can rely on the raw collateral values, prefer using
-        /// `PositionDiff` or `AssetEnrichedPositionDiff` without fully enriching.
-        fn enrich_collateral(
-            self: @ContractState,
-            position: StoragePath<Position>,
-            position_diff: AssetEnrichedPositionDiff,
-            provisional_delta: Option<Balance>,
-        ) -> PositionDiffEnriched {
-            let before = self
-                .positions
-                .get_collateral_provisional_balance(:position, :provisional_delta);
-            let after = before + position_diff.collateral_diff;
-            let collateral_enriched = BalanceDiff { before: before, after };
-
-            PositionDiffEnriched {
-                collateral_enriched: collateral_enriched,
-                asset_enriched: position_diff.asset_enriched,
-            }
-        }
-
-        /// Enriches the synthetic part, leaving collateral raw.
-        fn enrich_asset(
-            self: @ContractState, position: StoragePath<Position>, position_diff: PositionDiff,
-        ) -> AssetEnrichedPositionDiff {
-            let asset_enriched = if let Option::Some((asset_id, diff)) = position_diff.asset_diff {
-                let balance_before = self.positions.get_asset_balance(:position, :asset_id);
-                let balance_after = balance_before + diff;
-                let price = self.assets.get_asset_price(:asset_id);
-                let risk_factor_before = self
-                    .assets
-                    .get_asset_risk_factor(:asset_id, balance: balance_before, :price);
-                let risk_factor_after = self
-                    .assets
-                    .get_asset_risk_factor(:asset_id, balance: balance_after, :price);
-
-                let asset_diff_enriched = AssetDiffEnriched {
-                    asset_id,
-                    balance_before,
-                    balance_after,
-                    price,
-                    risk_factor_before,
-                    risk_factor_after,
-                };
-                Option::Some(asset_diff_enriched)
-            } else {
-                Option::None
-            };
-            AssetEnrichedPositionDiff {
-                collateral_diff: position_diff.collateral_diff, asset_enriched,
-            }
-        }
-
-        fn is_vault_position(self: @ContractState, position_id: PositionId) -> bool {
-            let position_address = self.vault_positions_to_addresses.read(position_id);
-            position_address.is_non_zero()
-        }
-    }
-
-    fn _validate_signature<T, +Drop<T>, +Copy<T>, +OffchainMessageHash<T>>(
-        public_key: PublicKey, message: T, signature: Signature,
-    ) -> HashType {
-        let msg_hash = message.get_message_hash(:public_key);
-        validate_stark_signature(:public_key, :msg_hash, :signature);
-        msg_hash
     }
 }
