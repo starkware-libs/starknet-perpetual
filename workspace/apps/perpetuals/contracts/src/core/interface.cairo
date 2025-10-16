@@ -1,7 +1,6 @@
 use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::order::Order;
 use perpetuals::core::types::position::PositionId;
-use perpetuals::core::types::price::Price;
 use starknet::ContractAddress;
 use starkware_utils::signature::stark::Signature;
 use starkware_utils::time::time::Timestamp;
@@ -96,37 +95,5 @@ pub trait ICore<TContractState> {
         position_id_b: PositionId,
         base_asset_id: AssetId,
         base_amount_a: i64,
-    );
-    fn deposit_into_vault(
-        ref self: TContractState,
-        operator_nonce: u64,
-        position_id: PositionId,
-        vault_position_id: PositionId,
-        quantized_amount: u64,
-        expiration: Timestamp,
-        salt: felt252,
-        signature: Signature,
-    );
-    fn register_vault(
-        ref self: TContractState,
-        operator_nonce: u64,
-        vault_position_id: PositionId,
-        vault_contract_address: ContractAddress,
-        vault_asset_id: AssetId,
-        expiration: Timestamp,
-        signature: Signature,
-    );
-    fn withdraw_from_vault(
-        ref self: TContractState,
-        operator_nonce: u64,
-        position_id: PositionId,
-        vault_position_id: PositionId,
-        number_of_shares: u64,
-        minimum_received_total_amount: u64,
-        vault_share_execution_price: Price,
-        expiration: Timestamp,
-        salt: felt252,
-        user_signature: Signature,
-        vault_owner_signature: Signature,
     );
 }

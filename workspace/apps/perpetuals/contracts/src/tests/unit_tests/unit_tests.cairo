@@ -18,6 +18,9 @@ use perpetuals::core::components::positions::interface::{
     IPositions, IPositionsDispatcher, IPositionsDispatcherTrait, IPositionsSafeDispatcher,
     IPositionsSafeDispatcherTrait,
 };
+use perpetuals::core::components::vault::interface::{
+    IVault, IVaultSafeDispatcher, IVaultSafeDispatcherTrait,
+};
 use perpetuals::core::core::Core;
 use perpetuals::core::core::Core::SNIP12MetadataImpl;
 use perpetuals::core::errors::SIGNED_TX_EXPIRED;
@@ -3582,7 +3585,7 @@ fn test_failed_deposit_into_vault_scenarios() {
 
     // Setup dispatchers:
     let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
-    let dispatcher = ICoreSafeDispatcher { contract_address };
+    let dispatcher = IVaultSafeDispatcher { contract_address };
     let position_dispatcher = IPositionsDispatcher { contract_address };
 
     // Setup users:
@@ -3596,12 +3599,12 @@ fn test_failed_deposit_into_vault_scenarios() {
     let result = dispatcher
         .deposit_into_vault(
             operator_nonce: 0,
+            signature: array![].span(),
             position_id: user.position_id,
             vault_position_id: non_vault_position,
             quantized_amount: DEPOSIT_AMOUNT,
             expiration: Time::now().add(delta: Time::days(1)),
             salt: 0,
-            signature: array![].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: 'ASSET_NOT_EXISTS');
 
@@ -3611,7 +3614,7 @@ fn test_failed_deposit_into_vault_scenarios() {
         || {
             let mut state = Core::contract_state_for_testing();
 
-            state.vault_positions_to_assets.write(vault_user.position_id, asset_id);
+            state.vault.vault_positions_to_assets.write(vault_user.position_id, asset_id);
 
             let asset_config = AssetTrait::vault_share_collateral_config(
                 status: AssetStatus::PENDING,
@@ -3633,12 +3636,12 @@ fn test_failed_deposit_into_vault_scenarios() {
     let result = dispatcher
         .deposit_into_vault(
             operator_nonce: 1,
+            signature: array![].span(),
             position_id: user.position_id,
             vault_position_id: non_active_vault_position,
             quantized_amount: DEPOSIT_AMOUNT,
             expiration: Time::now().add(delta: Time::days(1)),
             salt: 0,
-            signature: array![].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: 'ASSET_NOT_ACTIVE');
 
@@ -3668,12 +3671,12 @@ fn test_failed_deposit_into_vault_scenarios() {
     let result = dispatcher
         .deposit_into_vault(
             operator_nonce: 2,
+            signature: array![].span(),
             position_id: unregistered_user,
             vault_position_id: vault_user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             expiration: Time::now().add(delta: Time::days(1)),
             salt: 0,
-            signature: array![].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: 'POSITION_DOESNT_EXIST');
 
@@ -3701,12 +3704,12 @@ fn test_failed_deposit_into_vault_scenarios() {
     let result = dispatcher
         .deposit_into_vault(
             operator_nonce: 5,
+            signature: array![].span(),
             position_id: user.position_id,
             vault_position_id: vault_user.position_id,
             quantized_amount: 0,
             expiration: Time::now().add(delta: Time::days(1)),
             salt: 0,
-            signature: array![].span(),
         );
     assert_panic_with_felt_error(:result, expected_error: 'INVALID_ZERO_AMOUNT');
 }
@@ -3762,11 +3765,11 @@ fn test_register_vault_successful() {
     state
         .register_vault(
             :operator_nonce,
+            :signature,
             :vault_position_id,
             :vault_contract_address,
             :vault_asset_id,
             :expiration,
-            :signature,
         );
 
     spy
@@ -3774,23 +3777,28 @@ fn test_register_vault_successful() {
             @array![
                 (
                     test_address(),
-                    perpetuals::core::core::Core::Event::VaultRegistered(
-                        perpetuals::core::events::VaultRegistered {
-                            vault_position_id, vault_contract_address, vault_asset_id, expiration,
-                        },
+                    perpetuals::core::core::Core::Event::VaultEvent(
+                        perpetuals::core::components::vault::VaultComponent::Event::VaultRegistered(
+                            perpetuals::core::components::vault::events::VaultRegistered {
+                                vault_position_id,
+                                vault_contract_address,
+                                vault_asset_id,
+                                expiration,
+                            },
+                        ),
                     ),
                 ),
             ],
         );
 
     // Checks:
-    let stored_asset_id = state.vault_positions_to_assets.read(vault_position_id);
+    let stored_asset_id = state.vault.vault_positions_to_assets.read(vault_position_id);
     assert_eq!(stored_asset_id, vault_asset_id);
 
-    let stored_contract_address = state.vault_positions_to_addresses.read(vault_position_id);
+    let stored_contract_address = state.vault.vault_positions_to_addresses.read(vault_position_id);
     assert_eq!(stored_contract_address, vault_contract_address);
 
-    let stored_position_id = state.addresses_to_vault_positions.read(vault_contract_address);
+    let stored_position_id = state.vault.addresses_to_vault_positions.read(vault_contract_address);
     assert_eq!(stored_position_id, vault_position_id);
 }
 
@@ -3802,7 +3810,7 @@ fn test_register_vault_negative_scenarios() {
 
     // Setup dispatchers:
     let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
-    let dispatcher = ICoreSafeDispatcher { contract_address };
+    let dispatcher = IVaultSafeDispatcher { contract_address };
     let position_dispatcher = IPositionsDispatcher { contract_address };
 
     // Add the vault asset, without activating it.
@@ -3852,11 +3860,11 @@ fn test_register_vault_negative_scenarios() {
     let result = dispatcher
         .register_vault(
             operator_nonce: 1,
+            :signature,
             :vault_position_id,
             :vault_contract_address,
             :vault_asset_id,
             :expiration,
-            :signature,
         );
     assert_panic_with_felt_error(:result, expected_error: 'INVALID_VAULT_CONTRACT_ADDRESS');
 
@@ -3877,11 +3885,11 @@ fn test_register_vault_negative_scenarios() {
     let result = dispatcher
         .register_vault(
             operator_nonce: 2,
+            :signature,
             :vault_position_id,
             :vault_contract_address,
             :vault_asset_id,
             :expiration,
-            :signature,
         );
     assert_panic_with_felt_error(:result, expected_error: ASSET_NOT_EXISTS);
 
@@ -3905,11 +3913,11 @@ fn test_register_vault_negative_scenarios() {
     let result = dispatcher
         .register_vault(
             operator_nonce: 3,
+            :signature,
             vault_position_id: non_existent_vault_position_id,
             :vault_contract_address,
             :vault_asset_id,
             :expiration,
-            :signature,
         );
     assert_panic_with_felt_error(:result, expected_error: 'POSITION_DOESNT_EXIST');
 
@@ -3930,11 +3938,11 @@ fn test_register_vault_negative_scenarios() {
     dispatcher
         .register_vault(
             operator_nonce: 4,
+            :signature,
             :vault_position_id,
             :vault_contract_address,
             :vault_asset_id,
             :expiration,
-            :signature,
         )
         .unwrap();
 
@@ -3954,11 +3962,11 @@ fn test_register_vault_negative_scenarios() {
     let result = dispatcher
         .register_vault(
             operator_nonce: 5,
+            :signature,
             :vault_position_id,
             vault_contract_address: vault_contract_address_2,
             :vault_asset_id,
             :expiration,
-            :signature,
         );
     assert_panic_with_felt_error(:result, expected_error: 'VAULT_POSITION_ALREADY_EXISTS');
 
@@ -3984,11 +3992,11 @@ fn test_register_vault_negative_scenarios() {
     let result = dispatcher
         .register_vault(
             operator_nonce: 7,
+            :signature,
             vault_position_id: vault_position_id_2,
             :vault_contract_address,
             :vault_asset_id,
             :expiration,
-            :signature,
         );
     assert_panic_with_felt_error(:result, expected_error: 'VAULT_CONTRACT_ALREADY_EXISTS');
 }
