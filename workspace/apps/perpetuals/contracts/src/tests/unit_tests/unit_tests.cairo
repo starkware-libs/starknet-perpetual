@@ -1,5 +1,14 @@
-use core::num::traits::Zero;
-use perpetuals::core::components::assets::errors::ASSET_NOT_EXISTS;
+use core::num::traits::{Pow, Zero};
+use openzeppelin::interfaces::token::erc20::{
+    IERC20MetadataDispatcher, IERC20MetadataDispatcherTrait,
+};
+use perpetuals::core::components::assets::errors::{
+    ASSET_ALREADY_EXISTS, ASSET_NOT_ACTIVE, ASSET_NOT_EXISTS, ASSET_REGISTERED_AS_COLLATERAL,
+    INVALID_ZERO_ASSET_ID, INVALID_ZERO_QUANTUM, INVALID_ZERO_QUORUM,
+    INVALID_ZERO_RESOLUTION_FACTOR, INVALID_ZERO_RF_FIRST_BOUNDRY, INVALID_ZERO_RF_TIERS_LEN,
+    INVALID_ZERO_RF_TIER_SIZE, INVALID_ZERO_TOKEN_ADDRESS, MISMATCHED_RESOLUTION,
+    UNSORTED_RISK_FACTOR_TIERS,
+};
 use perpetuals::core::components::assets::interface::{
     IAssets, IAssetsDispatcher, IAssetsDispatcherTrait, IAssetsSafeDispatcher,
     IAssetsSafeDispatcherTrait,
@@ -20,7 +29,10 @@ use perpetuals::core::components::positions::interface::{
 };
 use perpetuals::core::core::Core;
 use perpetuals::core::core::Core::SNIP12MetadataImpl;
-use perpetuals::core::errors::SIGNED_TX_EXPIRED;
+use perpetuals::core::errors::{
+    INVALID_VAULT_CONTRACT_ADDRESS, INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED,
+    VAULT_CONTRACT_ALREADY_EXISTS, VAULT_POSITION_ALREADY_EXISTS,
+};
 use perpetuals::core::events;
 use perpetuals::core::interface::{ICore, ICoreSafeDispatcher, ICoreSafeDispatcherTrait};
 use perpetuals::core::types::asset::{AssetStatus, AssetTrait};
@@ -3603,7 +3615,7 @@ fn test_failed_deposit_into_vault_scenarios() {
             salt: 0,
             signature: array![].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: 'ASSET_NOT_EXISTS');
+    assert_panic_with_felt_error(:result, expected_error: ASSET_NOT_EXISTS);
 
     // Add the vault asset, without activating it.
     interact_with_state(
@@ -3640,7 +3652,7 @@ fn test_failed_deposit_into_vault_scenarios() {
             salt: 0,
             signature: array![].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: 'ASSET_NOT_ACTIVE');
+    assert_panic_with_felt_error(:result, expected_error: ASSET_NOT_ACTIVE);
 
     // Activate the vault asset.
     interact_with_state(
@@ -3675,7 +3687,7 @@ fn test_failed_deposit_into_vault_scenarios() {
             salt: 0,
             signature: array![].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: 'POSITION_DOESNT_EXIST');
+    assert_panic_with_felt_error(:result, expected_error: POSITION_DOESNT_EXIST);
 
     // Add vault position, and user position.
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
@@ -3708,7 +3720,7 @@ fn test_failed_deposit_into_vault_scenarios() {
             salt: 0,
             signature: array![].span(),
         );
-    assert_panic_with_felt_error(:result, expected_error: 'INVALID_ZERO_AMOUNT');
+    assert_panic_with_felt_error(:result, expected_error: INVALID_ZERO_AMOUNT);
 }
 
 // Register vault tests.
@@ -3858,7 +3870,7 @@ fn test_register_vault_negative_scenarios() {
             :expiration,
             :signature,
         );
-    assert_panic_with_felt_error(:result, expected_error: 'INVALID_VAULT_CONTRACT_ADDRESS');
+    assert_panic_with_felt_error(:result, expected_error: INVALID_VAULT_CONTRACT_ADDRESS);
 
     // Setup parameters with zero asset id:
     let vault_position_id = vault.position_id;
@@ -3911,7 +3923,7 @@ fn test_register_vault_negative_scenarios() {
             :expiration,
             :signature,
         );
-    assert_panic_with_felt_error(:result, expected_error: 'POSITION_DOESNT_EXIST');
+    assert_panic_with_felt_error(:result, expected_error: POSITION_DOESNT_EXIST);
 
     // Setup parameters:
     let vault_position_id = vault.position_id;
@@ -3960,7 +3972,7 @@ fn test_register_vault_negative_scenarios() {
             :expiration,
             :signature,
         );
-    assert_panic_with_felt_error(:result, expected_error: 'VAULT_POSITION_ALREADY_EXISTS');
+    assert_panic_with_felt_error(:result, expected_error: VAULT_POSITION_ALREADY_EXISTS);
 
     // Setup for registration with same contract address but different position:
     let vault2 = UserTrait::new(position_id: POSITION_ID_2, key_pair: KEY_PAIR_2());
@@ -3990,6 +4002,322 @@ fn test_register_vault_negative_scenarios() {
             :expiration,
             :signature,
         );
-    assert_panic_with_felt_error(:result, expected_error: 'VAULT_CONTRACT_ALREADY_EXISTS');
+    assert_panic_with_felt_error(:result, expected_error: VAULT_CONTRACT_ALREADY_EXISTS);
+}
+
+// Add vault collateral asset tests.
+
+#[test]
+fn test_successful_add_vault_collateral_asset() {
+    // Setup state and token:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut spy = snforge_std::spy_events();
+
+    // Setup test parameters:
+    let vault_asset_id = VAULT_ASSET_ID_1();
+    let erc20_contract_address = token_state.address;
+    let quantum = VAULT_SHARE_QUANTUM;
+    let erc20_dispatcher = IERC20MetadataDispatcher { contract_address: erc20_contract_address };
+    let decimals = erc20_dispatcher.decimals();
+    let resolution_factor: u64 = (10_u256.pow(decimals.into()) / quantum.into())
+        .try_into()
+        .unwrap();
+    let risk_factor_tiers = array![10, 20, 30].span();
+    let risk_factor_first_tier_boundary = 10_000_u128;
+    let risk_factor_tier_size = 20_000_u128;
+    let quorum = 2_u8;
+
+    // Test:
+    cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.app_governor);
+    state
+        .add_vault_collateral_asset(
+            asset_id: vault_asset_id,
+            :erc20_contract_address,
+            :quantum,
+            :resolution_factor,
+            :risk_factor_tiers,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+            :quorum,
+        );
+
+    // Catch the event.
+    let events = spy.get_events().emitted_by(test_address()).events;
+    assert_eq!(events.len(), 1);
+    spy
+        .assert_emitted(
+            @array![
+                (
+                    test_address(),
+                    perpetuals::core::components::assets::AssetsComponent::Event::VaultShareCollateralAdded(
+                        perpetuals::core::components::assets::events::VaultShareCollateralAdded {
+                            asset_id: vault_asset_id,
+                            risk_factor_tiers,
+                            risk_factor_first_tier_boundary,
+                            risk_factor_tier_size,
+                            resolution_factor,
+                            quorum,
+                            erc20_contract_address,
+                            quantum,
+                        },
+                    ),
+                ),
+            ],
+        );
+
+    const EXPECTED_RESOLUTION_FACTOR: u64 = 10_u64.pow(DEFAULT_DECIMALS.into())
+        / VAULT_SHARE_QUANTUM;
+    // Check asset configuration.
+    let asset_config = state.assets.get_asset_config(vault_asset_id);
+    assert_eq!(asset_config.status, AssetStatus::PENDING);
+    assert_eq!(asset_config.quorum, 2);
+    assert_eq!(asset_config.resolution_factor, EXPECTED_RESOLUTION_FACTOR);
+    assert_eq!(asset_config.quantum, VAULT_SHARE_QUANTUM);
+    assert_eq!(asset_config.token_contract, erc20_contract_address);
+    assert_eq!(asset_config.risk_factor_first_tier_boundary, 10_000_u128);
+    assert_eq!(asset_config.risk_factor_tier_size, 20_000_u128);
+
+    // Check asset timely data is initialized to default.
+    let asset_timely_data = state.assets.get_asset_timely_data(vault_asset_id);
+    assert_eq!(asset_timely_data.price.value(), 0);
+    assert_eq!(asset_timely_data.funding_index.value, 0);
+    assert_eq!(asset_timely_data.last_price_update.seconds, 0);
+
+    // Check risk factor tiers.
+    let stored_tiers = state.assets.get_risk_factor_tiers(vault_asset_id);
+    assert_eq!(stored_tiers.len(), 3);
+}
+
+#[test]
+#[feature("safe_dispatcher")]
+fn test_add_vault_collateral_asset_negative_scenarios() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+    let dispatcher = IAssetsSafeDispatcher { contract_address };
+
+    // Common setup parameters:
+    let erc20_contract_address = token_state.address;
+    let quantum = VAULT_SHARE_QUANTUM;
+    let erc20_dispatcher_meta = IERC20MetadataDispatcher {
+        contract_address: erc20_contract_address,
+    };
+    let decimals = erc20_dispatcher_meta.decimals();
+    let resolution_factor: u64 = (10_u256.pow(decimals.into()) / quantum.into())
+        .try_into()
+        .unwrap();
+
+    // Test 1: Not app governor.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    let result = dispatcher
+        .add_vault_collateral_asset(
+            asset_id: VAULT_ASSET_ID_1(),
+            :erc20_contract_address,
+            :quantum,
+            :resolution_factor,
+            risk_factor_tiers: array![10].span(),
+            risk_factor_first_tier_boundary: 10_000_u128,
+            risk_factor_tier_size: 1,
+            quorum: 1,
+        );
+    assert_panic_with_error(:result, expected_error: "ONLY_APP_GOVERNOR");
+
+    // Test 2: Zero quantum.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    let result = dispatcher
+        .add_vault_collateral_asset(
+            asset_id: VAULT_ASSET_ID_1(),
+            :erc20_contract_address,
+            quantum: 0,
+            :resolution_factor,
+            risk_factor_tiers: array![10].span(),
+            risk_factor_first_tier_boundary: 10_000_u128,
+            risk_factor_tier_size: 1,
+            quorum: 1,
+        );
+    assert_panic_with_felt_error(:result, expected_error: INVALID_ZERO_QUANTUM);
+
+    // Test 3: Zero token address.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    let result = dispatcher
+        .add_vault_collateral_asset(
+            asset_id: VAULT_ASSET_ID_1(),
+            erc20_contract_address: Zero::zero(),
+            :quantum,
+            :resolution_factor,
+            risk_factor_tiers: array![10].span(),
+            risk_factor_first_tier_boundary: 10_000_u128,
+            risk_factor_tier_size: 1,
+            quorum: 1,
+        );
+    assert_panic_with_felt_error(:result, expected_error: INVALID_ZERO_TOKEN_ADDRESS);
+
+    // Test 4: Mismatched resolution.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    let result = dispatcher
+        .add_vault_collateral_asset(
+            asset_id: VAULT_ASSET_ID_1(),
+            :erc20_contract_address,
+            :quantum,
+            resolution_factor: resolution_factor + 1,
+            risk_factor_tiers: array![10].span(),
+            risk_factor_first_tier_boundary: 10_000_u128,
+            risk_factor_tier_size: 1,
+            quorum: 1,
+        );
+    assert_panic_with_felt_error(:result, expected_error: MISMATCHED_RESOLUTION);
+
+    // Test 5: Asset already exists - first add it successfully.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    dispatcher
+        .add_vault_collateral_asset(
+            asset_id: VAULT_ASSET_ID_1(),
+            :erc20_contract_address,
+            :quantum,
+            :resolution_factor,
+            risk_factor_tiers: array![10].span(),
+            risk_factor_first_tier_boundary: 10_000_u128,
+            risk_factor_tier_size: 1,
+            quorum: 1,
+        )
+        .unwrap();
+
+    // Now try to add the same asset again.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    let result = dispatcher
+        .add_vault_collateral_asset(
+            asset_id: VAULT_ASSET_ID_1(),
+            :erc20_contract_address,
+            :quantum,
+            :resolution_factor,
+            risk_factor_tiers: array![10].span(),
+            risk_factor_first_tier_boundary: 10_000_u128,
+            risk_factor_tier_size: 1,
+            quorum: 1,
+        );
+    assert_panic_with_felt_error(:result, expected_error: ASSET_ALREADY_EXISTS);
+
+    // Test 6: Using collateral ID.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    let result = dispatcher
+        .add_vault_collateral_asset(
+            asset_id: cfg.collateral_cfg.collateral_id,
+            :erc20_contract_address,
+            :quantum,
+            :resolution_factor,
+            risk_factor_tiers: array![10].span(),
+            risk_factor_first_tier_boundary: 10_000_u128,
+            risk_factor_tier_size: 1,
+            quorum: 1,
+        );
+    assert_panic_with_felt_error(:result, expected_error: ASSET_REGISTERED_AS_COLLATERAL);
+
+    // Test 7: Zero asset ID.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    let result = dispatcher
+        .add_vault_collateral_asset(
+            asset_id: Zero::zero(),
+            :erc20_contract_address,
+            :quantum,
+            :resolution_factor,
+            risk_factor_tiers: array![10].span(),
+            risk_factor_first_tier_boundary: 10_000_u128,
+            risk_factor_tier_size: 1,
+            quorum: 1,
+        );
+    assert_panic_with_felt_error(:result, expected_error: INVALID_ZERO_ASSET_ID);
+
+    // Test 8: Empty risk factor tiers.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    let result = dispatcher
+        .add_vault_collateral_asset(
+            asset_id: VAULT_ASSET_ID_2(),
+            :erc20_contract_address,
+            :quantum,
+            :resolution_factor,
+            risk_factor_tiers: array![].span(),
+            risk_factor_first_tier_boundary: 10_000_u128,
+            risk_factor_tier_size: 1,
+            quorum: 1,
+        );
+    assert_panic_with_felt_error(:result, expected_error: INVALID_ZERO_RF_TIERS_LEN);
+
+    // Test 9: Zero first tier boundary.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    let result = dispatcher
+        .add_vault_collateral_asset(
+            asset_id: VAULT_ASSET_ID_2(),
+            :erc20_contract_address,
+            :quantum,
+            :resolution_factor,
+            risk_factor_tiers: array![10].span(),
+            risk_factor_first_tier_boundary: 0,
+            risk_factor_tier_size: 1,
+            quorum: 1,
+        );
+    assert_panic_with_felt_error(:result, expected_error: INVALID_ZERO_RF_FIRST_BOUNDRY);
+
+    // Test 10: Zero tier size.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    let result = dispatcher
+        .add_vault_collateral_asset(
+            asset_id: VAULT_ASSET_ID_2(),
+            :erc20_contract_address,
+            :quantum,
+            :resolution_factor,
+            risk_factor_tiers: array![10].span(),
+            risk_factor_first_tier_boundary: 10_000_u128,
+            risk_factor_tier_size: 0,
+            quorum: 1,
+        );
+    assert_panic_with_felt_error(:result, expected_error: INVALID_ZERO_RF_TIER_SIZE);
+
+    // Test 11: Zero quorum.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    let result = dispatcher
+        .add_vault_collateral_asset(
+            asset_id: VAULT_ASSET_ID_2(),
+            :erc20_contract_address,
+            :quantum,
+            :resolution_factor,
+            risk_factor_tiers: array![10].span(),
+            risk_factor_first_tier_boundary: 10_000_u128,
+            risk_factor_tier_size: 1,
+            quorum: 0,
+        );
+    assert_panic_with_felt_error(:result, expected_error: INVALID_ZERO_QUORUM);
+
+    // Test 12: Zero resolution factor.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    let result = dispatcher
+        .add_vault_collateral_asset(
+            asset_id: VAULT_ASSET_ID_2(),
+            :erc20_contract_address,
+            quantum: (10_u256.pow(decimals.into()) + 1).try_into().unwrap(),
+            resolution_factor: 0,
+            risk_factor_tiers: array![10].span(),
+            risk_factor_first_tier_boundary: 10_000_u128,
+            risk_factor_tier_size: 1,
+            quorum: 1,
+        );
+    assert_panic_with_felt_error(:result, expected_error: INVALID_ZERO_RESOLUTION_FACTOR);
+
+    // Test 13: Unsorted risk factor tiers.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    let result = dispatcher
+        .add_vault_collateral_asset(
+            asset_id: VAULT_ASSET_ID_2(),
+            :erc20_contract_address,
+            :quantum,
+            :resolution_factor,
+            risk_factor_tiers: array![30, 10, 20].span(),
+            risk_factor_first_tier_boundary: 10_000_u128,
+            risk_factor_tier_size: 1,
+            quorum: 1,
+        );
+    assert_panic_with_felt_error(:result, expected_error: UNSORTED_RISK_FACTOR_TIERS);
 }
 
