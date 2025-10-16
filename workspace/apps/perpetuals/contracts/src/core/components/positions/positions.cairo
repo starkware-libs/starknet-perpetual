@@ -1,5 +1,6 @@
 #[starknet::component]
 pub(crate) mod Positions {
+    use core::nullable::{FromNullableResult, match_nullable};
     use core::num::traits::Zero;
     use core::panic_with_felt252;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
@@ -17,17 +18,18 @@ pub(crate) mod Positions {
     use perpetuals::core::components::positions::events;
     use perpetuals::core::components::positions::interface::IPositions;
     use perpetuals::core::core::Core::SNIP12MetadataImpl;
-    use perpetuals::core::types::asset::{Asset, AssetId};
-    use perpetuals::core::types::balance::Balance;
+    use perpetuals::core::types::asset::{Asset, AssetDiffEnriched, AssetId};
+    use perpetuals::core::types::balance::{Balance, BalanceDiff};
     use perpetuals::core::types::funding::calculate_funding;
     use perpetuals::core::types::position::{
-        AssetBalance, POSITION_VERSION, Position, PositionData, PositionDiff, PositionId,
-        PositionMutableTrait, PositionTrait,
+        AssetBalance, AssetEnrichedPositionDiff, POSITION_VERSION, Position, PositionData,
+        PositionDiff, PositionDiffEnriched, PositionId, PositionMutableTrait, PositionTrait,
     };
     use perpetuals::core::types::set_owner_account::SetOwnerAccountArgs;
     use perpetuals::core::types::set_public_key::SetPublicKeyArgs;
     use perpetuals::core::value_risk_calculator::{
-        PositionState, PositionTVTR, calculate_position_tvtr, evaluate_position,
+        PositionState, PositionTVTR, assert_healthy_or_healthier, calculate_position_tvtr,
+        calculate_position_tvtr_before, calculate_position_tvtr_change, evaluate_position,
     };
     use starknet::storage::{
         Map, Mutable, StoragePath, StoragePathEntry, StoragePointerReadAccess,
@@ -412,6 +414,59 @@ pub(crate) mod Positions {
             };
         }
 
+        /// Enriches collateral, producing a fully enriched diff.
+        /// This computation is relatively expensive due to the funding mechanism.
+        /// If the calculation can rely on the raw collateral values, prefer using
+        /// `PositionDiff` or `AssetEnrichedPositionDiff` without fully enriching.
+        fn enrich_collateral(
+            self: @ComponentState<TContractState>,
+            position: StoragePath<Position>,
+            position_diff: AssetEnrichedPositionDiff,
+            provisional_delta: Option<Balance>,
+        ) -> PositionDiffEnriched {
+            let before = self.get_collateral_provisional_balance(:position, :provisional_delta);
+            let after = before + position_diff.collateral_diff;
+            let collateral_enriched = BalanceDiff { before: before, after };
+
+            PositionDiffEnriched {
+                collateral_enriched: collateral_enriched,
+                asset_enriched: position_diff.asset_enriched,
+            }
+        }
+
+        /// Enriches the synthetic part, leaving collateral raw.
+        fn enrich_asset(
+            self: @ComponentState<TContractState>,
+            position: StoragePath<Position>,
+            position_diff: PositionDiff,
+        ) -> AssetEnrichedPositionDiff {
+            let asset_enriched = if let Option::Some((asset_id, diff)) = position_diff.asset_diff {
+                let balance_before = self.get_asset_balance(:position, :asset_id);
+                let balance_after = balance_before + diff;
+                let assets = get_dep_component!(self, Assets);
+                let price = assets.get_asset_price(:asset_id);
+                let risk_factor_before = assets
+                    .get_asset_risk_factor(:asset_id, balance: balance_before, :price);
+                let risk_factor_after = assets
+                    .get_asset_risk_factor(:asset_id, balance: balance_after, :price);
+
+                let asset_diff_enriched = AssetDiffEnriched {
+                    asset_id,
+                    balance_before,
+                    balance_after,
+                    price,
+                    risk_factor_before,
+                    risk_factor_after,
+                };
+                Option::Some(asset_diff_enriched)
+            } else {
+                Option::None
+            };
+            AssetEnrichedPositionDiff {
+                collateral_diff: position_diff.collateral_diff, asset_enriched,
+            }
+        }
+
         fn get_position_snapshot(
             self: @ComponentState<TContractState>, position_id: PositionId,
         ) -> StoragePath<Position> {
@@ -506,6 +561,34 @@ pub(crate) mod Positions {
             }
 
             (provisional_delta, unchanged_assets.span())
+        }
+
+        fn validate_healthy_or_healthier_position(
+            self: @ComponentState<TContractState>,
+            position_id: PositionId,
+            position: StoragePath<Position>,
+            position_diff: PositionDiff,
+            tvtr_before: Nullable<PositionTVTR>,
+        ) -> PositionTVTR {
+            let asset_enriched_position_diff = self.enrich_asset(:position, :position_diff);
+            let tvtr_before = match match_nullable(tvtr_before) {
+                FromNullableResult::Null => {
+                    let (provisional_delta, unchanged_assets) = self
+                        .derive_funding_delta_and_unchanged_assets(:position, :position_diff);
+                    let position_diff_enriched = self
+                        .enrich_collateral(
+                            :position,
+                            position_diff: asset_enriched_position_diff,
+                            provisional_delta: Option::Some(provisional_delta),
+                        );
+
+                    calculate_position_tvtr_before(:unchanged_assets, :position_diff_enriched)
+                },
+                FromNullableResult::NotNull(value) => value.unbox(),
+            };
+            let tvtr = calculate_position_tvtr_change(:tvtr_before, :asset_enriched_position_diff);
+            assert_healthy_or_healthier(:position_id, :tvtr);
+            tvtr.after
         }
     }
 
