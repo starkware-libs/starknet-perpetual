@@ -23,7 +23,7 @@ use perpetuals::core::components::vault::interface::{
 };
 use perpetuals::core::core::Core;
 use perpetuals::core::core::Core::SNIP12MetadataImpl;
-use perpetuals::core::errors::SIGNED_TX_EXPIRED;
+use perpetuals::core::errors::{SIGNED_TX_EXPIRED, VAULT_POSITION_HAS_SHARES};
 use perpetuals::core::events;
 use perpetuals::core::interface::{ICore, ICoreSafeDispatcher, ICoreSafeDispatcherTrait};
 use perpetuals::core::types::asset::{AssetStatus, AssetTrait};
@@ -3728,7 +3728,7 @@ fn test_register_vault_successful() {
     // Setup parameters:
     let vault_position_id = vault.position_id;
     let vault_contract_address = VAULT_CONTRACT_ADDRESS_1();
-    let vault_asset_id = SYNTHETIC_ASSET_ID_2();
+    let vault_asset_id = VAULT_ASSET_ID_1();
     let expiration = Time::now().add(Time::days(1));
 
     let register_vault_args = RegisterVaultArgs {
@@ -3829,7 +3829,7 @@ fn test_register_vault_negative_scenarios() {
                 token_contract: VAULT_CONTRACT_ADDRESS_1(),
             );
 
-            state.assets.asset_config.write(SYNTHETIC_ASSET_ID_2(), Some(asset_config));
+            state.assets.asset_config.write(VAULT_ASSET_ID_1(), Some(asset_config));
         },
     );
 
@@ -3846,7 +3846,7 @@ fn test_register_vault_negative_scenarios() {
     // Setup parameters with zero contract address:
     let vault_position_id = vault.position_id;
     let vault_contract_address = Zero::zero();
-    let vault_asset_id = SYNTHETIC_ASSET_ID_2();
+    let vault_asset_id = VAULT_ASSET_ID_1();
     let expiration = Time::now().add(Time::days(1));
 
     let register_vault_args = RegisterVaultArgs {
@@ -3896,7 +3896,7 @@ fn test_register_vault_negative_scenarios() {
     // Setup parameters:
     let non_existent_vault_position_id = PositionId { value: 100 };
     let vault_contract_address = VAULT_CONTRACT_ADDRESS_1();
-    let vault_asset_id = SYNTHETIC_ASSET_ID_2();
+    let vault_asset_id = VAULT_ASSET_ID_1();
     let expiration = Time::now().add(Time::days(1));
 
     let register_vault_args = RegisterVaultArgs {
@@ -3924,7 +3924,7 @@ fn test_register_vault_negative_scenarios() {
     // Setup parameters:
     let vault_position_id = vault.position_id;
     let vault_contract_address = VAULT_CONTRACT_ADDRESS_1();
-    let vault_asset_id = SYNTHETIC_ASSET_ID_2();
+    let vault_asset_id = VAULT_ASSET_ID_1();
     let expiration = Time::now().add(Time::days(1));
 
     let register_vault_args = RegisterVaultArgs {
@@ -3999,5 +3999,81 @@ fn test_register_vault_negative_scenarios() {
             :expiration,
         );
     assert_panic_with_felt_error(:result, expected_error: 'VAULT_CONTRACT_ALREADY_EXISTS');
+
+    // Test 6: register vault position that already holds vault shares from another vault.
+    // Setup: Create a third position that will hold shares from the first vault.
+    let position_with_shares = UserTrait::new(position_id: POSITION_ID_3(), key_pair: KEY_PAIR_3());
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    position_dispatcher
+        .new_position(
+            operator_nonce: 8,
+            position_id: position_with_shares.position_id,
+            owner_public_key: position_with_shares.get_public_key(),
+            owner_account: Zero::zero(),
+        );
+
+    // Give this position some vault shares from the first vault by directly modifying state.
+    interact_with_state(
+        :contract_address,
+        f: || {
+            let mut state = Core::contract_state_for_testing();
+            // Add vault shares balance to the position.
+            use perpetuals::core::types::position::AssetBalance;
+            let asset_balance = AssetBalance {
+                version: POSITION_VERSION, balance: 100_i64.into(), funding_index: Zero::zero(),
+            };
+            state
+                .positions
+                .get_position_mut(position_id: position_with_shares.position_id)
+                .assets_balance
+                .write(vault_asset_id, asset_balance);
+        },
+    );
+
+    // Now try to register this position as a vault - it should fail.
+    let vault_asset_id_3 = VAULT_ASSET_ID_2();
+    let vault_contract_address_3 = VAULT_CONTRACT_ADDRESS_3();
+
+    // Add the third vault asset.
+    interact_with_state(
+        :contract_address,
+        f: || {
+            let mut state = Core::contract_state_for_testing();
+
+            let asset_config = AssetTrait::vault_share_collateral_config(
+                status: AssetStatus::PENDING,
+                risk_factor_first_tier_boundary: Default::default(),
+                risk_factor_tier_size: Default::default(),
+                quorum: Default::default(),
+                resolution_factor: Default::default(),
+                quantum: VAULT_SHARE_QUANTUM,
+                token_contract: vault_contract_address_3,
+            );
+
+            state.assets.asset_config.write(vault_asset_id_3, Some(asset_config));
+        },
+    );
+
+    let register_vault_args_3 = RegisterVaultArgs {
+        vault_position_id: position_with_shares.position_id,
+        vault_contract_address: vault_contract_address_3,
+        vault_asset_id: vault_asset_id_3,
+        expiration,
+    };
+    let msg_hash = register_vault_args_3
+        .get_message_hash(public_key: position_with_shares.get_public_key());
+    let signature = position_with_shares.sign_message(msg_hash);
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    let result = dispatcher
+        .register_vault(
+            operator_nonce: 9,
+            vault_position_id: position_with_shares.position_id,
+            vault_contract_address: vault_contract_address_3,
+            vault_asset_id: vault_asset_id_3,
+            :expiration,
+            :signature,
+        );
+    assert_panic_with_felt_error(:result, expected_error: VAULT_POSITION_HAS_SHARES);
 }
 

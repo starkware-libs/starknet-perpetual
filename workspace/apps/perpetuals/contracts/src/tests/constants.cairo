@@ -50,6 +50,9 @@ pub fn VAULT_CONTRACT_ADDRESS_1() -> ContractAddress {
 pub fn VAULT_CONTRACT_ADDRESS_2() -> ContractAddress {
     'VAULT_CONTRACT_ADDRESS_2'.try_into().unwrap()
 }
+pub fn VAULT_CONTRACT_ADDRESS_3() -> ContractAddress {
+    'VAULT_CONTRACT_ADDRESS_3'.try_into().unwrap()
+}
 
 pub const UPGRADE_DELAY: u64 = 5_u64;
 /// 1 day in seconds.
@@ -76,6 +79,9 @@ pub const VAULT_SHARE_QUANTUM: u64 = 1_000;
 
 pub const POSITION_ID_1: PositionId = PositionId { value: 2 };
 pub const POSITION_ID_2: PositionId = PositionId { value: 3 };
+pub fn POSITION_ID_3() -> PositionId {
+    PositionId { value: 4 }
+}
 
 pub const ORACLE_A_NAME: felt252 = 'ORCLA';
 pub const ORACLE_B_NAME: felt252 = 'ORCLB';
@@ -98,6 +104,13 @@ pub fn SYNTHETIC_ASSET_ID_2() -> AssetId {
 }
 pub fn SYNTHETIC_ASSET_ID_3() -> AssetId {
     AssetIdTrait::new(value: selector!("SYNTHETIC_ASSET_ID_3"))
+}
+
+pub fn VAULT_ASSET_ID_1() -> AssetId {
+    AssetIdTrait::new(value: selector!("VAULT_ASSET_ID_1"))
+}
+pub fn VAULT_ASSET_ID_2() -> AssetId {
+    AssetIdTrait::new(value: selector!("VAULT_ASSET_ID_2"))
 }
 
 
