@@ -77,6 +77,7 @@ pub const SYNTHETIC_BALANCE_AMOUNT: i64 = 20;
 pub const CONTRACT_INIT_BALANCE: u128 = 1_000_000_000;
 pub const USER_INIT_BALANCE: u128 = 10_000_000_000;
 pub const VAULT_SHARE_QUANTUM: u64 = 1_000;
+pub const DEFAULT_DECIMALS: u8 = 18;
 
 pub const POSITION_ID_100: PositionId = PositionId { value: 100 };
 pub const POSITION_ID_200: PositionId = PositionId { value: 200 };
@@ -104,14 +105,12 @@ pub fn SYNTHETIC_ASSET_ID_2() -> AssetId {
 pub fn SYNTHETIC_ASSET_ID_3() -> AssetId {
     AssetIdTrait::new(value: selector!("SYNTHETIC_ASSET_ID_3"))
 }
-
 pub fn VAULT_ASSET_ID_1() -> AssetId {
     AssetIdTrait::new(value: selector!("VAULT_ASSET_ID_1"))
 }
 pub fn VAULT_ASSET_ID_2() -> AssetId {
     AssetIdTrait::new(value: selector!("VAULT_ASSET_ID_2"))
 }
-
 
 /// Assets' metadata
 pub fn COLLATERAL_NAME() -> ByteArray {
