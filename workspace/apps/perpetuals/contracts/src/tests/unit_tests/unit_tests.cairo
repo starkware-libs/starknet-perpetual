@@ -3602,7 +3602,7 @@ fn test_failed_deposit_into_vault_scenarios() {
             signature: array![].span(),
             position_id: user.position_id,
             vault_position_id: non_vault_position,
-            quantized_amount: DEPOSIT_AMOUNT,
+            collateral_quantized_amount: DEPOSIT_AMOUNT,
             expiration: Time::now().add(delta: Time::days(1)),
             salt: 0,
         );
@@ -3639,7 +3639,7 @@ fn test_failed_deposit_into_vault_scenarios() {
             signature: array![].span(),
             position_id: user.position_id,
             vault_position_id: non_active_vault_position,
-            quantized_amount: DEPOSIT_AMOUNT,
+            collateral_quantized_amount: DEPOSIT_AMOUNT,
             expiration: Time::now().add(delta: Time::days(1)),
             salt: 0,
         );
@@ -3674,7 +3674,7 @@ fn test_failed_deposit_into_vault_scenarios() {
             signature: array![].span(),
             position_id: unregistered_user,
             vault_position_id: vault_user.position_id,
-            quantized_amount: DEPOSIT_AMOUNT,
+            collateral_quantized_amount: DEPOSIT_AMOUNT,
             expiration: Time::now().add(delta: Time::days(1)),
             salt: 0,
         );
@@ -3707,7 +3707,7 @@ fn test_failed_deposit_into_vault_scenarios() {
             signature: array![].span(),
             position_id: user.position_id,
             vault_position_id: vault_user.position_id,
-            quantized_amount: 0,
+            collateral_quantized_amount: 0,
             expiration: Time::now().add(delta: Time::days(1)),
             salt: 0,
         );

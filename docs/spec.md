@@ -3602,7 +3602,7 @@ fn deposit_into_vault(
     position_id: PositionId,
     vault_position_id: PositionId,
     collateral_id: AssetId,
-    quantized_amount: u64,
+    collateral_quantized_amount: u64,
     expiration: Timestamp,
     salt: felt252,
     signature: Signature,

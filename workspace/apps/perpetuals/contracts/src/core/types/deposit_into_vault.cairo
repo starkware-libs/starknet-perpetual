@@ -9,7 +9,7 @@ use starkware_utils::time::time::Timestamp;
 pub struct VaultDepositArgs {
     pub position_id: PositionId,
     pub vault_position_id: PositionId,
-    pub quantized_amount: u64,
+    pub collateral_quantized_amount: u64,
     pub expiration: Timestamp,
     pub salt: felt252,
 }
@@ -20,7 +20,7 @@ pub struct VaultDepositArgs {
 ///   "\"VaultDepositArgs\"(
 ///    \"position_id\":\"PositionId\",
 ///    \"vault_position_id\":\"PositionId\",
-///    \"quantized_amount\":\"u64\",
+///    \"collateral_quantized_amount\":\"u64\",
 ///    \"expiration\":\"Timestamp\",
 ///    \"salt\":\"felt\"
 ///    )
@@ -32,7 +32,7 @@ pub struct VaultDepositArgs {
 ///    )
 /// );
 const VAULT_DEPOSIT_ARGS_TYPE_HASH: HashType =
-    0x0261990c673bdf6a616b6b550e1196c85bfbb8ee72fe3abe478633cb3adb3231;
+    0x0159d929b2c1c81a4c7ef04c80f05e4e2cd2c0e08844fa772c38b9a69230a47d;
 
 impl StructHashImpl of StructHash<VaultDepositArgs> {
     fn hash_struct(self: @VaultDepositArgs) -> HashType {
@@ -49,7 +49,7 @@ mod tests {
     #[test]
     fn test_vault_deposit_args_type_hash() {
         let expected = selector!(
-            "\"VaultDepositArgs\"(\"position_id\":\"PositionId\",\"vault_position_id\":\"PositionId\",\"quantized_amount\":\"u64\",\"expiration\":\"Timestamp\",\"salt\":\"felt\")\"PositionId\"(\"value\":\"u32\")\"Timestamp\"(\"seconds\":\"u64\")",
+            "\"VaultDepositArgs\"(\"position_id\":\"PositionId\",\"vault_position_id\":\"PositionId\",\"collateral_quantized_amount\":\"u64\",\"expiration\":\"Timestamp\",\"salt\":\"felt\")\"PositionId\"(\"value\":\"u32\")\"Timestamp\"(\"seconds\":\"u64\")",
         );
         assert_eq!(to_base_16_string(VAULT_DEPOSIT_ARGS_TYPE_HASH), to_base_16_string(expected));
     }
