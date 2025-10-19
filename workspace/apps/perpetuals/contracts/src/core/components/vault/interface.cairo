@@ -14,7 +14,7 @@ pub trait IVault<TContractState> {
         signature: Signature,
         position_id: PositionId,
         vault_position_id: PositionId,
-        quantized_amount: u64,
+        collateral_quantized_amount: u64,
         expiration: Timestamp,
         salt: felt252,
     );
