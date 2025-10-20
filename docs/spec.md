@@ -2138,8 +2138,9 @@ The user registers a deposit request using the [Deposit component](#deposit) \- 
 ```rust
 fn deposit(
     ref self: ContractState,
-    position_id: PositionId,
     asset_id: AssetId,
+    depositor: ContractAddress,
+    position_id: PositionId,
     quantized_amount: u64,
     salt: felt252,
 )
@@ -2200,6 +2201,7 @@ The user deposits collateral into the system.
 fn process_deposit(
     ref self: ComponentState<TContractState>,
     operator_nonce: u64,
+    asset_id: AssetId,
     depositor: ContractAddress,
     position_id: PositionId,
     quantized_amount: u64,
@@ -2272,8 +2274,10 @@ We assume that the position is always healthier for deposit
 The user cancels a registered deposit request in the Deposit component.
 
 ```rust
-fn cancel_pending_deposit(
+fn cancel_deposit(
     ref self: ContractState,
+    asset_id: AssetId,
+    depositor: ContractAddress,
     position_id: PositionId,
     quantized_amount: u64,
     salt: felt252,

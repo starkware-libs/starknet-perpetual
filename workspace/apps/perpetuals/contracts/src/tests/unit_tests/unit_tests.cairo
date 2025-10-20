@@ -123,8 +123,8 @@ fn test_caller_failures() {
 
     let result = deposit_dispatcher
         .process_deposit(
-            asset_id: cfg.collateral_cfg.collateral_id,
             operator_nonce: Zero::zero(),
+            asset_id: cfg.collateral_cfg.collateral_id,
             depositor: test_address(),
             position_id: POSITION_ID_1,
             quantized_amount: DEPOSIT_AMOUNT,
@@ -344,6 +344,7 @@ fn test_expiration_validation() {
     deposit_dispatcher
         .deposit(
             asset_id: cfg.collateral_cfg.collateral_id,
+            depositor: user.address,
             :position_id,
             quantized_amount: amount,
             salt: user.salt_counter,
@@ -352,8 +353,8 @@ fn test_expiration_validation() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     deposit_dispatcher
         .process_deposit(
-            asset_id: cfg.collateral_cfg.collateral_id,
             operator_nonce: 1,
+            asset_id: cfg.collateral_cfg.collateral_id,
             depositor: user.address,
             position_id: user.position_id,
             quantized_amount: amount,
@@ -572,6 +573,7 @@ fn test_signature_validation() {
     deposit_dispatcher
         .deposit(
             asset_id: cfg.collateral_cfg.collateral_id,
+            depositor: user_a.address,
             position_id: user_a.position_id,
             quantized_amount: amount,
             salt: user_a.salt_counter,
@@ -580,8 +582,8 @@ fn test_signature_validation() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     deposit_dispatcher
         .process_deposit(
-            asset_id: cfg.collateral_cfg.collateral_id,
             operator_nonce: 4,
+            asset_id: cfg.collateral_cfg.collateral_id,
             depositor: user_a.address,
             position_id: user_a.position_id,
             quantized_amount: amount,
@@ -592,6 +594,7 @@ fn test_signature_validation() {
     deposit_dispatcher
         .deposit(
             asset_id: cfg.collateral_cfg.collateral_id,
+            depositor: user_b.address,
             position_id: user_b.position_id,
             quantized_amount: amount,
             salt: user_b.salt_counter,
@@ -600,8 +603,8 @@ fn test_signature_validation() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     deposit_dispatcher
         .process_deposit(
-            asset_id: cfg.collateral_cfg.collateral_id,
             operator_nonce: 5,
+            asset_id: cfg.collateral_cfg.collateral_id,
             depositor: user_b.address,
             position_id: user_b.position_id,
             quantized_amount: amount,
@@ -1264,6 +1267,7 @@ fn test_successful_deposit() {
     state
         .deposit(
             asset_id: cfg.collateral_cfg.collateral_id,
+            depositor: user.address,
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter,
@@ -1330,6 +1334,7 @@ fn test_deposit_already_registered() {
     state
         .deposit(
             asset_id: cfg.collateral_cfg.collateral_id,
+            depositor: user.address,
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter,
@@ -1337,6 +1342,7 @@ fn test_deposit_already_registered() {
     state
         .deposit(
             asset_id: cfg.collateral_cfg.collateral_id,
+            depositor: user.address,
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter,
@@ -1366,6 +1372,7 @@ fn test_successful_process_deposit() {
     state
         .deposit(
             asset_id: cfg.collateral_cfg.collateral_id,
+            depositor: user.address,
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter,
@@ -1382,8 +1389,8 @@ fn test_successful_process_deposit() {
     cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.operator);
     state
         .process_deposit(
-            asset_id: cfg.collateral_cfg.collateral_id,
             operator_nonce: state.get_operator_nonce(),
+            asset_id: cfg.collateral_cfg.collateral_id,
             depositor: user.address,
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
@@ -1431,6 +1438,7 @@ fn test_successful_cancel_deposit() {
     state
         .deposit(
             asset_id: cfg.collateral_cfg.collateral_id,
+            depositor: user.address,
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter,
@@ -1461,6 +1469,7 @@ fn test_successful_cancel_deposit() {
     state
         .cancel_deposit(
             asset_id: cfg.collateral_cfg.collateral_id,
+            depositor: user.address,
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter,
@@ -1498,6 +1507,7 @@ fn test_cancel_non_registered_deposit() {
     state
         .cancel_deposit(
             asset_id: cfg.collateral_cfg.collateral_id,
+            depositor: user.address,
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter,
@@ -1527,6 +1537,7 @@ fn test_cancel_deposit_different_hash() {
     state
         .deposit(
             asset_id: cfg.collateral_cfg.collateral_id,
+            depositor: user.address,
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter,
@@ -1535,6 +1546,7 @@ fn test_cancel_deposit_different_hash() {
     state
         .cancel_deposit(
             asset_id: cfg.collateral_cfg.collateral_id,
+            depositor: user.address,
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter + 1,
@@ -1566,6 +1578,7 @@ fn test_cancel_already_done_deposit() {
     state
         .deposit(
             asset_id: cfg.collateral_cfg.collateral_id,
+            depositor: user.address,
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter,
@@ -1574,8 +1587,8 @@ fn test_cancel_already_done_deposit() {
     cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.operator);
     state
         .process_deposit(
-            asset_id: cfg.collateral_cfg.collateral_id,
             operator_nonce: state.get_operator_nonce(),
+            asset_id: cfg.collateral_cfg.collateral_id,
             depositor: user.address,
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
@@ -1589,6 +1602,7 @@ fn test_cancel_already_done_deposit() {
     state
         .cancel_deposit(
             asset_id: cfg.collateral_cfg.collateral_id,
+            depositor: user.address,
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter,
@@ -1620,6 +1634,7 @@ fn test_double_cancel_deposit() {
     state
         .deposit(
             asset_id: cfg.collateral_cfg.collateral_id,
+            depositor: user.address,
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter,
@@ -1631,6 +1646,7 @@ fn test_double_cancel_deposit() {
     state
         .cancel_deposit(
             asset_id: cfg.collateral_cfg.collateral_id,
+            depositor: user.address,
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter,
@@ -1638,6 +1654,7 @@ fn test_double_cancel_deposit() {
     state
         .cancel_deposit(
             asset_id: cfg.collateral_cfg.collateral_id,
+            depositor: user.address,
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter,
@@ -1669,6 +1686,7 @@ fn test_cancel_deposit_before_cancellation_delay_passed() {
     state
         .deposit(
             asset_id: cfg.collateral_cfg.collateral_id,
+            depositor: user.address,
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter,
@@ -1677,6 +1695,7 @@ fn test_cancel_deposit_before_cancellation_delay_passed() {
     state
         .cancel_deposit(
             asset_id: cfg.collateral_cfg.collateral_id,
+            depositor: user.address,
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter,
@@ -2795,6 +2814,7 @@ fn test_validate_synthetic_prices_pending_asset() {
     state
         .deposit(
             asset_id: cfg.collateral_cfg.collateral_id,
+            depositor: user.address,
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter,
@@ -2802,8 +2822,8 @@ fn test_validate_synthetic_prices_pending_asset() {
     cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.operator);
     state
         .process_deposit(
-            asset_id: cfg.collateral_cfg.collateral_id,
             operator_nonce: state.get_operator_nonce(),
+            asset_id: cfg.collateral_cfg.collateral_id,
             depositor: user.address,
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
@@ -2930,6 +2950,7 @@ fn test_validate_prices_no_update_needed() {
     state
         .deposit(
             asset_id: cfg.collateral_cfg.collateral_id,
+            depositor: user.address,
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter,
@@ -2937,8 +2958,8 @@ fn test_validate_prices_no_update_needed() {
     cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.operator);
     state
         .process_deposit(
-            asset_id: cfg.collateral_cfg.collateral_id,
             operator_nonce: state.get_operator_nonce(),
+            asset_id: cfg.collateral_cfg.collateral_id,
             depositor: user.address,
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,

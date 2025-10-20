@@ -21,7 +21,7 @@ pub(crate) mod Deposit {
         Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
         StoragePointerWriteAccess,
     };
-    use starknet::{ContractAddress, get_caller_address, get_contract_address};
+    use starknet::{ContractAddress, get_contract_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
@@ -72,6 +72,7 @@ pub(crate) mod Deposit {
         fn deposit(
             ref self: ComponentState<TContractState>,
             asset_id: AssetId,
+            depositor: ContractAddress,
             position_id: PositionId,
             quantized_amount: u64,
             salt: felt252,
@@ -80,13 +81,12 @@ pub(crate) mod Deposit {
             get_dep_component_mut!(ref self, Positions).get_position_snapshot(:position_id);
 
             assert(quantized_amount.is_non_zero(), errors::ZERO_AMOUNT);
-            let caller_address = get_caller_address();
             let (asset_type, token_contract, quantum) = get_dep_component!(@self, Assets)
                 .get_token_contract_and_quantum(:asset_id);
             assert(asset_type != AssetType::SYNTHETIC, errors::CANT_DEPOSIT_SYNTHETIC);
             let deposit_hash = deposit_hash(
                 token_address: token_contract.contract_address,
-                depositor: caller_address,
+                :depositor,
                 :position_id,
                 :quantized_amount,
                 :salt,
@@ -102,7 +102,7 @@ pub(crate) mod Deposit {
             assert(
                 token_contract
                     .transfer_from(
-                        sender: caller_address,
+                        sender: depositor,
                         recipient: get_contract_address(),
                         amount: unquantized_amount.into(),
                     ),
@@ -112,7 +112,7 @@ pub(crate) mod Deposit {
                 .emit(
                     events::Deposit {
                         position_id,
-                        depositing_address: caller_address,
+                        depositing_address: depositor,
                         collateral_id: asset_id,
                         quantized_amount,
                         unquantized_amount,
@@ -136,17 +136,17 @@ pub(crate) mod Deposit {
         fn cancel_deposit(
             ref self: ComponentState<TContractState>,
             asset_id: AssetId,
+            depositor: ContractAddress,
             position_id: PositionId,
             quantized_amount: u64,
             salt: felt252,
         ) {
-            let caller_address = get_caller_address();
             let (asset_type, token_contract, quantum) = get_dep_component!(@self, Assets)
                 .get_token_contract_and_quantum(:asset_id);
             assert(asset_type != AssetType::SYNTHETIC, errors::CANT_DEPOSIT_SYNTHETIC);
             let deposit_hash = deposit_hash(
                 token_address: token_contract.contract_address,
-                depositor: caller_address,
+                :depositor,
                 :position_id,
                 :quantized_amount,
                 :salt,
@@ -167,15 +167,14 @@ pub(crate) mod Deposit {
 
             let unquantized_amount = quantized_amount * quantum.into();
             assert(
-                token_contract
-                    .transfer(recipient: caller_address, amount: unquantized_amount.into()),
+                token_contract.transfer(recipient: depositor, amount: unquantized_amount.into()),
                 errors::TRANSFER_FAILED,
             );
             self
                 .emit(
                     events::DepositCanceled {
                         position_id,
-                        depositing_address: caller_address,
+                        depositing_address: depositor,
                         collateral_id: asset_id,
                         quantized_amount,
                         unquantized_amount,
@@ -206,8 +205,8 @@ pub(crate) mod Deposit {
         /// - Mark the deposit message as fulfilled.
         fn process_deposit(
             ref self: ComponentState<TContractState>,
-            asset_id: AssetId,
             operator_nonce: u64,
+            asset_id: AssetId,
             depositor: ContractAddress,
             position_id: PositionId,
             quantized_amount: u64,
