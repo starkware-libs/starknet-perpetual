@@ -371,7 +371,7 @@ pub mod VaultComponent {
             validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
 
             get_dep_component!(@self, Assets).validate_active_asset(asset_id: vault_share_asset_id);
-            let mut positions = get_dep_component_mut!(ref self, Positions);
+            let mut positions = get_dep_component!(@self, Positions);
 
             // Depositing position must not be a vault position.
             assert(!self._is_vault_position(:position_id), POSITION_IS_VAULT_POSITION);
@@ -509,7 +509,7 @@ pub mod VaultComponent {
             assert(vault_position.is_zero(), VAULT_CONTRACT_ALREADY_EXISTS);
 
             //Position check
-            let mut positions = get_dep_component_mut!(ref self, Positions);
+            let mut positions = get_dep_component!(@self, Positions);
             let vault_position = positions.get_position_snapshot(position_id: vault_position_id);
 
             for (asset_id, asset_balance) in vault_position.assets_balance {
@@ -542,7 +542,7 @@ pub mod VaultComponent {
             vault_share_asset_id: AssetId,
         ) -> (StoragePath<Position>, StoragePath<Position>) {
             validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
-            let mut positions = get_dep_component_mut!(ref self, Positions);
+            let mut positions = get_dep_component!(@self, Positions);
 
             assert(number_of_shares.is_non_zero(), INVALID_ZERO_AMOUNT);
             assert(minimum_received_total_amount.is_non_zero(), INVALID_ZERO_AMOUNT);
@@ -630,7 +630,6 @@ pub mod VaultComponent {
                 );
 
             // Apply diffs.
-            let mut positions = get_dep_component_mut!(ref self, Positions);
             positions.apply_diff(:position_id, :position_diff);
             positions.apply_diff(position_id: vault_position_id, position_diff: vault_diff);
 
