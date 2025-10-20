@@ -5,7 +5,7 @@ pub(crate) mod Deposit {
     use core::panic_with_felt252;
     use core::pedersen::PedersenTrait;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
-    use openzeppelin::interfaces::token::erc20::IERC20DispatcherTrait;
+    use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::AssetsComponent::InternalTrait as AssetsInternal;
@@ -85,16 +85,7 @@ pub(crate) mod Deposit {
             let (asset_type, token_contract, quantum) = get_dep_component!(@self, Assets)
                 .get_token_contract_and_quantum(:asset_id);
             let perps_address = get_contract_address();
-            match asset_type {
-                AssetType::SPOT_COLLATERAL => {
-                    assert(depositor == get_caller_address(), errors::DEPOSITOR_NOT_CALLER_ADDRESS);
-                },
-                AssetType::VAULT_SHARE_COLLATERAL => {
-                    get_dep_component!(@self, Roles).only_operator();
-                    assert(depositor == perps_address, errors::DEPOSITOR_NOT_CALLER_ADDRESS);
-                },
-                AssetType::SYNTHETIC => { panic_with_felt252(errors::CANT_DEPOSIT_SYNTHETIC); },
-            }
+            self._assert_depositor(:asset_type, :depositor, :perps_address);
             let deposit_hash = deposit_hash(
                 token_address: token_contract.contract_address,
                 :depositor,
@@ -160,7 +151,8 @@ pub(crate) mod Deposit {
         ) {
             let (asset_type, token_contract, quantum) = get_dep_component!(@self, Assets)
                 .get_token_contract_and_quantum(:asset_id);
-            assert(asset_type != AssetType::SYNTHETIC, errors::CANT_DEPOSIT_SYNTHETIC);
+            let perps_address = get_contract_address();
+            self._assert_depositor(:asset_type, :depositor, :perps_address);
             let deposit_hash = deposit_hash(
                 token_address: token_contract.contract_address,
                 :depositor,
@@ -169,36 +161,74 @@ pub(crate) mod Deposit {
                 :salt,
             );
 
-            // Validations
-            match self.get_deposit_status(:deposit_hash) {
-                DepositStatus::PENDING(deposit_timestamp) => assert(
-                    Time::now() > deposit_timestamp.add(self.cancel_delay.read()),
-                    errors::DEPOSIT_NOT_CANCELABLE,
-                ),
-                DepositStatus::NOT_REGISTERED => panic_with_felt252(errors::DEPOSIT_NOT_REGISTERED),
-                DepositStatus::PROCESSED => panic_with_felt252(errors::DEPOSIT_ALREADY_PROCESSED),
-                DepositStatus::CANCELED => panic_with_felt252(errors::DEPOSIT_ALREADY_CANCELED),
-            }
+            // Validate deposit can be canceled
+            self._assert_cancelable(deposit_hash, self.cancel_delay.read());
 
-            self.registered_deposits.write(key: deposit_hash, value: DepositStatus::CANCELED);
-
-            let unquantized_amount = quantized_amount * quantum.into();
-            assert(
-                token_contract.transfer(recipient: depositor, amount: unquantized_amount.into()),
-                errors::TRANSFER_FAILED,
-            );
             self
-                .emit(
-                    events::DepositCanceled {
-                        position_id,
-                        depositing_address: depositor,
-                        collateral_id: asset_id,
-                        quantized_amount,
-                        unquantized_amount,
-                        deposit_request_hash: deposit_hash,
-                        salt,
-                    },
-                );
+                ._cancel_deposit(
+                    asset_id,
+                    token_contract,
+                    quantum,
+                    depositor,
+                    position_id,
+                    quantized_amount,
+                    salt,
+                    deposit_hash,
+                )
+        }
+
+
+        /// Reject deposit is called by the operator to cancel a deposit request which did not take
+        /// place yet.
+        ///
+        /// Validations:
+        /// - The deposit requested to cancel exists, is not canceled and is not processed.
+        /// - The cancellation delay has passed.
+        /// - Only the operator can call this function.
+        /// - The contract must not be paused.
+        /// - The `operator_nonce` must be valid.
+        ///
+        /// Execution:
+        /// - Transfers the quantized amount back to the user.
+        /// - Updates the deposit status to canceled.
+        /// - Emits a DepositCanceled event.
+        fn reject_deposit(
+            ref self: ComponentState<TContractState>,
+            operator_nonce: u64,
+            asset_id: AssetId,
+            depositor: ContractAddress,
+            position_id: PositionId,
+            quantized_amount: u64,
+            salt: felt252,
+        ) {
+            get_dep_component!(@self, Pausable).assert_not_paused();
+            let mut nonce = get_dep_component_mut!(ref self, OperatorNonce);
+            nonce.use_checked_nonce(:operator_nonce);
+
+            let (_asset_type, token_contract, quantum) = get_dep_component!(@self, Assets)
+                .get_token_contract_and_quantum(:asset_id);
+            let deposit_hash = deposit_hash(
+                token_address: token_contract.contract_address,
+                :depositor,
+                :position_id,
+                :quantized_amount,
+                :salt,
+            );
+
+            // Validate deposit can be rejected (no timestamp check needed for operator)
+            self._assert_cancelable(deposit_hash, Zero::zero());
+
+            self
+                ._cancel_deposit(
+                    asset_id,
+                    token_contract,
+                    quantum,
+                    depositor,
+                    position_id,
+                    quantized_amount,
+                    salt,
+                    deposit_hash,
+                )
         }
 
         /// Process deposit a collateral amount from the 'depositing_address' to a given position.
@@ -297,12 +327,120 @@ pub(crate) mod Deposit {
 
     #[generate_trait]
     pub impl InternalImpl<
-        TContractState, +HasComponent<TContractState>, +Drop<TContractState>,
+        TContractState,
+        +HasComponent<TContractState>,
+        +Drop<TContractState>,
+        +AccessControlComponent::HasComponent<TContractState>,
+        +SRC5Component::HasComponent<TContractState>,
+        impl Assets: AssetsComponent::HasComponent<TContractState>,
+        impl OperatorNonce: OperatorNonceComponent::HasComponent<TContractState>,
+        impl Pausable: PausableComponent::HasComponent<TContractState>,
+        impl Positions: PositionsComponent::HasComponent<TContractState>,
+        impl Roles: RolesComponent::HasComponent<TContractState>,
+        impl RequestApprovals: RequestApprovalsComponent::HasComponent<TContractState>,
     > of InternalTrait<TContractState> {
         fn initialize(ref self: ComponentState<TContractState>, cancel_delay: TimeDelta) {
             assert(self.cancel_delay.read().is_zero(), errors::ALREADY_INITIALIZED);
             assert(cancel_delay.is_non_zero(), errors::INVALID_CANCEL_DELAY);
             self.cancel_delay.write(cancel_delay);
+        }
+    }
+
+    #[generate_trait]
+    impl PrivateImpl<
+        TContractState,
+        +HasComponent<TContractState>,
+        +Drop<TContractState>,
+        +AccessControlComponent::HasComponent<TContractState>,
+        +SRC5Component::HasComponent<TContractState>,
+        impl Assets: AssetsComponent::HasComponent<TContractState>,
+        impl OperatorNonce: OperatorNonceComponent::HasComponent<TContractState>,
+        impl Pausable: PausableComponent::HasComponent<TContractState>,
+        impl Positions: PositionsComponent::HasComponent<TContractState>,
+        impl Roles: RolesComponent::HasComponent<TContractState>,
+        impl RequestApprovals: RequestApprovalsComponent::HasComponent<TContractState>,
+    > of PrivateTrait<TContractState> {
+        /// Cancels a deposit request and returns the tokens to the depositor.
+        ///
+        /// Arguments:
+        /// - `cancel_delay`: The required delay before cancellation
+        ///   - If zero: allows immediate cancellation (operator rejection)
+        ///   - If positive: requires the delay to have passed (user cancellation)
+        fn _cancel_deposit(
+            ref self: ComponentState<TContractState>,
+            asset_id: AssetId,
+            token_contract: IERC20Dispatcher,
+            quantum: u64,
+            depositor: ContractAddress,
+            position_id: PositionId,
+            quantized_amount: u64,
+            salt: felt252,
+            deposit_hash: HashType,
+        ) {
+            // Update deposit status
+            self.registered_deposits.write(key: deposit_hash, value: DepositStatus::CANCELED);
+
+            // Transfer tokens back to depositor
+            let unquantized_amount = quantized_amount * quantum.into();
+            assert(
+                token_contract.transfer(recipient: depositor, amount: unquantized_amount.into()),
+                errors::TRANSFER_FAILED,
+            );
+            self
+                .emit(
+                    events::DepositCanceled {
+                        position_id,
+                        depositing_address: depositor,
+                        collateral_id: asset_id,
+                        quantized_amount,
+                        unquantized_amount,
+                        deposit_request_hash: deposit_hash,
+                        salt,
+                    },
+                );
+        }
+
+        /// Asserts that a deposit can be canceled based on its status and timing.
+        ///
+        /// Arguments:
+        /// - `deposit_hash`: The hash of the deposit to validate
+        /// - `cancel_delay`: The required delay before cancellation
+        ///   - If zero: allows immediate cancellation (operator rejection)
+        ///   - If positive: requires the delay to have passed (user cancellation)
+        fn _assert_cancelable(
+            self: @ComponentState<TContractState>, deposit_hash: HashType, cancel_delay: TimeDelta,
+        ) {
+            match self.get_deposit_status(deposit_hash) {
+                DepositStatus::PENDING(deposit_timestamp) => {
+                    if cancel_delay.is_non_zero() {
+                        assert(
+                            Time::now() > deposit_timestamp.add(cancel_delay),
+                            errors::DEPOSIT_NOT_CANCELABLE,
+                        );
+                    }
+                },
+                DepositStatus::NOT_REGISTERED => panic_with_felt252(errors::DEPOSIT_NOT_REGISTERED),
+                DepositStatus::PROCESSED => panic_with_felt252(errors::DEPOSIT_ALREADY_PROCESSED),
+                DepositStatus::CANCELED => panic_with_felt252(errors::DEPOSIT_ALREADY_CANCELED),
+            }
+        }
+
+        fn _assert_depositor(
+            self: @ComponentState<TContractState>,
+            asset_type: AssetType,
+            depositor: ContractAddress,
+            perps_address: ContractAddress,
+        ) {
+            match asset_type {
+                AssetType::SPOT_COLLATERAL => {
+                    assert(depositor == get_caller_address(), errors::DEPOSITOR_NOT_CALLER_ADDRESS);
+                },
+                AssetType::VAULT_SHARE_COLLATERAL => {
+                    get_dep_component!(self, Roles).only_operator();
+                    assert(depositor == perps_address, errors::DEPOSITOR_NOT_PERPS_ADDRESS);
+                },
+                AssetType::SYNTHETIC => { panic_with_felt252(errors::CANT_DEPOSIT_SYNTHETIC); },
+            }
         }
     }
 
