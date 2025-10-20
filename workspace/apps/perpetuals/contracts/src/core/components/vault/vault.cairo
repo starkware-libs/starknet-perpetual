@@ -148,9 +148,6 @@ pub mod VaultComponent {
                 );
 
             let perps_address = get_contract_address();
-            // Approve the perps so that the deposit will not fail on transfer_from perps to itself
-            erc20_vault_dispatcher
-                .approve(spender: perps_address, amount: actual_unquantized_vault_shares_amount);
             let actual_quantized_vault_shares_amount: u64 = (actual_unquantized_vault_shares_amount
                 / vault_share_quantum.into())
                 .try_into()

@@ -110,15 +110,21 @@ pub(crate) mod Deposit {
                 .registered_deposits
                 .write(key: deposit_hash, value: DepositStatus::PENDING(Time::now()));
             let unquantized_amount = quantized_amount * quantum.into();
-            assert(
-                token_contract
-                    .transfer_from(
-                        sender: depositor,
-                        recipient: perps_address,
-                        amount: unquantized_amount.into(),
-                    ),
-                errors::TRANSFER_FAILED,
-            );
+
+            // For vault share deposits, the tokens are already in the contract (depositor ==
+            // perps_address)
+            // so we skip the transfer_from to avoid redundant self-transfer
+            if asset_type != AssetType::VAULT_SHARE_COLLATERAL {
+                assert(
+                    token_contract
+                        .transfer_from(
+                            sender: depositor,
+                            recipient: perps_address,
+                            amount: unquantized_amount.into(),
+                        ),
+                    errors::TRANSFER_FAILED,
+                );
+            }
             self
                 .emit(
                     events::Deposit {
