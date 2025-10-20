@@ -83,7 +83,7 @@ pub impl UserImpl of UserTrait {
 }
 impl UserDefault of Default<User> {
     fn default() -> User {
-        UserTrait::new(position_id: POSITION_ID_1, key_pair: KEY_PAIR_1())
+        UserTrait::new(position_id: POSITION_ID_100, key_pair: KEY_PAIR_1())
     }
 }
 

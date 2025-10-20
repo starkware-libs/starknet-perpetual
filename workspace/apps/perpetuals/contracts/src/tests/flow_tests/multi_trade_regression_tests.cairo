@@ -63,10 +63,10 @@ const UPGRADE_ADMIN: ContractAddress =
     .try_into()
     .unwrap();
 
-const POSITION_ID_1: PositionId = PositionId { value: 0x31357 };
-const POSITION_ID_2: PositionId = PositionId { value: 0x1f4 };
-const POSITION_ID_3: PositionId = PositionId { value: 0x19905 };
-const POSITION_ID_4: PositionId = PositionId { value: 0x1f9 };
+const POSITION_ID_0x31357: PositionId = PositionId { value: 0x31357 };
+const POSITION_ID_0x1f4: PositionId = PositionId { value: 0x1f4 };
+const POSITION_ID_0x19905: PositionId = PositionId { value: 0x19905 };
+const POSITION_ID_0x1f9: PositionId = PositionId { value: 0x1f9 };
 
 const OPERATOR_NONCE: u64 = 0x590178;
 
@@ -85,7 +85,7 @@ fn SETTLEMENT_1() -> Settlement {
         ]
             .span(),
         order_a: Order {
-            position_id: POSITION_ID_1,
+            position_id: POSITION_ID_0x31357,
             base_asset_id: AssetIdTrait::new(0x47524153532d310000000000000000),
             base_amount: 370000,
             quote_asset_id: AssetIdTrait::new(0x1),
@@ -96,7 +96,7 @@ fn SETTLEMENT_1() -> Settlement {
             salt: 0x1c9012f3,
         },
         order_b: Order {
-            position_id: POSITION_ID_2,
+            position_id: POSITION_ID_0x1f4,
             base_asset_id: AssetIdTrait::new(0x47524153532d310000000000000000),
             base_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffffc2e1d
                 .try_into()
@@ -130,7 +130,7 @@ fn SETTLEMENT_2() -> Settlement {
         ]
             .span(),
         order_a: Order {
-            position_id: POSITION_ID_3,
+            position_id: POSITION_ID_0x19905,
             base_asset_id: AssetIdTrait::new(0x5345492d3000000000000000000000),
             base_amount: 0x212.try_into().unwrap(),
             quote_asset_id: AssetIdTrait::new(0x1),
@@ -143,7 +143,7 @@ fn SETTLEMENT_2() -> Settlement {
             salt: 0xfc98573b,
         },
         order_b: Order {
-            position_id: POSITION_ID_4,
+            position_id: POSITION_ID_0x1f9,
             base_asset_id: AssetIdTrait::new(0x5345492d3000000000000000000000),
             base_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffffffeb7
                 .try_into()
@@ -177,7 +177,7 @@ fn SETTLEMENT_3() -> Settlement {
         ]
             .span(),
         order_a: Order {
-            position_id: POSITION_ID_2,
+            position_id: POSITION_ID_0x1f4,
             base_asset_id: AssetIdTrait::new(0x4f4e444f2d31000000000000000000),
             base_amount: 0xead76.try_into().unwrap(),
             quote_asset_id: AssetIdTrait::new(0x1),
@@ -190,7 +190,7 @@ fn SETTLEMENT_3() -> Settlement {
             salt: 0x2d07228f,
         },
         order_b: Order {
-            position_id: POSITION_ID_4,
+            position_id: POSITION_ID_0x1f9,
             base_asset_id: AssetIdTrait::new(0x4f4e444f2d31000000000000000000),
             base_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffffffefd
                 .try_into()
@@ -263,11 +263,11 @@ fn test_mainnet_data_three_trades_original_code() {
     let core_dispatcher = ICoreDispatcher { contract_address: CONTRACT_ADDRESS };
     let positions_dispatcher = IPositionsDispatcher { contract_address: CONTRACT_ADDRESS };
 
-    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_1);
+    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_0x31357);
     assert_eq!(tv_tr.total_value, INIT_TV_POSITION_A);
     assert_eq!(tv_tr.total_risk, INIT_TR_POSITION_A);
 
-    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_2);
+    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_0x1f4);
     assert_eq!(tv_tr.total_value, INIT_TV_POSITION_B);
     assert_eq!(tv_tr.total_risk, INIT_TR_POSITION_B);
 
@@ -290,11 +290,11 @@ fn test_mainnet_data_three_trades_original_code() {
             actual_fee_b: settlement_1.actual_fee_b,
         );
 
-    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_1);
+    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_0x31357);
     assert_eq!(tv_tr.total_value, STAGE_1_TV_POSITION_A);
     assert_eq!(tv_tr.total_risk, STAGE_1_TR_POSITION_A);
 
-    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_2);
+    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_0x1f4);
     assert_eq!(tv_tr.total_value, STAGE_1_TV_POSITION_B);
     assert_eq!(tv_tr.total_risk, STAGE_1_TR_POSITION_B);
 
@@ -314,11 +314,11 @@ fn test_mainnet_data_three_trades_original_code() {
             actual_fee_b: settlement_2.actual_fee_b,
         );
 
-    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_3);
+    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_0x19905);
     assert_eq!(tv_tr.total_value, STAGE_2_TV_POSITION_A);
     assert_eq!(tv_tr.total_risk, STAGE_2_TR_POSITION_A);
 
-    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_4);
+    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_0x1f9);
     assert_eq!(tv_tr.total_value, STAGE_2_TV_POSITION_B);
     assert_eq!(tv_tr.total_risk, STAGE_2_TR_POSITION_B);
 
@@ -338,11 +338,11 @@ fn test_mainnet_data_three_trades_original_code() {
             actual_fee_b: settlement_3.actual_fee_b,
         );
 
-    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_2);
+    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_0x1f4);
     assert_eq!(tv_tr.total_value, STAGE_3_TV_POSITION_A);
     assert_eq!(tv_tr.total_risk, STAGE_3_TR_POSITION_A);
 
-    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_4);
+    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_0x1f9);
     assert_eq!(tv_tr.total_value, STAGE_3_TV_POSITION_B);
     assert_eq!(tv_tr.total_risk, STAGE_3_TR_POSITION_B);
 }
@@ -358,11 +358,11 @@ fn test_mainnet_data_three_trades_upgraded_code() {
     // Replace:
     replace_to_new_implementation();
 
-    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_1);
+    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_0x31357);
     assert_eq!(tv_tr.total_value, INIT_TV_POSITION_A);
     assert_eq!(tv_tr.total_risk, INIT_TR_POSITION_A);
 
-    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_2);
+    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_0x1f4);
     assert_eq!(tv_tr.total_value, INIT_TV_POSITION_B);
     assert_eq!(tv_tr.total_risk, INIT_TR_POSITION_B);
 
@@ -385,11 +385,11 @@ fn test_mainnet_data_three_trades_upgraded_code() {
             actual_fee_b: settlement_1.actual_fee_b,
         );
 
-    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_1);
+    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_0x31357);
     assert_eq!(tv_tr.total_value, STAGE_1_TV_POSITION_A);
     assert_eq!(tv_tr.total_risk, STAGE_1_TR_POSITION_A);
 
-    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_2);
+    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_0x1f4);
     assert_eq!(tv_tr.total_value, STAGE_1_TV_POSITION_B);
     assert_eq!(tv_tr.total_risk, STAGE_1_TR_POSITION_B);
 
@@ -409,11 +409,11 @@ fn test_mainnet_data_three_trades_upgraded_code() {
             actual_fee_b: settlement_2.actual_fee_b,
         );
 
-    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_3);
+    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_0x19905);
     assert_eq!(tv_tr.total_value, STAGE_2_TV_POSITION_A);
     assert_eq!(tv_tr.total_risk, STAGE_2_TR_POSITION_A);
 
-    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_4);
+    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_0x1f9);
     assert_eq!(tv_tr.total_value, STAGE_2_TV_POSITION_B);
     assert_eq!(tv_tr.total_risk, STAGE_2_TR_POSITION_B);
 
@@ -433,11 +433,11 @@ fn test_mainnet_data_three_trades_upgraded_code() {
             actual_fee_b: settlement_3.actual_fee_b,
         );
 
-    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_2);
+    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_0x1f4);
     assert_eq!(tv_tr.total_value, STAGE_3_TV_POSITION_A);
     assert_eq!(tv_tr.total_risk, STAGE_3_TR_POSITION_A);
 
-    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_4);
+    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_0x1f9);
     assert_eq!(tv_tr.total_value, STAGE_3_TV_POSITION_B);
     assert_eq!(tv_tr.total_risk, STAGE_3_TR_POSITION_B);
 }
@@ -453,11 +453,11 @@ fn test_mainnet_data_multi_trade_upgraded_code() {
     replace_to_new_implementation();
 
     // Check the initial state:
-    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_1);
+    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_0x31357);
     assert_eq!(tv_tr.total_value, INIT_TV_POSITION_A);
     assert_eq!(tv_tr.total_risk, INIT_TR_POSITION_A);
 
-    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_2);
+    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_0x1f4);
     assert_eq!(tv_tr.total_value, INIT_TV_POSITION_B);
     assert_eq!(tv_tr.total_risk, INIT_TR_POSITION_B);
 
@@ -471,19 +471,19 @@ fn test_mainnet_data_multi_trade_upgraded_code() {
 
     // Check the final state of the 4 positions:
 
-    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_1);
+    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_0x31357);
     assert_eq!(tv_tr.total_value, STAGE_1_TV_POSITION_A);
     assert_eq!(tv_tr.total_risk, STAGE_1_TR_POSITION_A);
 
-    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_2);
+    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_0x1f4);
     assert_eq!(tv_tr.total_value, STAGE_3_TV_POSITION_A);
     assert_eq!(tv_tr.total_risk, STAGE_3_TR_POSITION_A);
 
-    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_3);
+    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_0x19905);
     assert_eq!(tv_tr.total_value, STAGE_2_TV_POSITION_A);
     assert_eq!(tv_tr.total_risk, STAGE_2_TR_POSITION_A);
 
-    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_4);
+    let tv_tr = positions_dispatcher.get_position_tv_tr(position_id: POSITION_ID_0x1f9);
     assert_eq!(tv_tr.total_value, STAGE_3_TV_POSITION_B);
     assert_eq!(tv_tr.total_risk, STAGE_3_TR_POSITION_B);
 }

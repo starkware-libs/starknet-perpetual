@@ -77,9 +77,9 @@ pub const CONTRACT_INIT_BALANCE: u128 = 1_000_000_000;
 pub const USER_INIT_BALANCE: u128 = 10_000_000_000;
 pub const VAULT_SHARE_QUANTUM: u64 = 1_000;
 
-pub const POSITION_ID_1: PositionId = PositionId { value: 2 };
-pub const POSITION_ID_2: PositionId = PositionId { value: 3 };
-pub const POSITION_ID_3: PositionId = PositionId { value: 4 };
+pub const POSITION_ID_100: PositionId = PositionId { value: 100 };
+pub const POSITION_ID_200: PositionId = PositionId { value: 200 };
+pub const POSITION_ID_300: PositionId = PositionId { value: 300 };
 
 pub const ORACLE_A_NAME: felt252 = 'ORCLA';
 pub const ORACLE_B_NAME: felt252 = 'ORCLB';

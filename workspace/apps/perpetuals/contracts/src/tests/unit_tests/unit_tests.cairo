@@ -126,7 +126,7 @@ fn test_caller_failures() {
             operator_nonce: Zero::zero(),
             asset_id: cfg.collateral_cfg.collateral_id,
             depositor: test_address(),
-            position_id: POSITION_ID_1,
+            position_id: POSITION_ID_100,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: 0,
         );
@@ -136,7 +136,7 @@ fn test_caller_failures() {
         .withdraw_request(
             signature: array![].span(),
             recipient: test_address(),
-            position_id: POSITION_ID_1,
+            position_id: POSITION_ID_100,
             amount: WITHDRAW_AMOUNT.into(),
             expiration: Time::now(),
             salt: 0,
@@ -148,7 +148,7 @@ fn test_caller_failures() {
         .withdraw(
             operator_nonce: Zero::zero(),
             recipient: test_address(),
-            position_id: POSITION_ID_1,
+            position_id: POSITION_ID_100,
             amount: WITHDRAW_AMOUNT.into(),
             expiration: Time::now(),
             salt: 0,
@@ -158,8 +158,8 @@ fn test_caller_failures() {
     let result = dispatcher
         .transfer_request(
             signature: array![].span(),
-            recipient: POSITION_ID_1,
-            position_id: POSITION_ID_2,
+            recipient: POSITION_ID_100,
+            position_id: POSITION_ID_200,
             amount: TRANSFER_AMOUNT.into(),
             expiration: Time::now(),
             salt: 0,
@@ -170,8 +170,8 @@ fn test_caller_failures() {
     let result = dispatcher
         .transfer(
             operator_nonce: Zero::zero(),
-            recipient: POSITION_ID_1,
-            position_id: POSITION_ID_2,
+            recipient: POSITION_ID_100,
+            position_id: POSITION_ID_200,
             amount: TRANSFER_AMOUNT.into(),
             expiration: Time::now(),
             salt: 0,
@@ -179,7 +179,7 @@ fn test_caller_failures() {
     assert_panic_with_error(:result, expected_error: "ONLY_OPERATOR");
 
     let default_order = Order {
-        position_id: POSITION_ID_1,
+        position_id: POSITION_ID_100,
         base_asset_id: cfg.collateral_cfg.collateral_id,
         base_amount: 0,
         quote_asset_id: cfg.collateral_cfg.collateral_id,
@@ -208,7 +208,7 @@ fn test_caller_failures() {
         .liquidate(
             operator_nonce: Zero::zero(),
             liquidator_signature: array![].span(),
-            liquidated_position_id: POSITION_ID_1,
+            liquidated_position_id: POSITION_ID_100,
             liquidator_order: default_order,
             actual_amount_base_liquidated: 0,
             actual_amount_quote_liquidated: 0,
@@ -220,8 +220,8 @@ fn test_caller_failures() {
     let result = dispatcher
         .deleverage(
             operator_nonce: Zero::zero(),
-            deleveraged_position_id: POSITION_ID_1,
-            deleverager_position_id: POSITION_ID_1,
+            deleveraged_position_id: POSITION_ID_100,
+            deleverager_position_id: POSITION_ID_100,
             base_asset_id: cfg.collateral_cfg.collateral_id,
             deleveraged_base_amount: 0,
             deleveraged_quote_amount: 0,
@@ -271,7 +271,7 @@ fn test_caller_failures() {
     let result = dispatcher
         .new_position(
             operator_nonce: Zero::zero(),
-            position_id: POSITION_ID_1,
+            position_id: POSITION_ID_100,
             owner_public_key: Zero::zero(),
             owner_account: Zero::zero(),
         );
@@ -280,7 +280,7 @@ fn test_caller_failures() {
     let result = dispatcher
         .set_owner_account(
             operator_nonce: Zero::zero(),
-            position_id: POSITION_ID_1,
+            position_id: POSITION_ID_100,
             new_owner_account: Zero::zero(),
             expiration: Time::now(),
         );
@@ -289,7 +289,7 @@ fn test_caller_failures() {
     let result = dispatcher
         .set_public_key_request(
             signature: array![].span(),
-            position_id: POSITION_ID_1,
+            position_id: POSITION_ID_100,
             new_public_key: Zero::zero(),
             expiration: Time::now(),
         );
@@ -299,7 +299,7 @@ fn test_caller_failures() {
     let result = dispatcher
         .set_public_key(
             operator_nonce: Zero::zero(),
-            position_id: POSITION_ID_1,
+            position_id: POSITION_ID_100,
             new_public_key: Zero::zero(),
             expiration: Time::now(),
         );
@@ -447,7 +447,7 @@ fn test_signature_validation() {
     let position_dispatcher = IPositionsDispatcher { contract_address };
 
     let user_a: User = Default::default();
-    let user_b = UserTrait::new(position_id: POSITION_ID_2, key_pair: KEY_PAIR_2());
+    let user_b = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
     let collateral_id = cfg.collateral_cfg.collateral_id;
     let synthetic_id_1 = SYNTHETIC_ASSET_ID_1();
     let synthetic_id_2 = SYNTHETIC_ASSET_ID_2();
@@ -538,7 +538,7 @@ fn test_signature_validation() {
     position_dispatcher
         .new_position(
             operator_nonce: 2,
-            position_id: POSITION_ID_1,
+            position_id: POSITION_ID_100,
             owner_public_key: KEY_PAIR_1().public_key,
             owner_account: Zero::zero(),
         );
@@ -547,7 +547,7 @@ fn test_signature_validation() {
     position_dispatcher
         .new_position(
             operator_nonce: 3,
-            position_id: POSITION_ID_2,
+            position_id: POSITION_ID_200,
             owner_public_key: KEY_PAIR_2().public_key,
             owner_account: Zero::zero(),
         );
@@ -613,7 +613,7 @@ fn test_signature_validation() {
 
     // Build orders.
     let mut order_a = Order {
-        position_id: POSITION_ID_1,
+        position_id: POSITION_ID_100,
         base_asset_id: synthetic_id_1,
         base_amount: 1,
         quote_asset_id: collateral_id,
@@ -625,7 +625,7 @@ fn test_signature_validation() {
     };
 
     let mut order_b = Order {
-        position_id: POSITION_ID_2,
+        position_id: POSITION_ID_200,
         base_asset_id: synthetic_id_1,
         base_amount: -1,
         quote_asset_id: collateral_id,
@@ -749,7 +749,7 @@ fn test_new_position() {
     let mut spy = snforge_std::spy_events();
 
     // Parameters:
-    let position_id = POSITION_ID_1;
+    let position_id = POSITION_ID_100;
     let owner_public_key = KEY_PAIR_1().public_key;
     let owner_account = POSITION_OWNER_1();
 
@@ -963,7 +963,7 @@ fn test_set_existed_owner_account() {
     init_position_with_owner(cfg: @cfg, ref :state, :user);
 
     // Parameters:
-    let position_id = POSITION_ID_1;
+    let position_id = POSITION_ID_100;
     let new_owner_account = POSITION_OWNER_1();
     let expiration = Time::now().add(Time::days(1));
 
@@ -1714,7 +1714,7 @@ fn test_successful_trade() {
     let user_a = Default::default();
     init_position(cfg: @cfg, ref :state, user: user_a);
 
-    let user_b = UserTrait::new(position_id: POSITION_ID_2, key_pair: KEY_PAIR_2());
+    let user_b = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
     init_position(cfg: @cfg, ref :state, user: user_b);
 
     // Test params:
@@ -1839,7 +1839,7 @@ fn test_invalid_trade_same_base_signs() {
     let user_a = Default::default();
     init_position(cfg: @cfg, ref :state, user: user_a);
 
-    let user_b = UserTrait::new(position_id: POSITION_ID_2, key_pair: KEY_PAIR_2());
+    let user_b = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
     init_position(cfg: @cfg, ref :state, user: user_b);
 
     // Test params:
@@ -1906,7 +1906,7 @@ fn test_successful_withdraw_request_with_public_key() {
     let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
     let user = Default::default();
     init_position(cfg: @cfg, ref :state, :user);
-    let recipient = UserTrait::new(position_id: POSITION_ID_2, key_pair: KEY_PAIR_2());
+    let recipient = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
 
     // Setup parameters:
     start_cheat_block_timestamp_global(
@@ -1950,7 +1950,7 @@ fn test_successful_withdraw_request_with_owner() {
     let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
     let user = Default::default();
     init_position_with_owner(cfg: @cfg, ref :state, :user);
-    let recipient = UserTrait::new(position_id: POSITION_ID_2, key_pair: KEY_PAIR_2());
+    let recipient = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
 
     // Setup parameters:
     start_cheat_block_timestamp_global(
@@ -2006,7 +2006,7 @@ fn test_successful_deleverage() {
         balance: -2 * SYNTHETIC_BALANCE_AMOUNT,
     );
 
-    let deleverager = UserTrait::new(position_id: POSITION_ID_2, key_pair: KEY_PAIR_2());
+    let deleverager = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
     init_position(cfg: @cfg, ref :state, user: deleverager);
     add_synthetic_to_position(
         ref :state,
@@ -2090,7 +2090,7 @@ fn test_successful_deleverage() {
 }
 
 #[test]
-#[should_panic(expected: "POSITION_IS_NOT_FAIR_DELEVERAGE position_id: PositionId { value: 2 }")]
+#[should_panic(expected: "POSITION_IS_NOT_FAIR_DELEVERAGE position_id: PositionId { value: 100 }")]
 fn test_unfair_deleverage() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -2108,7 +2108,7 @@ fn test_unfair_deleverage() {
         balance: -2 * SYNTHETIC_BALANCE_AMOUNT,
     );
 
-    let deleverager = UserTrait::new(position_id: POSITION_ID_2, key_pair: KEY_PAIR_2());
+    let deleverager = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
     init_position(cfg: @cfg, ref :state, user: deleverager);
     add_synthetic_to_position(
         ref :state,
@@ -2155,7 +2155,7 @@ fn test_successful_liquidate() {
 
     let liquidator = Default::default();
     init_position(cfg: @cfg, ref :state, user: liquidator);
-    let liquidated = UserTrait::new(position_id: POSITION_ID_2, key_pair: KEY_PAIR_2());
+    let liquidated = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
     init_position(cfg: @cfg, ref :state, user: liquidated);
     add_synthetic_to_position(
         ref :state,
@@ -2438,7 +2438,7 @@ fn test_invalid_set_public_key_request_wrong_owner() {
     let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
     let no_position_owner = Default::default();
     init_position_with_owner(cfg: @cfg, ref :state, user: no_position_owner);
-    let position_owner = UserTrait::new(position_id: POSITION_ID_2, key_pair: KEY_PAIR_2());
+    let position_owner = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
     init_position_with_owner(cfg: @cfg, ref :state, user: position_owner);
 
     // Setup parameters:
@@ -2507,7 +2507,7 @@ fn test_successful_transfer_request_using_public_key() {
     let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
     let user = Default::default();
     init_position(cfg: @cfg, ref :state, :user);
-    let recipient = UserTrait::new(position_id: POSITION_ID_2, key_pair: KEY_PAIR_2());
+    let recipient = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
     init_position(cfg: @cfg, ref :state, user: recipient);
 
     // Setup parameters:
@@ -2550,7 +2550,7 @@ fn test_successful_transfer_request_with_owner() {
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
     let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
     let user = Default::default();
-    let recipient = UserTrait::new(position_id: POSITION_ID_2, key_pair: KEY_PAIR_2());
+    let recipient = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
     init_position_with_owner(cfg: @cfg, ref :state, :user);
     init_position_with_owner(cfg: @cfg, ref :state, user: recipient);
 
@@ -2597,7 +2597,7 @@ fn test_successful_transfer() {
     let sender = Default::default();
     init_position(cfg: @cfg, ref :state, user: sender);
 
-    let recipient = UserTrait::new(position_id: POSITION_ID_2, key_pair: KEY_PAIR_2());
+    let recipient = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
     init_position(cfg: @cfg, ref :state, user: recipient);
 
     // Setup parameters:
@@ -2693,7 +2693,7 @@ fn test_invalid_transfer_request_amount_is_zero() {
     let sender = Default::default();
     init_position(cfg: @cfg, ref :state, user: sender);
 
-    let recipient = UserTrait::new(position_id: POSITION_ID_2, key_pair: KEY_PAIR_2());
+    let recipient = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
     init_position(cfg: @cfg, ref :state, user: recipient);
 
     // Setup parameters:
@@ -3612,7 +3612,7 @@ fn test_failed_deposit_into_vault_scenarios() {
 
     // Setup users:
     let user: User = Default::default();
-    let vault_user = UserTrait::new(position_id: POSITION_ID_2, key_pair: KEY_PAIR_2());
+    let vault_user = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
     let asset_id = cfg.synthetic_cfg.synthetic_id;
 
     // Test 1: deposit into vault with unexisted vault asset id.
@@ -3916,7 +3916,7 @@ fn test_register_vault_negative_scenarios() {
     assert_panic_with_felt_error(:result, expected_error: ASSET_NOT_EXISTS);
 
     // Setup parameters:
-    let non_existent_vault_position_id = PositionId { value: 100 };
+    let non_existent_vault_position_id = PositionId { value: 9999 };
     let vault_contract_address = VAULT_CONTRACT_ADDRESS_1();
     let vault_asset_id = VAULT_ASSET_ID_1();
     let expiration = Time::now().add(Time::days(1));
@@ -3993,7 +3993,7 @@ fn test_register_vault_negative_scenarios() {
     assert_panic_with_felt_error(:result, expected_error: 'VAULT_POSITION_ALREADY_EXISTS');
 
     // Setup for registration with same contract address but different position:
-    let vault2 = UserTrait::new(position_id: POSITION_ID_2, key_pair: KEY_PAIR_2());
+    let vault2 = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     position_dispatcher
         .new_position(
@@ -4002,9 +4002,12 @@ fn test_register_vault_negative_scenarios() {
             owner_public_key: vault2.get_public_key(),
             owner_account: Zero::zero(),
         );
-    let vault_position_id_2 = vault2.position_id;
+    let vault_POSITION_ID_200 = vault2.position_id;
     let register_vault_args_2 = RegisterVaultArgs {
-        vault_position_id: vault_position_id_2, vault_contract_address, vault_asset_id, expiration,
+        vault_position_id: vault_POSITION_ID_200,
+        vault_contract_address,
+        vault_asset_id,
+        expiration,
     };
     let msg_hash = register_vault_args_2.get_message_hash(public_key: vault2.get_public_key());
     let signature = vault2.sign_message(msg_hash);
@@ -4015,7 +4018,7 @@ fn test_register_vault_negative_scenarios() {
         .register_vault(
             operator_nonce: 7,
             :signature,
-            vault_position_id: vault_position_id_2,
+            vault_position_id: vault_POSITION_ID_200,
             :vault_contract_address,
             :vault_asset_id,
             :expiration,
@@ -4024,7 +4027,7 @@ fn test_register_vault_negative_scenarios() {
 
     // Test 6: register vault position that already holds vault shares from another vault.
     // Setup: Create a third position that will hold shares from the first vault.
-    let position_with_shares = UserTrait::new(position_id: POSITION_ID_3, key_pair: KEY_PAIR_3());
+    let position_with_shares = UserTrait::new(position_id: POSITION_ID_300, key_pair: KEY_PAIR_3());
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     position_dispatcher
         .new_position(
