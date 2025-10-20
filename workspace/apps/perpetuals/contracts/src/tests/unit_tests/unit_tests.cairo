@@ -18,12 +18,13 @@ use perpetuals::core::components::positions::interface::{
     IPositions, IPositionsDispatcher, IPositionsDispatcherTrait, IPositionsSafeDispatcher,
     IPositionsSafeDispatcherTrait,
 };
+use perpetuals::core::components::vault::errors::VAULT_POSITION_HAS_SHARES;
 use perpetuals::core::components::vault::interface::{
     IVault, IVaultSafeDispatcher, IVaultSafeDispatcherTrait,
 };
 use perpetuals::core::core::Core;
 use perpetuals::core::core::Core::SNIP12MetadataImpl;
-use perpetuals::core::errors::{SIGNED_TX_EXPIRED, VAULT_POSITION_HAS_SHARES};
+use perpetuals::core::errors::SIGNED_TX_EXPIRED;
 use perpetuals::core::events;
 use perpetuals::core::interface::{ICore, ICoreSafeDispatcher, ICoreSafeDispatcherTrait};
 use perpetuals::core::types::asset::{AssetStatus, AssetTrait};
@@ -4002,7 +4003,7 @@ fn test_register_vault_negative_scenarios() {
 
     // Test 6: register vault position that already holds vault shares from another vault.
     // Setup: Create a third position that will hold shares from the first vault.
-    let position_with_shares = UserTrait::new(position_id: POSITION_ID_3(), key_pair: KEY_PAIR_3());
+    let position_with_shares = UserTrait::new(position_id: POSITION_ID_3, key_pair: KEY_PAIR_3());
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     position_dispatcher
         .new_position(
@@ -4068,11 +4069,11 @@ fn test_register_vault_negative_scenarios() {
     let result = dispatcher
         .register_vault(
             operator_nonce: 9,
+            :signature,
             vault_position_id: position_with_shares.position_id,
             vault_contract_address: vault_contract_address_3,
             vault_asset_id: vault_asset_id_3,
             :expiration,
-            :signature,
         );
     assert_panic_with_felt_error(:result, expected_error: VAULT_POSITION_HAS_SHARES);
 }

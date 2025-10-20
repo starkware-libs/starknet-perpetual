@@ -79,9 +79,7 @@ pub const VAULT_SHARE_QUANTUM: u64 = 1_000;
 
 pub const POSITION_ID_1: PositionId = PositionId { value: 2 };
 pub const POSITION_ID_2: PositionId = PositionId { value: 3 };
-pub fn POSITION_ID_3() -> PositionId {
-    PositionId { value: 4 }
-}
+pub const POSITION_ID_3: PositionId = PositionId { value: 4 };
 
 pub const ORACLE_A_NAME: felt252 = 'ORCLA';
 pub const ORACLE_B_NAME: felt252 = 'ORCLB';
