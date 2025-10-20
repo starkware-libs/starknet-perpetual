@@ -21,11 +21,12 @@ pub(crate) mod Deposit {
         Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
         StoragePointerWriteAccess,
     };
-    use starknet::{ContractAddress, get_contract_address};
+    use starknet::{ContractAddress, get_caller_address, get_contract_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
     use starkware_utils::components::roles::RolesComponent;
+    use starkware_utils::components::roles::RolesComponent::InternalTrait as RolesInternalTrait;
     use starkware_utils::signature::stark::HashType;
     use starkware_utils::time::time::{Time, TimeDelta};
 
@@ -78,12 +79,20 @@ pub(crate) mod Deposit {
             salt: felt252,
         ) {
             // check recipient position exists
-            get_dep_component_mut!(ref self, Positions).get_position_snapshot(:position_id);
+            get_dep_component!(@self, Positions).get_position_snapshot(:position_id);
 
             assert(quantized_amount.is_non_zero(), errors::ZERO_AMOUNT);
             let (asset_type, token_contract, quantum) = get_dep_component!(@self, Assets)
                 .get_token_contract_and_quantum(:asset_id);
-            assert(asset_type != AssetType::SYNTHETIC, errors::CANT_DEPOSIT_SYNTHETIC);
+            match asset_type {
+                AssetType::SPOT_COLLATERAL => {
+                    assert(depositor == get_caller_address(), errors::DEPOSITOR_NOT_CALLER_ADDRESS);
+                },
+                AssetType::VAULT_SHARE_COLLATERAL => {
+                    get_dep_component!(@self, Roles).only_operator();
+                },
+                AssetType::SYNTHETIC => { panic_with_felt252(errors::CANT_DEPOSIT_SYNTHETIC); },
+            }
             let deposit_hash = deposit_hash(
                 token_address: token_contract.contract_address,
                 :depositor,
