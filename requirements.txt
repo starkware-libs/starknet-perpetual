@@ -4,4 +4,5 @@ pytest-asyncio
 asyncio
 pytest-xdist
 requests
+dataclasses
 git+https://github.com/starkware-libs/starkware-starknet-utils.git@main#egg=test_utils&subdirectory=python

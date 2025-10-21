@@ -7,6 +7,7 @@ from starknet_py.net.client_models import Call
 from starknet_py.contract import Contract
 from starknet_py.hash.selector import get_selector_from_name
 from pathlib import Path
+from dataclasses import dataclass
 
 
 ROLE_ADMIN = {
@@ -179,3 +180,22 @@ async def grant_roles_by_contract_address(contract_address: Address, roles: dict
             )
         ).transaction_hash
     )
+
+
+@dataclass
+class AccountNonceManager:
+    account_number: int
+    nonce: int = 0
+
+    def get_nonce(self) -> int:
+        """
+        Return the current nonce value.
+        """
+        return self.nonce
+
+    def bump_nonce(self) -> int:
+        """
+        Increment the nonce by 1 and return it.
+        """
+        self.nonce += 1
+        return self.nonce - 1
