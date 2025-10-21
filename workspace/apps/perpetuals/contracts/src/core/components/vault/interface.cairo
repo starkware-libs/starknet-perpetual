@@ -27,7 +27,7 @@ pub trait IVault<TContractState> {
         vault_asset_id: AssetId,
         expiration: Timestamp,
     );
-    fn withdraw_from_vault(
+    fn redeem_from_vault(
         ref self: TContractState,
         operator_nonce: u64,
         user_signature: Signature,
