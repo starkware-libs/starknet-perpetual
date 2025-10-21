@@ -2269,7 +2269,7 @@ We assume that the position is always healthier for deposit
 
 [deposit\_processed](#depositprocessed)
 
-###### Cancel Pending Deposit
+###### Cancel Deposit
 
 The user cancels a registered deposit request in the Deposit component.
 
@@ -2311,6 +2311,67 @@ pub fn deposit_hash(
 
 1. `deposit_hash` is in `DepositStatus::PENDING` in `registered_deposits`
 2. `cancel_delay` elapsed since the deposit was registered.
+
+**Logic:**
+
+1. Run validations
+2. Mark deposit request as `DepositStatus::CANCELED`.
+3. Transfer `quantized_amount*quantum` from `get_contract_address()` to `get_caller_address()`
+
+**Errors:**
+
+- DEPOSIT_NOT_CANCELABLE
+- DEPOSIT_NOT_REGISTERED
+- DEPOSIT_ALREADY_PROCESSED
+- DEPOSIT_ALREADY_CANCELED
+- ASSET\_NOT\_REGISTERED
+
+**Emits:**
+[deposit\_canceled](#depositcanceled)
+
+###### Reject Deposit
+
+The user cancels a registered deposit request in the Deposit component.
+
+```rust
+fn reject_deposit(
+    ref self: ComponentState<TContractState>,
+    operator_nonce: u64,
+    asset_id: AssetId,
+    depositor: ContractAddress,
+    position_id: PositionId,
+    quantized_amount: u64,
+    salt: felt252,
+) 
+```
+
+**Access Control:**
+
+Only the Operator can execute.
+
+**Hash:**
+
+```rust
+pub fn deposit_hash(
+    token_address: ContractAddress,
+    depositor: ContractAddress,
+    position_id: PositionId,
+    quantized_amount: u64,
+    salt: felt252,
+) -> HashType {
+    PedersenTrait::new(base: token_address.into())
+        .update_with(value: depositor)
+        .update_with(value: position_id)
+        .update_with(value: quantized_amount)
+        .update_with(value: salt)
+        .finalize()
+}
+```
+
+**Validations:**
+
+1. `deposit_hash` is in `DepositStatus::PENDING` in `registered_deposits`
+2. [Operator Nonce check](#operator-nonce)
 
 **Logic:**
 
