@@ -1,6 +1,13 @@
 import pytest
 from typing import Iterator, Callable
 from test_utils.starknet_test_utils import StarknetTestUtils
+from starknet_py.net.models.chains import StarknetChainId
+from test_utils.starknet_test_utils import KeyPair
+
+from starknet_py.net.account.account import Account
+from starknet_py.net.models.address import Address
+from starknet_py.net.client_models import Call
+from starknet_py.contract import Contract
 
 
 @pytest.fixture(scope="session")
@@ -34,6 +41,7 @@ def starknet_forked(
     with starknet_test_utils_factory(
         fork_network="https://rpc.starknet.lava.build/",
         fork_block=1844544,
+        starknet_chain_id=StarknetChainId.MAINNET,
     ) as val:
         yield val
 
@@ -50,3 +58,46 @@ def starknet_forked_with_impersonated_accounts(
         client.impersonate_account(address)
 
     return starknet_forked
+
+
+@pytest.fixture
+def operator_account(
+    starknet_forked_with_impersonated_accounts: StarknetTestUtils,
+    operator_address: int,
+) -> Account:
+    """
+    Return an Account instance for the impersonated operator account.
+    """
+    client = starknet_forked_with_impersonated_accounts.starknet.get_client()
+    operator_account = Account(
+        client=client,
+        address=Address(operator_address),
+        # Use a dummy private key since the account is impersonated.
+        key_pair=KeyPair.from_private_key(1),
+        chain=StarknetChainId.MAINNET,
+    )
+    return operator_account
+
+
+@pytest.fixture
+def deployer_account(
+    starknet_forked_with_impersonated_accounts: StarknetTestUtils,
+    deployer_address: int,
+) -> Account:
+    """
+    Return an Account instance for the impersonated deployer account.
+    """
+    client = starknet_forked_with_impersonated_accounts.starknet.get_client()
+    deployer_account = Account(
+        client=client,
+        address=Address(deployer_address),
+        # Use a dummy private key since the account is impersonated.
+        key_pair=KeyPair.from_private_key(1),
+        chain=StarknetChainId.MAINNET,
+    )
+    return deployer_account
+
+
+# todo : call the contarct
+# todo : updte the contarct(declare and replace)
+# todo :  run trade
