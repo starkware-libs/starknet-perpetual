@@ -4,6 +4,7 @@ import subprocess
 import sys
 from enum import Enum
 from typing import List
+from pathlib import Path
 
 
 PARENT_BRANCH = "dev"
@@ -130,3 +131,11 @@ def find_command(command_name: str) -> str:
     except subprocess.CalledProcessError:
         print(color_txt("red", f"Failed to launch {command_name}"))
         raise Exception(f"{command_name} not installed")
+
+
+def get_project_root() -> Path:
+    """
+    Returns the root directory of the project.
+    Assumes this file is located at <project_root>/scripts/scripts_utils.py
+    """
+    return Path(__file__).resolve().parent.parent
