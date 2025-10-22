@@ -25,7 +25,7 @@ classDiagram
         reduce_inactive_asset_position()
 
         deposit_into_vault()
-        withdraw_from_vault()
+        redeem_from_vault()
     }
     class Position{
         version: u8,
@@ -905,10 +905,10 @@ impl StructHashImpl of StructHash<DepositIntoVaultArgs> {
 }
 ```
 
-##### WithdrawFromVaultUserArgs
+##### RedeemFromVaultUserArgs
 
 ```rust
-pub struct WithdrawFromVaultUserArgs {
+pub struct RedeemFromVaultUserArgs {
     pub position_id: PositionId,
     pub vault_position_id: PositionId,
     pub collateral_id: AssetId,
@@ -919,7 +919,7 @@ pub struct WithdrawFromVaultUserArgs {
 }
 
 /// selector!(
-///   "\"WithdrawFromVaultUserArgs\"(
+///   "\"RedeemFromVaultUserArgs\"(
 ///    \"position_id\":\"PositionId\",
 ///    \"vault_position_id\":\"PositionId\",
 ///    \"number_of_shares\":\"u64\",
@@ -935,26 +935,26 @@ pub struct WithdrawFromVaultUserArgs {
 ///    )"
 /// );
 
-const WITHDRAW_FROM_VAULT_USER_ARGS_TYPE_HASH: HashType = XXX;
+const REDEEM_FROM_VAULT_USER_ARGS_TYPE_HASH: HashType = XXX;
 
-impl StructHashImpl of StructHash<WithdrawFromVaultUserArgs> {
-    fn hash_struct(self: @WithdrawFromVaultUserArgs) -> HashType {
+impl StructHashImpl of StructHash<RedeemFromVaultUserArgs> {
+    fn hash_struct(self: @RedeemFromVaultUserArgs) -> HashType {
         let hash_state = PoseidonTrait::new();
-        hash_state.update_with(WITHDRAW_FROM_VAULT_USER_ARGS_TYPE_HASH).update_with(*self).finalize()
+        hash_state.update_with(REDEEM_FROM_VAULT_USER_ARGS_TYPE_HASH).update_with(*self).finalize()
     }
 }
 ```
 
-##### WithdrawFromVaultOwnerArgs
+##### RedeemFromVaultOwnerArgs
 
 ```rust
-pub struct WithdrawFromVaultOwnerArgs {
+pub struct RedeemFromVaultOwnerArgs {
     user_hash: HashType,
     vault_share_execution_price: Price
 }
 
 /// selector!(
-///   "\"WithdrawFromVaultOwnerArgs\"(
+///   "\"RedeemFromVaultOwnerArgs\"(
 ///    \"user_hash\":\"HashType\",
 ///    \"vault_share_execution_price\":\"Price\",
 ///    )
@@ -966,12 +966,12 @@ pub struct WithdrawFromVaultOwnerArgs {
 ///    )"
 /// );
 
-const WITHDRAW_FROM_VAULT_OWNER_ARGS_TYPE_HASH: HashType = XXX;
+const REDEEM_FROM_VAULT_OWNER_ARGS_TYPE_HASH: HashType = XXX;
 
-impl StructHashImpl of StructHash<WithdrawFromVaultOwnerArgs> {
-    fn hash_struct(self: @WithdrawFromVaultOwnerArgs) -> HashType {
+impl StructHashImpl of StructHash<RedeemFromVaultOwnerArgs> {
+    fn hash_struct(self: @RedeemFromVaultOwnerArgs) -> HashType {
         let hash_state = PoseidonTrait::new();
-        hash_state.update_with(WITHDRAW_FROM_VAULT_OWNER_ARGS_TYPE_HASH).update_with(*self).finalize()
+        hash_state.update_with(REDEEM_FROM_VAULT_OWNER_ARGS_TYPE_HASH).update_with(*self).finalize()
     }
 }
 ```
@@ -2992,11 +2992,11 @@ pub struct DepositedIntoVault {
 }
 ```
 
-##### WithdrawnFromVault
+##### RedeemedFromVault
 
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
-pub struct WithdrawnFromVault {
+pub struct RedeemedFromVault {
     #[key]
     pub position_id: PositionId,
     #[key]
@@ -3711,12 +3711,12 @@ Only the Operator can execute.
 
 **Errors:**
 
-#### WithdrawFromVault
+#### RedeemFromVault
 
 Withdraw from vault is called by the operator to let the user "cash out" his vault shares from the vault position into his position
 
 ```rust
-fn withdraw_from_vault(
+fn redeem_from_vault(
     ref self: ContractState,
     operator_nonce: u64,
     position_id: PositionId,
@@ -3737,9 +3737,9 @@ Only the Operator can execute.
 
 **Hash:**
 
-[get\_message\_hash](#get-message-hash) on [WithdrawFromVaultUserArgs](#withdrawfromvaultuserargs) with `position_id` public_key.
+[get\_message\_hash](#get-message-hash) on [RedeemFromVaultUserArgs](#redeemfromvaultuserargs) with `position_id` public_key.
 
-[get\_message\_hash](#get-message-hash) on [WithdrawFromVaultOwnerArgs](#withdrawfromvaultownerargs) with `vault_position_id` public_key.
+[get\_message\_hash](#get-message-hash) on [RedeemFromVaultOwnerArgs](#redeemfromvaultownerargs) with `vault_position_id` public_key.
 
 **Validations:**
 
@@ -3770,7 +3770,7 @@ Only the Operator can execute.
 
 **Emits:**
 
-[WithdrawnFromVault](#withdrawnfromvault)
+[RedeemedFromVault](#redeedmedfromvault)
 
 **Errors:**
 

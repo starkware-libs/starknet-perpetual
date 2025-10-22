@@ -29,10 +29,10 @@ pub mod VaultComponent {
     use perpetuals::core::types::deposit_into_vault::VaultDepositArgs;
     use perpetuals::core::types::position::{Position, PositionDiff, PositionId, PositionTrait};
     use perpetuals::core::types::price::{Price, PriceMulTrait};
-    use perpetuals::core::types::register_vault::RegisterVaultArgs;
-    use perpetuals::core::types::withdraw_from_vault::{
-        VaultWithdrawOwnerArgs, VaultWithdrawUserArgs,
+    use perpetuals::core::types::redeem_from_vault::{
+        RedeemFromVaultOwnerArgs, RedeemFromVaultUserArgs,
     };
+    use perpetuals::core::types::register_vault::RegisterVaultArgs;
     use perpetuals::core::utils::validate_signature;
     use starknet::storage::{
         Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePath, StoragePathEntry,
@@ -68,7 +68,7 @@ pub mod VaultComponent {
     #[derive(Drop, PartialEq, starknet::Event)]
     pub enum Event {
         DepositIntoVault: events::DepositIntoVault,
-        WithdrawFromVault: events::WithdrawFromVault,
+        RedeemedFromVault: events::RedeemedFromVault,
         VaultRegistered: events::VaultRegistered,
     }
 
@@ -228,7 +228,7 @@ pub mod VaultComponent {
                 )
         }
 
-        /// Withdraws vault shares into collateral.
+        /// Redeems vault shares into collateral.
         ///
         /// Validations:
         /// - Ensures the contract is not paused.
@@ -247,8 +247,8 @@ pub mod VaultComponent {
         /// (−collateral).
         /// - Validate both positions remain healthy or healthier; enforce vault collateral safety
         /// limit.
-        /// - Emit `WithdrawFromVault`.
-        fn withdraw_from_vault(
+        /// - Emit `RedeemFromVault`.
+        fn redeem_from_vault(
             ref self: ComponentState<TContractState>,
             operator_nonce: u64,
             user_signature: Signature,
@@ -272,7 +272,7 @@ pub mod VaultComponent {
             let vault_share_asset_id = self.vault_positions_to_assets.read(vault_position_id);
 
             let (vault_position, position) = self
-                ._validate_withdraw_from_vault(
+                ._validate_redeem_from_vault(
                     :position_id,
                     :user_signature,
                     :vault_position_id,
@@ -287,7 +287,7 @@ pub mod VaultComponent {
 
             /// Executions:
             let actual_collateral_quantized_amount = self
-                ._execute_withdraw_from_vault(
+                ._execute_redeem_from_vault(
                     :position_id,
                     :vault_position_id,
                     :number_of_shares,
@@ -300,7 +300,7 @@ pub mod VaultComponent {
             // Emit event.
             self
                 .emit(
-                    events::WithdrawFromVault {
+                    events::RedeemedFromVault {
                         position_id,
                         vault_position_id,
                         collateral_id: assets.get_collateral_id(),
@@ -525,7 +525,7 @@ pub mod VaultComponent {
             );
         }
 
-        fn _validate_withdraw_from_vault(
+        fn _validate_redeem_from_vault(
             ref self: ComponentState<TContractState>,
             position_id: PositionId,
             user_signature: Signature,
@@ -569,9 +569,9 @@ pub mod VaultComponent {
                 POSITION_IS_VAULT_POSITION,
             );
             // Signature validation
-            let user_hash = validate_signature(
+            let redeem_from_vault_user_hash: HashType = validate_signature(
                 public_key: position.get_owner_public_key(),
-                message: VaultWithdrawUserArgs {
+                message: RedeemFromVaultUserArgs {
                     position_id,
                     vault_position_id,
                     number_of_shares,
@@ -581,13 +581,16 @@ pub mod VaultComponent {
                 },
                 signature: user_signature,
             );
-            assert(!self.fulfilled_vault_requests.read(user_hash), VAULT_REQUEST_ALREADY_FULFILLED);
-            self.fulfilled_vault_requests.write(user_hash, true);
+            assert(
+                !self.fulfilled_vault_requests.read(redeem_from_vault_user_hash),
+                VAULT_REQUEST_ALREADY_FULFILLED,
+            );
+            self.fulfilled_vault_requests.write(redeem_from_vault_user_hash, true);
 
             validate_signature(
                 public_key: vault_position.get_owner_public_key(),
-                message: VaultWithdrawOwnerArgs {
-                    vault_withdraw_user_hash: user_hash, vault_share_execution_price,
+                message: RedeemFromVaultOwnerArgs {
+                    redeem_from_vault_user_hash, vault_share_execution_price,
                 },
                 signature: vault_owner_signature,
             );
@@ -595,7 +598,7 @@ pub mod VaultComponent {
             (vault_position, position)
         }
 
-        fn _execute_withdraw_from_vault(
+        fn _execute_redeem_from_vault(
             ref self: ComponentState<TContractState>,
             position_id: PositionId,
             vault_position_id: PositionId,
@@ -607,7 +610,7 @@ pub mod VaultComponent {
         ) -> u64 {
             // Withdraw from vault.
             let actual_collateral_quantized_amount = self
-                ._withdraw_from_vault_contract(
+                ._redeem_from_vault_contract(
                     :vault_share_asset_id, :number_of_shares, :vault_share_execution_price,
                 );
 
@@ -633,7 +636,7 @@ pub mod VaultComponent {
             actual_collateral_quantized_amount
         }
 
-        fn _withdraw_from_vault_contract(
+        fn _redeem_from_vault_contract(
             ref self: ComponentState<TContractState>,
             vault_share_asset_id: AssetId,
             number_of_shares: u64,

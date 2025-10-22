@@ -29,7 +29,7 @@ pub struct VaultRegistered {
 }
 
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
-pub struct WithdrawFromVault {
+pub struct RedeemedFromVault {
     #[key]
     pub position_id: PositionId,
     #[key]
