@@ -9,7 +9,9 @@ use perpetuals::core::components::deposit::interface::{
     DepositStatus, IDeposit, IDepositDispatcher, IDepositDispatcherTrait, IDepositSafeDispatcher,
     IDepositSafeDispatcherTrait,
 };
-use perpetuals::core::components::operator_nonce::interface::IOperatorNonce;
+use perpetuals::core::components::operator_nonce::interface::{
+    IOperatorNonce, IOperatorNonceDispatcher, IOperatorNonceDispatcherTrait,
+};
 use perpetuals::core::components::positions::Positions::{
     FEE_POSITION, INSURANCE_FUND_POSITION, InternalTrait as PositionsInternal,
 };
@@ -61,7 +63,7 @@ use perpetuals::tests::test_utils::{
 use snforge_std::cheatcodes::events::{EventSpyTrait, EventsFilterTrait};
 use snforge_std::{
     EventSpyAssertionsTrait, interact_with_state, spy_events, start_cheat_block_timestamp_global,
-    test_address,
+    start_cheat_caller_address, stop_cheat_caller_address, test_address,
 };
 use starknet::storage::{StoragePathEntry, StoragePointerReadAccess};
 use starkware_utils::components::replaceability::interface::IReplaceable;
@@ -3734,6 +3736,188 @@ fn test_failed_deposit_into_vault_scenarios() {
             salt: 0,
         );
     assert_panic_with_felt_error(:result, expected_error: 'INVALID_ZERO_AMOUNT');
+}
+
+#[test]
+#[feature("safe_dispatcher")]
+fn test_failed_redeem_from_vault_scenarios() {
+    // Setup state, token and user:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+
+    // Setup dispatchers:
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+    let dispatcher = IVaultSafeDispatcher { contract_address };
+    let nonce_dispatcher = IOperatorNonceDispatcher { contract_address };
+    let position_dispatcher = IPositionsDispatcher { contract_address };
+
+    // Setup users:
+    let user: User = Default::default();
+    let vault_user = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
+    let asset_id = cfg.synthetic_cfg.synthetic_id;
+
+    start_cheat_caller_address(:contract_address, caller_address: cfg.operator);
+
+    // Test 1: redeem from vault with unexisted vault position id.
+    let non_vault_position = vault_user.position_id;
+    let result = dispatcher
+        .redeem_from_vault(
+            operator_nonce: nonce_dispatcher.get_operator_nonce(),
+            user_signature: array![].span(),
+            position_id: user.position_id,
+            vault_owner_signature: array![].span(),
+            vault_position_id: non_vault_position,
+            number_of_shares: 1,
+            minimum_received_total_amount: 1,
+            vault_share_execution_price: PriceTrait::new(value: 100),
+            expiration: Time::now().add(delta: Time::days(1)),
+            salt: 0,
+        );
+    assert_panic_with_felt_error(:result, expected_error: 'POSITION_DOESNT_EXIST');
+
+    // Add vault position.
+    position_dispatcher
+        .new_position(
+            operator_nonce: nonce_dispatcher.get_operator_nonce(),
+            position_id: vault_user.position_id,
+            owner_public_key: vault_user.get_public_key(),
+            owner_account: Zero::zero(),
+        );
+
+    // Add the vault asset, without activating it.
+    interact_with_state(
+        contract_address,
+        || {
+            let mut state = Core::contract_state_for_testing();
+
+            state.vault.vault_positions_to_assets.write(vault_user.position_id, asset_id);
+
+            let asset_config = AssetTrait::vault_share_collateral_config(
+                status: AssetStatus::PENDING,
+                risk_factor_first_tier_boundary: Default::default(),
+                risk_factor_tier_size: Default::default(),
+                quorum: Default::default(),
+                resolution_factor: Default::default(),
+                quantum: VAULT_SHARE_QUANTUM,
+                token_contract: VAULT_CONTRACT_ADDRESS_1(),
+            );
+
+            state.assets.asset_config.write(asset_id, Some(asset_config));
+        },
+    );
+
+    // Test 2: redeem from vault with unactivated vault asset.
+    let non_active_vault_position = vault_user.position_id;
+    let result = dispatcher
+        .redeem_from_vault(
+            operator_nonce: nonce_dispatcher.get_operator_nonce(),
+            user_signature: array![].span(),
+            position_id: user.position_id,
+            vault_owner_signature: array![].span(),
+            vault_position_id: non_active_vault_position,
+            number_of_shares: 1,
+            minimum_received_total_amount: 1,
+            vault_share_execution_price: PriceTrait::new(value: 100),
+            expiration: Time::now().add(delta: Time::days(1)),
+            salt: 0,
+        );
+    assert_panic_with_felt_error(:result, expected_error: 'ASSET_NOT_ACTIVE');
+
+    // Activate the vault asset.
+    interact_with_state(
+        contract_address,
+        || {
+            let mut state = Core::contract_state_for_testing();
+
+            let asset_config = AssetTrait::vault_share_collateral_config(
+                status: AssetStatus::ACTIVE,
+                risk_factor_first_tier_boundary: Default::default(),
+                risk_factor_tier_size: Default::default(),
+                quorum: Default::default(),
+                resolution_factor: Default::default(),
+                quantum: VAULT_SHARE_QUANTUM,
+                token_contract: VAULT_CONTRACT_ADDRESS_1(),
+            );
+
+            state.assets.asset_config.write(asset_id, Some(asset_config));
+        },
+    );
+
+    // Test 3: redeem from vault with unexisted position id.
+    let unregistered_user = user.position_id;
+    let result = dispatcher
+        .redeem_from_vault(
+            operator_nonce: nonce_dispatcher.get_operator_nonce(),
+            user_signature: array![].span(),
+            position_id: unregistered_user,
+            vault_owner_signature: array![].span(),
+            vault_position_id: non_active_vault_position,
+            number_of_shares: 1,
+            minimum_received_total_amount: 1,
+            vault_share_execution_price: PriceTrait::new(value: 100),
+            expiration: Time::now().add(delta: Time::days(1)),
+            salt: 0,
+        );
+    assert_panic_with_felt_error(:result, expected_error: 'POSITION_DOESNT_EXIST');
+
+    // Add user position.
+    position_dispatcher
+        .new_position(
+            operator_nonce: nonce_dispatcher.get_operator_nonce(),
+            position_id: user.position_id,
+            owner_public_key: user.get_public_key(),
+            owner_account: Zero::zero(),
+        );
+
+    // Test 4: redeem from vault with zero number of shares.
+    let result = dispatcher
+        .redeem_from_vault(
+            operator_nonce: nonce_dispatcher.get_operator_nonce(),
+            user_signature: array![].span(),
+            position_id: user.position_id,
+            vault_owner_signature: array![].span(),
+            vault_position_id: non_active_vault_position,
+            number_of_shares: 0,
+            minimum_received_total_amount: 1,
+            vault_share_execution_price: PriceTrait::new(value: 100),
+            expiration: Time::now().add(delta: Time::days(1)),
+            salt: 0,
+        );
+    assert_panic_with_felt_error(:result, expected_error: 'INVALID_ZERO_AMOUNT');
+
+    // Test 5: redeem from vault with zero minimum received total amount.
+    let result = dispatcher
+        .redeem_from_vault(
+            operator_nonce: nonce_dispatcher.get_operator_nonce(),
+            user_signature: array![].span(),
+            position_id: user.position_id,
+            vault_owner_signature: array![].span(),
+            vault_position_id: non_active_vault_position,
+            number_of_shares: 1,
+            minimum_received_total_amount: 0,
+            vault_share_execution_price: PriceTrait::new(value: 100),
+            expiration: Time::now().add(delta: Time::days(1)),
+            salt: 0,
+        );
+    assert_panic_with_felt_error(:result, expected_error: 'INVALID_ZERO_AMOUNT');
+
+    // Test 6: redeem from vault with zero vault share execution price.
+    let result = dispatcher
+        .redeem_from_vault(
+            operator_nonce: nonce_dispatcher.get_operator_nonce(),
+            user_signature: array![].span(),
+            position_id: user.position_id,
+            vault_owner_signature: array![].span(),
+            vault_position_id: non_active_vault_position,
+            number_of_shares: 1,
+            minimum_received_total_amount: 1,
+            vault_share_execution_price: PriceTrait::new(value: 0),
+            expiration: Time::now().add(delta: Time::days(1)),
+            salt: 0,
+        );
+    assert_panic_with_felt_error(:result, expected_error: 'INVALID_ZERO_AMOUNT');
+
+    stop_cheat_caller_address(:contract_address);
 }
 
 // Register vault tests.
