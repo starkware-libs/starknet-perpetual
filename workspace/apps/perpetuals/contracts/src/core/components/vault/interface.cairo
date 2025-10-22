@@ -40,4 +40,15 @@ pub trait IVault<TContractState> {
         expiration: Timestamp,
         salt: felt252,
     );
+    fn liquidate_vault_shares(
+        ref self: TContractState,
+        operator_nonce: u64,
+        vault_owner_signature: Signature,
+        position_id: PositionId,
+        vault_position_id: PositionId,
+        number_of_shares: u64,
+        vault_share_execution_price: Price,
+        expiration: Timestamp,
+        salt: felt252,
+    );
 }
