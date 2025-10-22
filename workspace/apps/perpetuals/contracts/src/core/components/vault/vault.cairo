@@ -14,6 +14,7 @@ pub mod VaultComponent {
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalTrait as NonceInternal;
     use perpetuals::core::components::positions::Positions as PositionsComponent;
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternalTrait;
+    use perpetuals::core::components::positions::interface::IPositions;
     use perpetuals::core::components::vault::errors::{
         COLLATERAL_BALANCE_MISMATCH, INVALID_VAULT_CONTRACT_ADDRESS, NOT_VAULT_SHARE_ASSET,
         POSITION_IS_VAULT_POSITION, RECEIVED_AMOUNT_TOO_SMALL, SHARES_BALANCE_MISMATCH,
@@ -23,10 +24,13 @@ pub mod VaultComponent {
     use perpetuals::core::components::vault::events;
     use perpetuals::core::components::vault::interface::IVault;
     use perpetuals::core::core::Core::SNIP12MetadataImpl;
-    use perpetuals::core::errors::{AMOUNT_OVERFLOW, INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED};
+    use perpetuals::core::errors::{
+        AMOUNT_OVERFLOW, CANT_LIQUIDATE_IF_POSITION, INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED,
+    };
     use perpetuals::core::types::asset::{AssetId, AssetType};
     use perpetuals::core::types::balance::Balance;
     use perpetuals::core::types::deposit_into_vault::VaultDepositArgs;
+    use perpetuals::core::types::liquidate_vault_shares::LiquidateVaultSharesArgs;
     use perpetuals::core::types::position::{Position, PositionDiff, PositionId, PositionTrait};
     use perpetuals::core::types::price::{Price, PriceMulTrait};
     use perpetuals::core::types::redeem_from_vault::{
@@ -69,6 +73,7 @@ pub mod VaultComponent {
     pub enum Event {
         DepositIntoVault: events::DepositIntoVault,
         RedeemedFromVault: events::RedeemedFromVault,
+        LiquidatedFromVault: events::LiquidatedFromVault,
         VaultRegistered: events::VaultRegistered,
     }
 
@@ -174,6 +179,80 @@ pub mod VaultComponent {
                         expiration,
                         salt,
                         quantized_shares_amount: actual_quantized_vault_shares_amount,
+                    },
+                );
+        }
+
+        /// Liquidates a liquidatable position by redeeming its vault shares at an operator-defined
+        /// price and transferring the collateral back to the position.
+        ///
+        /// Validations mirror `withdraw_from_vault` with additional checks ensuring the target
+        /// position is currently liquidatable and the collateral asset matches the protocol
+        /// collateral.
+        ///
+        /// Execution:
+        /// - Redeem shares from the vault; convert unquantized to quantized using collateral
+        ///   quantum.
+        /// - Apply diffs: `position_id` (+collateral, −shares), `vault_position_id`
+        ///   (−collateral).
+        /// - Validate the liquidated position becomes healthier.
+        /// - Emit `LiquidatedFromVault`.
+        fn liquidate_vault_shares(
+            ref self: ComponentState<TContractState>,
+            operator_nonce: u64,
+            vault_owner_signature: Signature,
+            position_id: PositionId,
+            vault_position_id: PositionId,
+            number_of_shares: u64,
+            vault_share_execution_price: Price,
+            expiration: Timestamp,
+            salt: felt252,
+        ) {
+            /// Validations:
+            get_dep_component!(@self, Pausable).assert_not_paused();
+            let mut nonce = get_dep_component_mut!(ref self, OperatorNonce);
+            nonce.use_checked_nonce(:operator_nonce);
+            let current_time = Time::now();
+            let mut assets = get_dep_component_mut!(ref self, Assets);
+            assets.validate_price_interval_integrity(:current_time);
+
+            let vault_share_asset_id = self.vault_positions_to_assets.read(vault_position_id);
+
+            let (vault_position, position) = self
+                ._validate_liquidate_vault_shares(
+                    :position_id,
+                    :vault_position_id,
+                    :number_of_shares,
+                    :vault_share_execution_price,
+                    :expiration,
+                    :salt,
+                    :vault_owner_signature,
+                    :vault_share_asset_id,
+                );
+
+            /// Executions:
+            let actual_collateral_quantized_amount = self
+                ._execute_redeem_from_vault(
+                    :position_id,
+                    :vault_position_id,
+                    :number_of_shares,
+                    :vault_share_execution_price,
+                    :vault_share_asset_id,
+                    :vault_position,
+                    :position,
+                );
+
+            self
+                .emit(
+                    events::LiquidatedFromVault {
+                        position_id,
+                        vault_position_id,
+                        collateral_id: get_dep_component!(@self, Assets).get_collateral_id(),
+                        quantized_amount: actual_collateral_quantized_amount,
+                        expiration,
+                        salt,
+                        quantized_shares_amount: number_of_shares,
+                        price: vault_share_execution_price,
                     },
                 );
         }
@@ -525,6 +604,53 @@ pub mod VaultComponent {
             );
         }
 
+        fn _validate_liquidate_vault_shares(
+            ref self: ComponentState<TContractState>,
+            position_id: PositionId,
+            vault_position_id: PositionId,
+            number_of_shares: u64,
+            vault_share_execution_price: Price,
+            expiration: Timestamp,
+            salt: felt252,
+            vault_owner_signature: Signature,
+            vault_share_asset_id: AssetId,
+        ) -> (StoragePath<Position>, StoragePath<Position>) {
+            validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
+            let positions = get_dep_component!(@self, Positions);
+
+            assert(number_of_shares.is_non_zero(), INVALID_ZERO_AMOUNT);
+            assert(vault_share_execution_price.is_non_zero(), INVALID_ZERO_AMOUNT);
+
+            let vault_position = positions.get_position_snapshot(position_id: vault_position_id);
+            get_dep_component!(@self, Assets).validate_active_asset(asset_id: vault_share_asset_id);
+
+            let position = positions.get_position_snapshot(:position_id);
+            assert(
+                self.vault_positions_to_addresses.read(position_id).is_zero(),
+                POSITION_IS_VAULT_POSITION,
+            );
+            assert(positions.is_liquidatable(:position_id), CANT_LIQUIDATE_IF_POSITION);
+
+            let request_hash = validate_signature(
+                public_key: vault_position.get_owner_public_key(),
+                message: LiquidateVaultSharesArgs {
+                    position_id,
+                    vault_position_id,
+                    number_of_shares,
+                    vault_share_execution_price,
+                    expiration,
+                    salt,
+                },
+                signature: vault_owner_signature,
+            );
+            assert(
+                !self.fulfilled_vault_requests.read(request_hash), VAULT_REQUEST_ALREADY_FULFILLED,
+            );
+            self.fulfilled_vault_requests.write(request_hash, true);
+
+            (vault_position, position)
+        }
+
         fn _validate_redeem_from_vault(
             ref self: ComponentState<TContractState>,
             position_id: PositionId,
@@ -608,7 +734,7 @@ pub mod VaultComponent {
             vault_position: StoragePath<Position>,
             position: StoragePath<Position>,
         ) -> u64 {
-            // Withdraw from vault.
+            // Redeem from vault.
             let actual_collateral_quantized_amount = self
                 ._redeem_from_vault_contract(
                     :vault_share_asset_id, :number_of_shares, :vault_share_execution_price,
