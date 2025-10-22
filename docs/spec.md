@@ -980,20 +980,22 @@ impl StructHashImpl of StructHash<RedeemFromVaultOwnerArgs> {
 
 ```rust
 pub struct LiquidateVaultSharesArgs {
-    vault_share_execution_price: Price,
+    position_id: PositionId,
     vault_position_id: PositionId,
     collateral_id: AssetId,
     number_of_shares: u64,
+    vault_share_execution_price: Price,
     expiration: Timestamp,
     salt: felt252,
 }
 
 /// selector!(
 ///   "\"LiquidateVaultSharesArgs\"(
-///    \"vault_share_execution_price\":\"Price\",
+///    \"position_id\":\"PositionId\",
 ///    \"vault_position_id\":\"PositionId\",
 ///    \"collateral_id\":\"AssetId\",
 ///    \"number_of_shares\":\"u64\",
+///    \"vault_share_execution_price\":\"Price\",
 ///    \"expiration\":\"Timestamp\",
 ///    \"salt\":\"felt\"
 ///    )
@@ -2988,7 +2990,10 @@ pub struct DepositedIntoVault {
     #[key]
     pub vault_position_id: PositionId,
     pub collateral_id: AssetId,
-    pub quantized_amount: u64
+    pub quantized_amount: u64,
+    pub expiration: Timestamp,
+    pub salt: felt252,
+    pub quantized_shares_amount: u64,
 }
 ```
 
@@ -3001,13 +3006,12 @@ pub struct RedeemedFromVault {
     pub position_id: PositionId,
     #[key]
     pub vault_position_id: PositionId,
-    #[key]
     pub collateral_id: AssetId,
-    pub number_of_shares: u64,
-    pub minimum_received_total_amount: u64,
-    pub vault_share_execution_price: Price,
+    pub quantized_amount: u64,
     pub expiration: Timestamp,
     pub salt: felt252,
+    pub quantized_shares_amount: u64,
+    pub price: Price,
 }
 ```
 
@@ -3020,13 +3024,12 @@ pub struct LiquidatedFromVault {
     pub position_id: PositionId,
     #[key]
     pub vault_position_id: PositionId,
-    #[key]
     pub collateral_id: AssetId,
-    pub number_of_shares: u64,
-    pub minimum_received_total_amount: u64,
-    pub vault_share_execution_price: Price,
+    pub quantized_amount: u64,
     pub expiration: Timestamp,
     pub salt: felt252,
+    pub quantized_shares_amount: u64,
+    pub price: Price,
 }
 ```
 
@@ -3776,20 +3779,19 @@ Only the Operator can execute.
 
 #### LiquidateVaultShares
 
-Withdraw from vault is called by the operator to let the user "cash out" his vault shares from the vault position into his position
+Liquidate vault shares is called by the operator to liquidate a liquidatable position against his vault shares
 
 ```rust
 fn liquidate_vault_shares(
     ref self: TContractState,
     operator_nonce: u64,
+    vault_owner_signature: Signature,
     position_id: PositionId,
     vault_position_id: PositionId,
-    collateral_id: AssetId,
     number_of_shares: u64,
     vault_share_execution_price: Price,
     expiration: Timestamp,
     salt: felt252,
-    vault_owner_signature: Signature,
 );
 ```
 
@@ -3812,9 +3814,11 @@ Only the Operator can execute.
 7. `vault_position_id` is a registered vault position.
 8. position id is not a vault position and exists.
 9. number_of_shares is non zero.
-10. position id is liquidatable.
-11. vault_share_execution_price is non zero.
-12. Caller is the operator.
+10. vault_share_execution_price is non zero.
+11. collateral_id is the protocol collateral asset.
+12. position id is liquidatable.
+13. Caller is the operator.
+14. Request is new (check payload hash not exists in the fulfillment map).
 
 **Logic:**
 
@@ -3825,7 +3829,7 @@ Only the Operator can execute.
 5. call the new redeem function of the vault contract (a version where the price of a vault share is dicateded by the operator) which burns the vault shares and transfers the assets from the vault contract to the perps contract
 6. increase the position_id collateral_id balance by vault_share_execution_price*number_of_shares
 7. reduce the vault_position_id collateral_id balance by vault_share_execution_price*number_of_shares
-8. position id is healthier
+8. position id becomes healthier (no longer liquidatable) as a result of the collateral increase.
 
 **Emits:**
 
