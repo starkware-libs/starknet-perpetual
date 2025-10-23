@@ -16,6 +16,8 @@ starkware_utils_testing.workspace = true
 
 [[target.starknet-contract]]
 sierra = true
+casm = true
+casm-add-pythonic-hints = true
 
 [scripts]
 test = "SNFORGE_BACKTRACE=1 snforge test"

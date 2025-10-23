@@ -1,5 +1,6 @@
 import pytest
 from typing import Iterator, Callable
+import pytest_asyncio
 from test_utils.starknet_test_utils import StarknetTestUtils
 from starknet_py.net.models.chains import StarknetChainId
 from test_utils.starknet_test_utils import KeyPair
@@ -8,6 +9,14 @@ from starknet_py.net.account.account import Account
 from starknet_py.net.models.address import Address
 from starknet_py.net.client_models import Call
 from starknet_py.contract import Contract
+from test_utils.starknet_test_utils import load_contract
+from scripts.script_utils import get_project_root
+from pathlib import Path
+import os
+from starknet_py.net.client_models import ResourceBoundsMapping, ResourceBounds
+
+
+perpetuals_Core = "perpetuals_Core"
 
 
 @pytest.fixture(scope="session")
@@ -42,6 +51,7 @@ def starknet_forked(
         fork_network="https://rpc.starknet.lava.build/",
         fork_block=1844544,
         starknet_chain_id=StarknetChainId.MAINNET,
+        request_body_size_limit=20_000_000,
     ) as val:
         yield val
 
@@ -96,6 +106,31 @@ def deployer_account(
         chain=StarknetChainId.MAINNET,
     )
     return deployer_account
+
+
+@pytest_asyncio.fixture
+async def declare_contract(starknet_forked_with_impersonated_accounts: StarknetTestUtils):
+    compiled_contract_casm = load_contract(
+        contract_name=f"{perpetuals_Core}.compiled_contract_class",
+        base_path=Path(os.path.join(get_project_root(), "target", "release")),
+    )
+    compiled_contract = load_contract(
+        contract_name=f"{perpetuals_Core}.contract_class",
+        base_path=Path(os.path.join(get_project_root(), "target", "release")),
+    )
+    declare_result = await Contract.declare_v3(
+        account=starknet_forked_with_impersonated_accounts.starknet.accounts[0],
+        compiled_contract=compiled_contract,
+        compiled_contract_casm=compiled_contract_casm,
+        auto_estimate=False,
+        nonce=0,
+        resource_bounds=ResourceBoundsMapping(
+            l1_gas=ResourceBounds(max_amount=10**17, max_price_per_unit=10**8),
+            l1_data_gas=ResourceBounds(max_amount=10**17, max_price_per_unit=10**8),
+            l2_gas=ResourceBounds(max_amount=10**17, max_price_per_unit=10**8),
+        ),
+    )
+    # await declare_result.wait_for_acceptance(check_interval=0.1)
 
 
 # todo : call the contarct
