@@ -16,6 +16,7 @@ starkware_utils_testing.workspace = true
 
 [[target.starknet-contract]]
 sierra = true
+casm = true
 
 [scripts]
 test = "SNFORGE_BACKTRACE=1 snforge test"
@@ -35,8 +36,9 @@ panic-backtrace = true
 [[test]]
 name = "perpetuals_unittest"
 build-external-contracts = [
-    "starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock",
-    "openzeppelin_presets::account::AccountUpgradeable"
+    "starkware_utils::erc20::erc20_mocks::ERC20DecimalsMock",
+    "openzeppelin_presets::account::AccountUpgradeable",
+    "vault::protocol_vault::ProtocolVault",
 ]
 
 [lib]

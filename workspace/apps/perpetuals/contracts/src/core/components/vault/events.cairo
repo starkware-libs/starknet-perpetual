@@ -41,3 +41,17 @@ pub struct RedeemedFromVault {
     pub quantized_shares_amount: u64,
     pub price: Price,
 }
+
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct LiquidatedFromVault {
+    #[key]
+    pub position_id: PositionId,
+    #[key]
+    pub vault_position_id: PositionId,
+    pub collateral_id: AssetId,
+    pub quantized_amount: u64,
+    pub expiration: Timestamp,
+    pub salt: felt252,
+    pub quantized_shares_amount: u64,
+    pub price: Price,
+}

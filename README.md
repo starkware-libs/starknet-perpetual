@@ -29,7 +29,7 @@
 
 ## About
 
-This repo holds the implementation of Staknet Perpetual Trading contracts.  
+This repo holds the implementation of Starknet Perpetual Trading contracts.
 
 ## Disclaimer
 

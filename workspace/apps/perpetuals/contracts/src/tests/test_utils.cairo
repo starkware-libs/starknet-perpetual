@@ -179,6 +179,7 @@ impl PerpetualsInitConfigDefault of Default<PerpetualsInitConfig> {
                 token_cfg: TokenConfig {
                     name: COLLATERAL_NAME(),
                     symbol: COLLATERAL_SYMBOL(),
+                    decimals: COLLATERAL_DECIMALS,
                     initial_supply: INITIAL_SUPPLY,
                     owner: COLLATERAL_OWNER(),
                 },
@@ -308,6 +309,7 @@ pub fn create_token_state() -> TokenState {
     let token_config = TokenConfig {
         name: COLLATERAL_NAME(),
         symbol: COLLATERAL_SYMBOL(),
+        decimals: COLLATERAL_DECIMALS,
         initial_supply: INITIAL_SUPPLY,
         owner: COLLATERAL_OWNER(),
     };
