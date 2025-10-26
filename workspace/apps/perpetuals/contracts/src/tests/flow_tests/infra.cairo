@@ -9,6 +9,7 @@ use perpetuals::core::types::balance::Balance;
 use perpetuals::core::types::funding::FundingTick;
 use perpetuals::core::types::position::{PositionData, PositionId};
 use perpetuals::tests::flow_tests::perps_tests_facade::*;
+use starknet::ContractAddress;
 use starkware_utils::constants::HOUR;
 use starkware_utils::math::abs::Abs;
 use crate::core::types::funding::{FUNDING_SCALE, FundingIndex};
@@ -183,8 +184,8 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
 
     fn price_tick(ref self: FlowTestExtended, prices: Span<(felt252, u128)>) {
         for (asset, price) in prices {
-            let synthetic_info = self.synthetics.get(*asset).deref();
-            self.flow_test_base.facade.price_tick(@synthetic_info, price: *price);
+            let oracle_info: @OracleInfo = (@self.synthetics.get(*asset).deref()).into();
+            self.flow_test_base.facade.price_tick(:oracle_info, price: *price);
         }
     }
 
@@ -416,6 +417,35 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
             contract_address: *self.flow_test_base.facade.perpetuals_contract,
         };
         @dispatcher.get_position_assets(position_id: user.position_id)
+    }
+
+    fn add_vault_collateral_asset(
+        ref self: FlowTestExtended,
+        vault: User,
+        asset_name: felt252,
+        vault_position_id: PositionId,
+        erc20_contract_address: ContractAddress,
+        vault_contract_address: ContractAddress,
+    ) {
+        let initial_price = 2_u128.pow(10);
+        let risk_factor_tiers = RiskFactorTiers {
+            tiers: array![100, 200, 500].span(), first_tier_boundary: 10_000, tier_size: 10_000,
+        };
+
+        self
+            .flow_test_base
+            .facade
+            .add_vault_collateral_asset(
+                vault_asset_info: @VaultAssetInfoTrait::new(
+                    :asset_name,
+                    :vault,
+                    :erc20_contract_address,
+                    :vault_contract_address,
+                    risk_factor_data: risk_factor_tiers,
+                    oracles_len: 1,
+                ),
+                :initial_price,
+            );
     }
 }
 
