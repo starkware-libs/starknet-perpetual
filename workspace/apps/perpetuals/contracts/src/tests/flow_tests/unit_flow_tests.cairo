@@ -252,7 +252,7 @@ fn test_deleverage_after_price_tick() {
         .facade
         .validate_total_risk(position_id: deleveraged_user.position_id, expected_total_risk: 4);
 
-    state.facade.price_tick(synthetic_info: @synthetic_info, price: 10);
+    state.facade.price_tick(oracle_info: (@synthetic_info).into(), price: 10);
 
     //                            TV                                  TR                    TV/TR
     //                COLLATERAL*1 + SYNTHETIC*PRICE        |SYNTHETIC*PRICE*RISK|
@@ -759,7 +759,7 @@ fn test_liquidate_after_price_tick() {
         .facade
         .validate_total_risk(position_id: liquidated_user.position_id, expected_total_risk: 3);
 
-    state.facade.price_tick(synthetic_info: @synthetic_info, price: 20);
+    state.facade.price_tick(oracle_info: (@synthetic_info).into(), price: 20);
 
     //                            TV                                  TR                 TV / TR
     //                COLLATERAL*1 + SYNTHETIC*PRICE        |SYNTHETIC*PRICE*RISK|
@@ -1319,7 +1319,7 @@ fn test_status_change_healthy_liquidatable_deleveragable() {
         'user is not deleveragable',
     );
 
-    state.facade.price_tick(synthetic_info: @synthetic_info, price: 102);
+    state.facade.price_tick(oracle_info: (@synthetic_info).into(), price: 102);
     //                            TV                                  TR                 TV / TR
     //                COLLATERAL*1 + SYNTHETIC*PRICE        |SYNTHETIC*PRICE*RISK|
     // deleveraged User:   -203 + 2 * 102 = 1                 2 * 102 * 0.01 = 2           0.5
@@ -1333,7 +1333,7 @@ fn test_status_change_healthy_liquidatable_deleveragable() {
         'user is not liquidatable',
     );
 
-    state.facade.price_tick(synthetic_info: @synthetic_info, price: 103);
+    state.facade.price_tick(oracle_info: (@synthetic_info).into(), price: 103);
     //                            TV                                  TR                 TV / TR
     //                COLLATERAL*1 + SYNTHETIC*PRICE        |SYNTHETIC*PRICE*RISK|
     // deleveraged User:   -203 + 2 * 103 = 3                 2 * 103 * 0.01 = 2           1.5
@@ -1383,7 +1383,7 @@ fn test_status_change_healthy_liquidatable_deleveragable() {
         .validate_total_value(position_id: primary_user.position_id, expected_total_value: 6);
     state.facade.validate_total_risk(position_id: primary_user.position_id, expected_total_risk: 3);
 
-    state.facade.price_tick(synthetic_info: @synthetic_info, price: 100);
+    state.facade.price_tick(oracle_info: (@synthetic_info).into(), price: 100);
     //                            TV                                  TR                 TV / TR
     //                COLLATERAL*1 + SYNTHETIC*PRICE        |SYNTHETIC*PRICE*RISK|
     // deleveraged User:   -303 + 3 * 100 = -3                 3 * 100 * 0.01 = 3          -1
@@ -2163,7 +2163,7 @@ fn test_liquidate_change_sign() {
     state.facade.validate_total_risk(position_id: user_1.position_id, expected_total_risk: 3);
 
     // Price tick.
-    state.facade.price_tick(synthetic_info: @synthetic_info, price: 100);
+    state.facade.price_tick(oracle_info: (@synthetic_info).into(), price: 100);
 
     //                            TV                                  TR                 TV / TR
     //                COLLATERAL*1 + SYNTHETIC*PRICE        |SYNTHETIC*PRICE*RISK|
