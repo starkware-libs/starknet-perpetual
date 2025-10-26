@@ -1,6 +1,7 @@
 use perpetuals::core::components::assets::events as assets_events;
 use perpetuals::core::components::deposit::events as deposit_events;
 use perpetuals::core::components::positions::events as positions_events;
+use perpetuals::core::components::vault::events as vault_events;
 use perpetuals::core::core::Core::SNIP12MetadataImpl;
 use perpetuals::core::events;
 use perpetuals::core::types::asset::AssetId;
@@ -481,5 +482,54 @@ pub fn assert_update_synthetic_quorum_event_with_expected(
         :expected_event,
         expected_event_selector: @selector!("AssetQuorumUpdated"),
         expected_event_name: "AssetQuorumUpdated",
+    );
+}
+
+// Vault events.
+
+pub fn assert_add_vault_share_event_with_expected(
+    spied_event: @(ContractAddress, Event),
+    asset_id: AssetId,
+    risk_factor_tiers: Span<u16>,
+    risk_factor_first_tier_boundary: u128,
+    risk_factor_tier_size: u128,
+    resolution_factor: u64,
+    quorum: u8,
+    erc20_contract_address: ContractAddress,
+    quantum: u64,
+) {
+    let expected_event = assets_events::VaultShareCollateralAdded {
+        asset_id,
+        risk_factor_tiers,
+        risk_factor_first_tier_boundary,
+        risk_factor_tier_size,
+        resolution_factor,
+        quorum,
+        erc20_contract_address,
+        quantum,
+    };
+    assert_expected_event_emitted(
+        :spied_event,
+        :expected_event,
+        expected_event_selector: @selector!("VaultShareCollateralAdded"),
+        expected_event_name: "VaultShareCollateralAdded",
+    );
+}
+
+pub fn assert_register_vault_event_with_expected(
+    spied_event: @(ContractAddress, Event),
+    vault_position_id: PositionId,
+    vault_contract_address: ContractAddress,
+    vault_asset_id: AssetId,
+    expiration: Timestamp,
+) {
+    let expected_event = vault_events::VaultRegistered {
+        vault_position_id, vault_contract_address, vault_asset_id, expiration,
+    };
+    assert_expected_event_emitted(
+        :spied_event,
+        :expected_event,
+        expected_event_selector: @selector!("VaultRegistered"),
+        expected_event_name: "VaultRegistered",
     );
 }

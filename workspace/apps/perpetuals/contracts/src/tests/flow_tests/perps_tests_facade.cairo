@@ -12,6 +12,7 @@ use perpetuals::core::components::positions::Positions::{FEE_POSITION, INSURANCE
 use perpetuals::core::components::positions::interface::{
     IPositionsDispatcher, IPositionsDispatcherTrait,
 };
+use perpetuals::core::components::vault::interface::{IVaultDispatcher, IVaultDispatcherTrait};
 use perpetuals::core::core::Core::SNIP12MetadataImpl;
 use perpetuals::core::interface::{ICoreDispatcher, ICoreDispatcherTrait, Settlement};
 use perpetuals::core::types::asset::{Asset, AssetId, AssetIdTrait, AssetStatus};
@@ -20,15 +21,17 @@ use perpetuals::core::types::funding::FundingTick;
 use perpetuals::core::types::order::Order;
 use perpetuals::core::types::position::{PositionData, PositionId};
 use perpetuals::core::types::price::{Price, SignedPrice};
+use perpetuals::core::types::register_vault::RegisterVaultArgs;
 use perpetuals::core::types::transfer::TransferArgs;
 use perpetuals::core::types::withdraw::WithdrawArgs;
 use perpetuals::core::value_risk_calculator::PositionTVTR;
 use perpetuals::tests::constants::*;
 use perpetuals::tests::event_test_utils::{
-    assert_add_synthetic_event_with_expected, assert_deactivate_synthetic_asset_event_with_expected,
-    assert_deleverage_event_with_expected, assert_deposit_canceled_event_with_expected,
-    assert_deposit_event_with_expected, assert_deposit_processed_event_with_expected,
-    assert_liquidate_event_with_expected, assert_trade_event_with_expected,
+    assert_add_synthetic_event_with_expected, assert_add_vault_share_event_with_expected,
+    assert_deactivate_synthetic_asset_event_with_expected, assert_deleverage_event_with_expected,
+    assert_deposit_canceled_event_with_expected, assert_deposit_event_with_expected,
+    assert_deposit_processed_event_with_expected, assert_liquidate_event_with_expected,
+    assert_register_vault_event_with_expected, assert_trade_event_with_expected,
     assert_transfer_event_with_expected, assert_transfer_request_event_with_expected,
     assert_withdraw_event_with_expected, assert_withdraw_request_event_with_expected,
 };
@@ -224,9 +227,30 @@ impl PerpetualsContractStateImpl of Deployable<PerpetualsConfig, ContractAddress
 }
 
 #[derive(Drop, Copy)]
+pub struct OracleInfo {
+    pub asset_name: felt252,
+    pub asset_id: AssetId,
+    pub oracles: Span<Oracle>,
+    pub resolution_factor: u64,
+}
+
+#[derive(Drop, Copy)]
 pub struct SyntheticInfo {
     pub asset_name: felt252,
     pub asset_id: AssetId,
+    pub risk_factor_data: RiskFactorTiers,
+    pub oracles: Span<Oracle>,
+    pub resolution_factor: u64,
+}
+
+#[derive(Drop, Copy)]
+pub struct VaultAssetInfo {
+    pub vault: User,
+    pub asset_name: felt252,
+    pub asset_id: AssetId,
+    pub vault_position_id: PositionId,
+    pub vault_contract_address: ContractAddress,
+    pub quantum: u64,
     pub risk_factor_data: RiskFactorTiers,
     pub oracles: Span<Oracle>,
     pub resolution_factor: u64,
@@ -262,8 +286,65 @@ pub impl SyntheticInfoImpl of SyntheticInfoTrait {
             resolution_factor: SYNTHETIC_RESOLUTION_FACTOR,
         }
     }
+}
+pub impl SyntheticInfoIntoOracleInfo of Into<@SyntheticInfo, @OracleInfo> {
+    fn into(self: @SyntheticInfo) -> @OracleInfo {
+        @OracleInfo {
+            asset_name: *self.asset_name,
+            asset_id: *self.asset_id,
+            oracles: *self.oracles,
+            resolution_factor: *self.resolution_factor,
+        }
+    }
+}
 
-    fn sign_price(self: @SyntheticInfo, oracle_price: u128) -> Span<SignedPrice> {
+#[generate_trait]
+pub impl VaultAssetInfoImpl of VaultAssetInfoTrait {
+    fn new(
+        asset_name: felt252,
+        vault: User,
+        vault_contract_address: ContractAddress,
+        risk_factor_data: RiskFactorTiers,
+        oracles_len: u8,
+    ) -> VaultAssetInfo {
+        let mut oracles = array![];
+        for i in 1..oracles_len + 1 {
+            oracles
+                .append(
+                    OracleTrait::new(
+                        secret_key: i.into() + ORACLE_SECRET_KEY_OFFSET, name: i.into(),
+                    ),
+                );
+        }
+
+        VaultAssetInfo {
+            vault,
+            asset_name,
+            asset_id: AssetIdTrait::new(value: asset_name),
+            vault_position_id: vault.position_id,
+            vault_contract_address,
+            quantum: VAULT_ASSET_QUANTUM,
+            risk_factor_data,
+            oracles: oracles.span(),
+            resolution_factor: VAULT_ASSET_RESOLUTION_FACTOR,
+        }
+    }
+}
+pub impl VaultAssetInfoIntoOracleInfo of Into<@VaultAssetInfo, @OracleInfo> {
+    fn into(self: @VaultAssetInfo) -> @OracleInfo {
+        @OracleInfo {
+            asset_name: *self.asset_name,
+            asset_id: *self.asset_id,
+            oracles: *self.oracles,
+            resolution_factor: *self.resolution_factor,
+        }
+    }
+}
+
+
+#[generate_trait]
+pub impl OracleInfoImpl of OracleInfoTrait {
+    fn sign_price(self: @OracleInfo, oracle_price: u128) -> Span<SignedPrice> {
         let timestamp = Time::now().seconds.try_into().unwrap();
         let mut signed_prices = array![];
         for oracle in self.oracles {
@@ -275,7 +356,6 @@ pub impl SyntheticInfoImpl of SyntheticInfoTrait {
         signed_prices.span()
     }
 }
-
 
 /// PerpsTestsFacade is the main struct that holds the state of the flow tests.
 #[derive(Drop)]
@@ -380,18 +460,18 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             .new_position(:operator_nonce, :position_id, :owner_public_key, :owner_account);
     }
 
-    fn price_tick(ref self: PerpsTestsFacade, synthetic_info: @SyntheticInfo, price: u128) {
+    fn price_tick(ref self: PerpsTestsFacade, oracle_info: @OracleInfo, price: u128) {
         // 10^12 == ORACLE_SCALE_SN_PERPS_RATIO.
-        let oracle_price = price * (*synthetic_info.resolution_factor).into() * TEN_POW_12.into();
+        let oracle_price = price * (*oracle_info.resolution_factor).into() * TEN_POW_12.into();
 
-        let signed_prices = synthetic_info.sign_price(:oracle_price);
+        let signed_prices = oracle_info.sign_price(:oracle_price);
 
         let operator_nonce = self.get_nonce();
         self.operator.set_as_caller(self.perpetuals_contract);
         IAssetsDispatcher { contract_address: self.perpetuals_contract }
             .price_tick(
                 :operator_nonce,
-                asset_id: *synthetic_info.asset_id,
+                asset_id: *oracle_info.asset_id,
                 :oracle_price,
                 signed_prices: signed_prices,
             );
@@ -1245,7 +1325,93 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 );
         }
         // Activate the synthetic asset.
-        self.price_tick(:synthetic_info, price: initial_price);
+        self.price_tick(oracle_info: synthetic_info.into(), price: initial_price);
+    }
+
+    fn add_vault_collateral_asset(
+        ref self: PerpsTestsFacade, vault_asset_info: @VaultAssetInfo, initial_price: u128,
+    ) {
+        self.set_app_governor_as_caller();
+        let asset_dispatcher = IAssetsDispatcher { contract_address: self.perpetuals_contract };
+        asset_dispatcher
+            .add_vault_collateral_asset(
+                asset_id: *vault_asset_info.asset_id,
+                erc20_contract_address: *vault_asset_info.vault_contract_address,
+                quantum: *vault_asset_info.quantum,
+                resolution_factor: *vault_asset_info.resolution_factor,
+                risk_factor_tiers: *vault_asset_info.risk_factor_data.tiers,
+                risk_factor_first_tier_boundary: *vault_asset_info
+                    .risk_factor_data
+                    .first_tier_boundary,
+                risk_factor_tier_size: *vault_asset_info.risk_factor_data.tier_size,
+                quorum: vault_asset_info.oracles.len().try_into().unwrap(),
+            );
+
+        assert_add_vault_share_event_with_expected(
+            spied_event: self.get_last_event(contract_address: self.perpetuals_contract),
+            asset_id: *vault_asset_info.asset_id,
+            risk_factor_tiers: *vault_asset_info.risk_factor_data.tiers,
+            risk_factor_first_tier_boundary: *vault_asset_info.risk_factor_data.first_tier_boundary,
+            risk_factor_tier_size: *vault_asset_info.risk_factor_data.tier_size,
+            resolution_factor: *vault_asset_info.resolution_factor,
+            quorum: vault_asset_info.oracles.len().try_into().unwrap(),
+            erc20_contract_address: *vault_asset_info.vault_contract_address,
+            quantum: self.collateral_quantum,
+        );
+
+        assert_eq!(
+            asset_dispatcher.get_asset_config(asset_id: *vault_asset_info.asset_id).status,
+            AssetStatus::PENDING,
+        );
+
+        // Register the vault.
+        let operator_nonce = self.get_nonce();
+        self.operator.set_as_caller(self.perpetuals_contract);
+
+        let expiration = Time::now().add(Time::seconds(10));
+
+        let account = vault_asset_info.vault.account;
+        let request_hash = RegisterVaultArgs {
+            vault_position_id: *vault_asset_info.vault_position_id,
+            vault_contract_address: *vault_asset_info.vault_contract_address,
+            vault_asset_id: *vault_asset_info.asset_id,
+            expiration,
+        }
+            .get_message_hash(public_key: *account.key_pair.public_key);
+        let signature = account.sign_message(message: request_hash);
+
+        IVaultDispatcher { contract_address: self.perpetuals_contract }
+            .register_vault(
+                :operator_nonce,
+                :signature,
+                vault_position_id: *vault_asset_info.vault_position_id,
+                vault_contract_address: *vault_asset_info.vault_contract_address,
+                vault_asset_id: *vault_asset_info.asset_id,
+                :expiration,
+            );
+
+        assert_register_vault_event_with_expected(
+            spied_event: self.get_last_event(contract_address: self.perpetuals_contract),
+            vault_position_id: *vault_asset_info.vault_position_id,
+            vault_contract_address: *vault_asset_info.vault_contract_address,
+            vault_asset_id: *vault_asset_info.asset_id,
+            :expiration,
+        );
+
+        // Add oracle.
+        for oracle in vault_asset_info.oracles {
+            self.set_app_governor_as_caller();
+            asset_dispatcher
+                .add_oracle_to_asset(
+                    *vault_asset_info.asset_id,
+                    *oracle.key_pair.public_key,
+                    *oracle.name,
+                    *vault_asset_info.asset_name,
+                );
+        }
+
+        // Activate the vault asset.
+        self.price_tick(oracle_info: vault_asset_info.into(), price: initial_price);
     }
 
     fn deactivate_synthetic(ref self: PerpsTestsFacade, synthetic_id: AssetId) {
