@@ -312,6 +312,12 @@ pub mod VaultComponent {
                     },
                 );
         }
+
+        fn get_vault_address(
+            self: @ComponentState<TContractState>, position_id: PositionId,
+        ) -> ContractAddress {
+            self.vault_positions_to_addresses.read(position_id)
+        }
     }
 
     #[generate_trait]

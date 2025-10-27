@@ -1,6 +1,7 @@
 use perpetuals::core::components::assets::events as assets_events;
 use perpetuals::core::components::deposit::events as deposit_events;
 use perpetuals::core::components::positions::events as positions_events;
+use perpetuals::core::components::vault::events as vault_events;
 use perpetuals::core::core::Core::SNIP12MetadataImpl;
 use perpetuals::core::events;
 use perpetuals::core::types::asset::AssetId;
@@ -481,5 +482,61 @@ pub fn assert_update_synthetic_quorum_event_with_expected(
         :expected_event,
         expected_event_selector: @selector!("AssetQuorumUpdated"),
         expected_event_name: "AssetQuorumUpdated",
+    );
+}
+
+pub fn assert_deposit_into_vault_event_with_expected(
+    spied_event: @(ContractAddress, Event),
+    position_id: PositionId,
+    vault_position_id: PositionId,
+    collateral_id: AssetId,
+    quantized_amount: u64,
+    expiration: Timestamp,
+    salt: felt252,
+    quantized_shares_amount: u64,
+) {
+    let expected_event = vault_events::DepositIntoVault {
+        position_id,
+        vault_position_id,
+        collateral_id,
+        quantized_amount,
+        expiration,
+        salt,
+        quantized_shares_amount,
+    };
+    assert_expected_event_emitted(
+        :spied_event,
+        :expected_event,
+        expected_event_selector: @selector!("DepositIntoVault"),
+        expected_event_name: "DepositIntoVault",
+    );
+}
+
+pub fn assert_redeem_from_vault_event_with_expected(
+    spied_event: @(ContractAddress, Event),
+    position_id: PositionId,
+    vault_position_id: PositionId,
+    collateral_id: AssetId,
+    quantized_amount: u64,
+    expiration: Timestamp,
+    salt: felt252,
+    quantized_shares_amount: u64,
+    price: Price,
+) {
+    let expected_event = vault_events::RedeemedFromVault {
+        position_id,
+        vault_position_id,
+        collateral_id,
+        quantized_amount,
+        expiration,
+        salt,
+        quantized_shares_amount,
+        price,
+    };
+    assert_expected_event_emitted(
+        :spied_event,
+        :expected_event,
+        expected_event_selector: @selector!("RedeemedFromVault"),
+        expected_event_name: "RedeemedFromVault",
     );
 }
