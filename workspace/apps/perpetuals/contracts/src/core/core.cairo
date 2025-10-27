@@ -19,7 +19,8 @@ pub mod Core {
     use perpetuals::core::components::positions::Positions::{
         FEE_POSITION, INSURANCE_FUND_POSITION, InternalTrait as PositionsInternalTrait,
     };
-    use perpetuals::core::components::vault::VaultComponent;
+    use perpetuals::core::components::vault::VaultExcecutorComponent;
+    use perpetuals::core::components::vault::VaultExcecutorComponent::InternalTrait as VaultExecutorInternal;
     use perpetuals::core::errors::{
         AMOUNT_OVERFLOW, ASSET_ID_NOT_COLLATERAL, CANT_LIQUIDATE_IF_POSITION,
         CANT_TRADE_WITH_FEE_POSITION, DIFFERENT_BASE_ASSET_IDS, INVALID_ACTUAL_BASE_SIGN,
@@ -41,12 +42,12 @@ pub mod Core {
     use perpetuals::core::value_risk_calculator::{
         PositionTVTR, deleveraged_position_validations, liquidated_position_validations,
     };
-    use starknet::ContractAddress;
     use starknet::event::EventEmitter;
     use starknet::storage::{
         Map, StorageMapReadAccess, StoragePath, StoragePathEntry, StoragePointerReadAccess,
         StoragePointerWriteAccess,
     };
+    use starknet::{ClassHash, ContractAddress};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
@@ -75,7 +76,7 @@ pub mod Core {
         path: RequestApprovalsComponent, storage: request_approvals, event: RequestApprovalsEvent,
     );
     component!(path: Positions, storage: positions, event: PositionsEvent);
-    component!(path: VaultComponent, storage: vault, event: VaultEvent);
+    component!(path: VaultExcecutorComponent, storage: vault, event: VaultEvent);
 
     #[abi(embed_v0)]
     impl OperatorNonceImpl =
@@ -105,7 +106,8 @@ pub mod Core {
     impl PositionsImpl = Positions::PositionsImpl<ContractState>;
 
     #[abi(embed_v0)]
-    impl VaultImpl = VaultComponent::VaultImpl<ContractState>;
+    impl VaultExcecutorComponentImpl =
+        VaultExcecutorComponent::VaultExcecutorComponentImpl<ContractState>;
 
     const NAME: felt252 = 'Perpetuals';
     const VERSION: felt252 = 'v0';
@@ -146,7 +148,7 @@ pub mod Core {
         #[substorage(v0)]
         pub positions: Positions::Storage,
         #[substorage(v0)]
-        pub vault: VaultComponent::Storage,
+        pub vault: VaultExcecutorComponent::Storage,
     }
 
     #[event]
@@ -173,7 +175,7 @@ pub mod Core {
         #[flat]
         PositionsEvent: Positions::Event,
         #[flat]
-        VaultEvent: VaultComponent::Event,
+        VaultEvent: VaultExcecutorComponent::Event,
         Deleverage: events::Deleverage,
         InactiveAssetPositionReduced: events::InactiveAssetPositionReduced,
         Liquidate: events::Liquidate,
@@ -201,6 +203,7 @@ pub mod Core {
         cancel_delay: TimeDelta,
         fee_position_owner_public_key: PublicKey,
         insurance_fund_position_owner_public_key: PublicKey,
+        vault_logic_library: ClassHash,
     ) {
         self.roles.initialize(:governance_admin);
         self.replaceability.initialize(:upgrade_delay);
@@ -219,6 +222,7 @@ pub mod Core {
         self
             .positions
             .initialize(:fee_position_owner_public_key, :insurance_fund_position_owner_public_key);
+        self.vault.initialize(:vault_logic_library);
     }
 
     #[abi(embed_v0)]

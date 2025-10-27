@@ -1,5 +1,5 @@
-#[starknet::component]
-pub mod VaultComponent {
+#[starknet::contract]
+pub mod Vault {
     use core::num::traits::Zero;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::interfaces::token::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
@@ -8,11 +8,10 @@ pub mod VaultComponent {
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::AssetsComponent::InternalTrait as AssetsInternal;
     use perpetuals::core::components::assets::interface::IAssets;
-    use perpetuals::core::components::deposit::Deposit as DepositComponent;
+    use perpetuals::core::components::deposit::Deposit;
     use perpetuals::core::components::deposit::interface::IDeposit;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
-    use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalTrait as NonceInternal;
-    use perpetuals::core::components::positions::Positions as PositionsComponent;
+    use perpetuals::core::components::positions::Positions;
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternalTrait;
     use perpetuals::core::components::positions::interface::IPositions;
     use perpetuals::core::components::vault::errors::{
@@ -38,13 +37,14 @@ pub mod VaultComponent {
     };
     use perpetuals::core::types::register_vault::RegisterVaultArgs;
     use perpetuals::core::utils::validate_signature;
+    use starknet::event::EventEmitter;
     use starknet::storage::{
         Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePath, StoragePathEntry,
         StoragePointerReadAccess, StoragePointerWriteAccess,
     };
     use starknet::{ContractAddress, get_contract_address};
     use starkware_utils::components::pausable::PausableComponent;
-    use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
+    use starkware_utils::components::replaceability::ReplaceabilityComponent;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
     use starkware_utils::components::roles::RolesComponent;
     use starkware_utils::math::abs::Abs;
@@ -55,8 +55,47 @@ pub mod VaultComponent {
     use starkware_utils::time::time::{Time, Timestamp, validate_expiration};
     use vault::interface::{IProtocolVaultDispatcher, IProtocolVaultDispatcherTrait};
 
+    component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
+    component!(path: OperatorNonceComponent, storage: operator_nonce, event: OperatorNonceEvent);
+
+    component!(path: PausableComponent, storage: pausable, event: PausableEvent);
+    component!(path: ReplaceabilityComponent, storage: replaceability, event: ReplaceabilityEvent);
+    component!(path: RolesComponent, storage: roles, event: RolesEvent);
+    component!(path: SRC5Component, storage: src5, event: SRC5Event);
+
+    component!(path: AssetsComponent, storage: assets, event: AssetsEvent);
+    component!(path: Deposit, storage: deposits, event: DepositEvent);
+    component!(
+        path: RequestApprovalsComponent, storage: request_approvals, event: RequestApprovalsEvent,
+    );
+    component!(path: Positions, storage: positions, event: PositionsEvent);
+
+
     #[storage]
     pub struct Storage {
+        // Order hash to fulfilled absolute base amount.
+        fulfillment: Map<HashType, u64>,
+        // --- Components ---
+        #[substorage(v0)]
+        accesscontrol: AccessControlComponent::Storage,
+        #[substorage(v0)]
+        operator_nonce: OperatorNonceComponent::Storage,
+        #[substorage(v0)]
+        pausable: PausableComponent::Storage,
+        #[substorage(v0)]
+        pub replaceability: ReplaceabilityComponent::Storage,
+        #[substorage(v0)]
+        pub roles: RolesComponent::Storage,
+        #[substorage(v0)]
+        src5: SRC5Component::Storage,
+        #[substorage(v0)]
+        pub assets: AssetsComponent::Storage,
+        #[substorage(v0)]
+        pub deposits: Deposit::Storage,
+        #[substorage(v0)]
+        pub request_approvals: RequestApprovalsComponent::Storage,
+        #[substorage(v0)]
+        pub positions: Positions::Storage,
         // vault position to contract address of tokenized vault contract.
         pub vault_positions_to_addresses: Map<PositionId, ContractAddress>,
         // vault position to vault position asset_id.
@@ -69,29 +108,37 @@ pub mod VaultComponent {
     }
 
     #[event]
-    #[derive(Drop, PartialEq, starknet::Event)]
+    #[derive(Drop, starknet::Event)]
     pub enum Event {
+        #[flat]
+        AccessControlEvent: AccessControlComponent::Event,
+        #[flat]
+        OperatorNonceEvent: OperatorNonceComponent::Event,
+        #[flat]
+        PausableEvent: PausableComponent::Event,
+        #[flat]
+        ReplaceabilityEvent: ReplaceabilityComponent::Event,
+        #[flat]
+        RolesEvent: RolesComponent::Event,
+        #[flat]
+        SRC5Event: SRC5Component::Event,
+        #[flat]
+        AssetsEvent: AssetsComponent::Event,
+        #[flat]
+        DepositEvent: Deposit::Event,
+        #[flat]
+        RequestApprovalsEvent: RequestApprovalsComponent::Event,
+        #[flat]
+        PositionsEvent: Positions::Event,
         DepositIntoVault: events::DepositIntoVault,
         RedeemedFromVault: events::RedeemedFromVault,
         LiquidatedFromVault: events::LiquidatedFromVault,
         VaultRegistered: events::VaultRegistered,
     }
 
-    #[embeddable_as(VaultImpl)]
-    impl Vault<
-        TContractState,
-        +HasComponent<TContractState>,
-        +Drop<TContractState>,
-        +AccessControlComponent::HasComponent<TContractState>,
-        +SRC5Component::HasComponent<TContractState>,
-        impl Assets: AssetsComponent::HasComponent<TContractState>,
-        impl OperatorNonce: OperatorNonceComponent::HasComponent<TContractState>,
-        impl Pausable: PausableComponent::HasComponent<TContractState>,
-        impl Positions: PositionsComponent::HasComponent<TContractState>,
-        +RequestApprovalsComponent::HasComponent<TContractState>,
-        +RolesComponent::HasComponent<TContractState>,
-        impl Deposit: DepositComponent::HasComponent<TContractState>,
-    > of IVault<ComponentState<TContractState>> {
+
+    #[abi(embed_v0)]
+    impl Vault of IVault<ContractState> {
         /// Deposits a specified amount into a vault.
         ///
         /// Validations:
@@ -110,7 +157,7 @@ pub mod VaultComponent {
         /// - Applies the diff in the collateral only.
         /// - Emits the event.
         fn deposit_into_vault(
-            ref self: ComponentState<TContractState>,
+            ref self: ContractState,
             operator_nonce: u64,
             signature: Signature,
             position_id: PositionId,
@@ -119,13 +166,8 @@ pub mod VaultComponent {
             expiration: Timestamp,
             salt: felt252,
         ) {
-            /// Validations:
-            get_dep_component!(@self, Pausable).assert_not_paused();
-            let mut nonce = get_dep_component_mut!(ref self, OperatorNonce);
-            nonce.use_checked_nonce(:operator_nonce);
             let current_time = Time::now();
-            let mut assets = get_dep_component_mut!(ref self, Assets);
-            assets.validate_price_interval_integrity(:current_time);
+            self.assets.validate_price_interval_integrity(:current_time);
 
             let vault_share_asset_id = self.vault_positions_to_assets.read(vault_position_id);
             self
@@ -140,7 +182,8 @@ pub mod VaultComponent {
                 );
 
             /// Executions:
-            let (asset_type, erc20_vault_dispatcher, vault_share_quantum) = assets
+            let (asset_type, erc20_vault_dispatcher, vault_share_quantum) = self
+                .assets
                 .get_token_contract_and_quantum(asset_id: vault_share_asset_id);
             assert(asset_type == AssetType::VAULT_SHARE_COLLATERAL, NOT_VAULT_SHARE_ASSET);
             let actual_unquantized_vault_shares_amount = self
@@ -157,8 +200,8 @@ pub mod VaultComponent {
                 / vault_share_quantum.into())
                 .try_into()
                 .expect(AMOUNT_OVERFLOW);
-            let mut deposit = get_dep_component_mut!(ref self, Deposit);
-            deposit
+            self
+                .deposits
                 .deposit(
                     asset_id: vault_share_asset_id,
                     depositor: perps_address,
@@ -174,7 +217,7 @@ pub mod VaultComponent {
                     events::DepositIntoVault {
                         position_id,
                         vault_position_id,
-                        collateral_id: get_dep_component!(@self, Assets).get_collateral_id(),
+                        collateral_id: self.assets.get_collateral_id(),
                         quantized_amount: collateral_quantized_amount,
                         expiration,
                         salt,
@@ -273,7 +316,7 @@ pub mod VaultComponent {
         /// map.
         /// - Emits the event.
         fn register_vault(
-            ref self: ComponentState<TContractState>,
+            ref self: ContractState,
             operator_nonce: u64,
             signature: Signature,
             vault_position_id: PositionId,
@@ -282,8 +325,6 @@ pub mod VaultComponent {
             expiration: Timestamp,
         ) {
             /// Validations:
-            let mut nonce = get_dep_component_mut!(ref self, OperatorNonce);
-            nonce.use_checked_nonce(:operator_nonce);
             self
                 ._validate_register_vault(
                     :vault_position_id,
@@ -328,7 +369,7 @@ pub mod VaultComponent {
         /// limit.
         /// - Emit `RedeemFromVault`.
         fn redeem_from_vault(
-            ref self: ComponentState<TContractState>,
+            ref self: ContractState,
             operator_nonce: u64,
             user_signature: Signature,
             position_id: PositionId,
@@ -340,13 +381,8 @@ pub mod VaultComponent {
             expiration: Timestamp,
             salt: felt252,
         ) {
-            /// Validations:
-            get_dep_component!(@self, Pausable).assert_not_paused();
-            let mut nonce = get_dep_component_mut!(ref self, OperatorNonce);
-            nonce.use_checked_nonce(:operator_nonce);
             let current_time = Time::now();
-            let mut assets = get_dep_component_mut!(ref self, Assets);
-            assets.validate_price_interval_integrity(:current_time);
+            self.assets.validate_price_interval_integrity(:current_time);
 
             let vault_share_asset_id = self.vault_positions_to_assets.read(vault_position_id);
 
@@ -382,7 +418,7 @@ pub mod VaultComponent {
                     events::RedeemedFromVault {
                         position_id,
                         vault_position_id,
-                        collateral_id: assets.get_collateral_id(),
+                        collateral_id: self.assets.get_collateral_id(),
                         quantized_amount: actual_collateral_quantized_amount,
                         expiration,
                         salt,
@@ -394,37 +430,7 @@ pub mod VaultComponent {
     }
 
     #[generate_trait]
-    pub impl InternalImpl<
-        TContractState,
-        +HasComponent<TContractState>,
-        +Drop<TContractState>,
-        +AccessControlComponent::HasComponent<TContractState>,
-        +SRC5Component::HasComponent<TContractState>,
-        impl OperatorNonce: OperatorNonceComponent::HasComponent<TContractState>,
-        impl Pausable: PausableComponent::HasComponent<TContractState>,
-        impl Roles: RolesComponent::HasComponent<TContractState>,
-    > of InternalTrait<TContractState> {
-        fn initialize(
-            ref self: ComponentState<TContractState>,
-        ) { // Checks that the component has not been initialized yet.
-        }
-    }
-
-    #[generate_trait]
-    impl PrivateImpl<
-        TContractState,
-        +HasComponent<TContractState>,
-        +Drop<TContractState>,
-        +AccessControlComponent::HasComponent<TContractState>,
-        +SRC5Component::HasComponent<TContractState>,
-        impl OperatorNonce: OperatorNonceComponent::HasComponent<TContractState>,
-        impl Pausable: PausableComponent::HasComponent<TContractState>,
-        impl Assets: AssetsComponent::HasComponent<TContractState>,
-        impl Deposit: DepositComponent::HasComponent<TContractState>,
-        impl Positions: PositionsComponent::HasComponent<TContractState>,
-        +RolesComponent::HasComponent<TContractState>,
-        impl RequestApprovals: RequestApprovalsComponent::HasComponent<TContractState>,
-    > of PrivateTrait<TContractState> {
+    impl PrivateImpl of PrivateTrait {
         /// Validates a deposit into a vault.
         ///
         /// This function ensures the transaction is valid by:
@@ -435,7 +441,7 @@ pub mod VaultComponent {
         /// - Checking the signature.
         /// - Ensuring the operation hasn't been previously fulfilled.
         fn _validate_deposit_into_vault(
-            ref self: ComponentState<TContractState>,
+            ref self: ContractState,
             signature: Signature,
             position_id: PositionId,
             vault_position_id: PositionId,
@@ -446,8 +452,7 @@ pub mod VaultComponent {
         ) {
             validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
 
-            get_dep_component!(@self, Assets).validate_active_asset(asset_id: vault_share_asset_id);
-            let mut positions = get_dep_component!(@self, Positions);
+            self.assets.validate_active_asset(asset_id: vault_share_asset_id);
 
             // Depositing position must not be a vault position.
             assert(!self._is_vault_position(:position_id), POSITION_IS_VAULT_POSITION);
@@ -455,7 +460,7 @@ pub mod VaultComponent {
             assert(collateral_quantized_amount.is_non_zero(), INVALID_ZERO_AMOUNT);
 
             // Signature validation
-            let position = positions.get_position_snapshot(:position_id);
+            let position = self.positions.get_position_snapshot(:position_id);
             let hash = validate_signature(
                 public_key: position.get_owner_public_key(),
                 message: VaultDepositArgs {
@@ -479,7 +484,7 @@ pub mod VaultComponent {
         /// Returns:
         /// - The amount of vault shares received from the deposit.
         fn _execute_deposit_into_vault(
-            ref self: ComponentState<TContractState>,
+            ref self: ContractState,
             position_id: PositionId,
             vault_position_id: PositionId,
             collateral_quantized_amount: u64,
@@ -499,29 +504,28 @@ pub mod VaultComponent {
             };
 
             /// Validations - Fundamentals:
-            let mut positions = get_dep_component_mut!(ref self, Positions);
-            let position = positions.get_position_snapshot(:position_id);
-            positions
+            let position = self.positions.get_position_snapshot(:position_id);
+            self
+                .positions
                 .validate_healthy_or_healthier_position(
                     :position_id, :position, :position_diff, tvtr_before: Default::default(),
                 );
 
             // Apply diffs.
-            positions.apply_diff(:position_id, :position_diff);
-            positions.apply_diff(position_id: vault_position_id, position_diff: vault_diff);
+            self.positions.apply_diff(:position_id, :position_diff);
+            self.positions.apply_diff(position_id: vault_position_id, position_diff: vault_diff);
 
             actual_unquantized_vault_shares_amount
         }
 
         fn _deposit_to_vault_contract(
-            ref self: ComponentState<TContractState>,
+            ref self: ContractState,
             vault_address: ContractAddress,
             collateral_quantized_amount: u64,
         ) -> u256 {
             let contract_address = get_contract_address();
-            let erc20_collateral_dispatcher = get_dep_component!(@self, Assets)
-                .get_collateral_token_contract();
-            let collateral_quantum = get_dep_component!(@self, Assets).get_collateral_quantum();
+            let erc20_collateral_dispatcher = self.assets.get_collateral_token_contract();
+            let collateral_quantum = self.assets.get_collateral_quantum();
             let erc20_vault_dispatcher = IERC20Dispatcher { contract_address: vault_address };
 
             // Fetch balances before deposit
@@ -566,7 +570,7 @@ pub mod VaultComponent {
         /// - Checking the vault position has no share assets.
         /// - Validating the signature.
         fn _validate_register_vault(
-            ref self: ComponentState<TContractState>,
+            ref self: ContractState,
             vault_position_id: PositionId,
             vault_contract_address: ContractAddress,
             vault_asset_id: AssetId,
@@ -577,7 +581,7 @@ pub mod VaultComponent {
             validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
 
             // Validate asset id exists, if not found get_asset_config will panic.
-            get_dep_component!(@self, Assets).get_asset_config(asset_id: vault_asset_id);
+            self.assets.get_asset_config(asset_id: vault_asset_id);
 
             let vault_address = self.vault_positions_to_addresses.read(vault_position_id);
             assert(vault_address.is_zero(), VAULT_POSITION_ALREADY_EXISTS);
@@ -585,12 +589,12 @@ pub mod VaultComponent {
             assert(vault_position.is_zero(), VAULT_CONTRACT_ALREADY_EXISTS);
 
             //Position check
-            let mut positions = get_dep_component!(@self, Positions);
-            let vault_position = positions.get_position_snapshot(position_id: vault_position_id);
+            let vault_position = self
+                .positions
+                .get_position_snapshot(position_id: vault_position_id);
 
             for (asset_id, asset_balance) in vault_position.assets_balance {
-                if get_dep_component!(@self, Assets)
-                    .get_asset_type(asset_id) == AssetType::VAULT_SHARE_COLLATERAL {
+                if self.assets.get_asset_type(asset_id) == AssetType::VAULT_SHARE_COLLATERAL {
                     assert(asset_balance.is_zero(), VAULT_POSITION_HAS_SHARES);
                 }
             }
@@ -652,7 +656,7 @@ pub mod VaultComponent {
         }
 
         fn _validate_redeem_from_vault(
-            ref self: ComponentState<TContractState>,
+            ref self: ContractState,
             position_id: PositionId,
             user_signature: Signature,
             vault_position_id: PositionId,
@@ -665,7 +669,6 @@ pub mod VaultComponent {
             vault_share_asset_id: AssetId,
         ) -> (StoragePath<Position>, StoragePath<Position>) {
             validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
-            let mut positions = get_dep_component!(@self, Positions);
 
             assert(number_of_shares.is_non_zero(), INVALID_ZERO_AMOUNT);
             assert(minimum_received_total_amount.is_non_zero(), INVALID_ZERO_AMOUNT);
@@ -683,11 +686,13 @@ pub mod VaultComponent {
             );
 
             // Vault position id is a vault position, and the asset is active.
-            let vault_position = positions.get_position_snapshot(position_id: vault_position_id);
-            get_dep_component!(@self, Assets).validate_active_asset(asset_id: vault_share_asset_id);
+            let vault_position = self
+                .positions
+                .get_position_snapshot(position_id: vault_position_id);
+            self.assets.validate_active_asset(asset_id: vault_share_asset_id);
 
             // position id is exists and it is not a vault position.
-            let position = positions.get_position_snapshot(:position_id);
+            let position = self.positions.get_position_snapshot(:position_id);
             // Make sure the withdrawing position is not a vault position
             // by asserting that position id is not in the vault map.
             assert(
@@ -725,7 +730,7 @@ pub mod VaultComponent {
         }
 
         fn _execute_redeem_from_vault(
-            ref self: ComponentState<TContractState>,
+            ref self: ContractState,
             position_id: PositionId,
             vault_position_id: PositionId,
             number_of_shares: u64,
@@ -749,33 +754,31 @@ pub mod VaultComponent {
                 collateral_diff: -actual_collateral_quantized_amount.into(),
                 asset_diff: Option::None,
             };
-            let mut positions = get_dep_component_mut!(ref self, Positions);
-            positions
+            self
+                .positions
                 .validate_healthy_or_healthier_position(
                     :position_id, :position, :position_diff, tvtr_before: Default::default(),
                 );
 
             // Apply diffs.
-            positions.apply_diff(:position_id, :position_diff);
-            positions.apply_diff(position_id: vault_position_id, position_diff: vault_diff);
+            self.positions.apply_diff(:position_id, :position_diff);
+            self.positions.apply_diff(position_id: vault_position_id, position_diff: vault_diff);
 
             actual_collateral_quantized_amount
         }
 
         fn _redeem_from_vault_contract(
-            ref self: ComponentState<TContractState>,
+            ref self: ContractState,
             vault_share_asset_id: AssetId,
             number_of_shares: u64,
             vault_share_execution_price: Price,
         ) -> u64 {
             let perps_address = get_contract_address();
-            let collateral_dispatcher = get_dep_component!(@self, Assets)
-                .get_collateral_token_contract();
-            let collateral_quantum = get_dep_component!(@self, Assets).get_collateral_quantum();
+            let collateral_dispatcher = self.assets.get_collateral_token_contract();
+            let collateral_quantum = self.assets.get_collateral_quantum();
 
-            let (asset_type, erc20_vault_dispatcher, vault_share_quantum) = get_dep_component!(
-                @self, Assets,
-            )
+            let (asset_type, erc20_vault_dispatcher, vault_share_quantum) = self
+                .assets
                 .get_token_contract_and_quantum(asset_id: vault_share_asset_id);
             assert(asset_type == AssetType::VAULT_SHARE_COLLATERAL, NOT_VAULT_SHARE_ASSET);
 
@@ -836,9 +839,7 @@ pub mod VaultComponent {
                 .expect(AMOUNT_OVERFLOW)
         }
 
-        fn _is_vault_position(
-            ref self: ComponentState<TContractState>, position_id: PositionId,
-        ) -> bool {
+        fn _is_vault_position(ref self: ContractState, position_id: PositionId) -> bool {
             let position_address = self.vault_positions_to_addresses.read(position_id);
             position_address.is_non_zero()
         }

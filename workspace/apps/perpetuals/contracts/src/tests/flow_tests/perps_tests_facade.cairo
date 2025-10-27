@@ -32,11 +32,11 @@ use perpetuals::tests::event_test_utils::{
     assert_transfer_event_with_expected, assert_transfer_request_event_with_expected,
     assert_withdraw_event_with_expected, assert_withdraw_request_event_with_expected,
 };
-use perpetuals::tests::test_utils::validate_balance;
+use perpetuals::tests::test_utils::{VAULT_LOGIC_CLASS_HASH, validate_balance};
 use snforge_std::cheatcodes::events::{Event, EventSpy, EventSpyTrait, EventsFilterTrait};
 use snforge_std::signature::stark_curve::{StarkCurveKeyPairImpl, StarkCurveSignerImpl};
 use snforge_std::{ContractClassTrait, DeclareResultTrait, start_cheat_block_timestamp_global};
-use starknet::ContractAddress;
+use starknet::{ClassHash, ContractAddress};
 use starkware_utils::components::request_approvals::interface::{
     IRequestApprovalsDispatcher, IRequestApprovalsDispatcherTrait, RequestStatus,
 };
@@ -173,6 +173,7 @@ struct PerpetualsConfig {
     fee_position_owner_public_key: PublicKey,
     insurance_fund_position_owner_account: ContractAddress,
     insurance_fund_position_owner_public_key: PublicKey,
+    vault_logic_class_hash: ClassHash,
 }
 
 #[generate_trait]
@@ -197,6 +198,7 @@ pub impl PerpetualsConfigImpl of PerpetualsConfigTrait {
             fee_position_owner_public_key: operator.key_pair.public_key,
             insurance_fund_position_owner_account: operator.address,
             insurance_fund_position_owner_public_key: operator.key_pair.public_key,
+            vault_logic_class_hash: VAULT_LOGIC_CLASS_HASH(),
         }
     }
 }
@@ -216,6 +218,7 @@ impl PerpetualsContractStateImpl of Deployable<PerpetualsConfig, ContractAddress
         self.cancel_delay.serialize(ref calldata);
         self.fee_position_owner_public_key.serialize(ref calldata);
         self.insurance_fund_position_owner_public_key.serialize(ref calldata);
+        self.vault_logic_class_hash.serialize(ref calldata);
 
         let perpetuals_contract = snforge_std::declare("Core").unwrap().contract_class();
         let (address, _) = perpetuals_contract.deploy(@calldata).unwrap();
