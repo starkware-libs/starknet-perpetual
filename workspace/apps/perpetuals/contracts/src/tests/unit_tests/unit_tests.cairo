@@ -3800,7 +3800,7 @@ fn test_register_vault_successful() {
                 (
                     test_address(),
                     perpetuals::core::core::Core::Event::VaultEvent(
-                        perpetuals::core::components::vault::VaultComponent::Event::VaultRegistered(
+                        perpetuals::core::components::vault::VaultExcecutorComponent::Event::VaultRegistered(
                             perpetuals::core::components::vault::events::VaultRegistered {
                                 vault_position_id,
                                 vault_contract_address,

@@ -16,7 +16,7 @@ pub mod AssetsComponent {
         INVALID_FUNDING_TICK_LEN, INVALID_MEDIAN, INVALID_PRICE_TIMESTAMP, INVALID_SAME_QUORUM,
         INVALID_ZERO_ASSET_ID, INVALID_ZERO_ASSET_NAME, INVALID_ZERO_ORACLE_NAME,
         INVALID_ZERO_PUBLIC_KEY, INVALID_ZERO_QUANTUM, INVALID_ZERO_QUORUM,
-        INVALID_ZERO_RESOLUTION_FACTOR, INVALID_ZERO_RF_FIRST_BOUNDRY, INVALID_ZERO_RF_TIERS_LEN,
+        INVALID_ZERO_RESOLUTION_FACTOR, INVALID_ZERO_RF_FIRST_BOUNDARY, INVALID_ZERO_RF_TIERS_LEN,
         INVALID_ZERO_RF_TIER_SIZE, INVALID_ZERO_TOKEN_ADDRESS, MISMATCHED_RESOLUTION, NOT_SYNTHETIC,
         NO_TOKEN_CONTRACT, ORACLE_ALREADY_EXISTS, ORACLE_NAME_TOO_LONG, ORACLE_NOT_EXISTS,
         ORACLE_PUBLIC_KEY_NOT_REGISTERED, QUORUM_NOT_REACHED, SIGNED_PRICES_UNSORTED,
@@ -151,7 +151,7 @@ pub mod AssetsComponent {
             self.emit(events::OracleAdded { asset_id, asset_name, oracle_public_key, oracle_name });
         }
 
-        /// Add asset is called by the app governer to add a new synthetic asset.
+        /// Add asset is called by the app governor to add a new synthetic asset.
         ///
         /// Validations:
         /// - Only the app_governor can call this function.
@@ -836,7 +836,7 @@ pub mod AssetsComponent {
 
             assert(asset_id.is_non_zero(), INVALID_ZERO_ASSET_ID);
             assert(risk_factor_tiers.len().is_non_zero(), INVALID_ZERO_RF_TIERS_LEN);
-            assert(risk_factor_first_tier_boundary.is_non_zero(), INVALID_ZERO_RF_FIRST_BOUNDRY);
+            assert(risk_factor_first_tier_boundary.is_non_zero(), INVALID_ZERO_RF_FIRST_BOUNDARY);
             assert(risk_factor_tier_size.is_non_zero(), INVALID_ZERO_RF_TIER_SIZE);
             assert(quorum.is_non_zero(), INVALID_ZERO_QUORUM);
             assert(resolution_factor.is_non_zero(), INVALID_ZERO_RESOLUTION_FACTOR);
