@@ -40,4 +40,7 @@ pub trait IVault<TContractState> {
         expiration: Timestamp,
         salt: felt252,
     );
+
+    // Getters.
+    fn get_vault_address(self: @TContractState, position_id: PositionId) -> ContractAddress;
 }
