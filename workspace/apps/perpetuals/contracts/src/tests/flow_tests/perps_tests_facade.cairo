@@ -1,5 +1,6 @@
 use core::dict::{Felt252Dict, Felt252DictTrait};
 use core::nullable::{FromNullableResult, match_nullable};
+use openzeppelin::interfaces::erc4626::{IERC4626Dispatcher, IERC4626DispatcherTrait};
 use perpetuals::core::components::assets::interface::{IAssetsDispatcher, IAssetsDispatcherTrait};
 use perpetuals::core::components::deposit::Deposit::deposit_hash;
 use perpetuals::core::components::deposit::interface::{
@@ -12,14 +13,17 @@ use perpetuals::core::components::positions::Positions::{FEE_POSITION, INSURANCE
 use perpetuals::core::components::positions::interface::{
     IPositionsDispatcher, IPositionsDispatcherTrait,
 };
+use perpetuals::core::components::vault::interface::{IVaultDispatcher, IVaultDispatcherTrait};
 use perpetuals::core::core::Core::SNIP12MetadataImpl;
 use perpetuals::core::interface::{ICoreDispatcher, ICoreDispatcherTrait, Settlement};
 use perpetuals::core::types::asset::{Asset, AssetId, AssetIdTrait, AssetStatus};
 use perpetuals::core::types::balance::Balance;
+use perpetuals::core::types::deposit_into_vault::VaultDepositArgs;
 use perpetuals::core::types::funding::FundingTick;
 use perpetuals::core::types::order::Order;
 use perpetuals::core::types::position::{PositionData, PositionId};
-use perpetuals::core::types::price::{Price, SignedPrice};
+use perpetuals::core::types::price::{Price, PriceMulTrait, SignedPrice};
+use perpetuals::core::types::redeem_from_vault::{RedeemFromVaultOwnerArgs, RedeemFromVaultUserArgs};
 use perpetuals::core::types::transfer::TransferArgs;
 use perpetuals::core::types::withdraw::WithdrawArgs;
 use perpetuals::core::value_risk_calculator::PositionTVTR;
@@ -27,8 +31,9 @@ use perpetuals::tests::constants::*;
 use perpetuals::tests::event_test_utils::{
     assert_add_synthetic_event_with_expected, assert_deactivate_synthetic_asset_event_with_expected,
     assert_deleverage_event_with_expected, assert_deposit_canceled_event_with_expected,
-    assert_deposit_event_with_expected, assert_deposit_processed_event_with_expected,
-    assert_liquidate_event_with_expected, assert_trade_event_with_expected,
+    assert_deposit_event_with_expected, assert_deposit_into_vault_event_with_expected,
+    assert_deposit_processed_event_with_expected, assert_liquidate_event_with_expected,
+    assert_redeem_from_vault_event_with_expected, assert_trade_event_with_expected,
     assert_transfer_event_with_expected, assert_transfer_request_event_with_expected,
     assert_withdraw_event_with_expected, assert_withdraw_request_event_with_expected,
 };
@@ -43,6 +48,7 @@ use starkware_utils::components::request_approvals::interface::{
 use starkware_utils::components::roles::interface::{IRolesDispatcher, IRolesDispatcherTrait};
 use starkware_utils::constants::{DAY, MINUTE, TEN_POW_12, TWO_POW_32, TWO_POW_40};
 use starkware_utils::hash::message_hash::OffchainMessageHash;
+use starkware_utils::math::abs::Abs;
 use starkware_utils::signature::stark::{PublicKey, Signature};
 use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
 use starkware_utils_testing::signing::StarkKeyPair;
@@ -1199,6 +1205,209 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             collateral_id: self.collateral_id,
             deleveraged_base_amount: deleveraged_base,
             deleveraged_quote_amount: deleveraged_quote,
+        );
+    }
+
+    fn deposit_into_vault(
+        ref self: PerpsTestsFacade,
+        user: User,
+        vault: User,
+        asset_id: AssetId,
+        vault_address: ContractAddress,
+        vault_asset_quantum: u64,
+        collateral_quantized_amount: u64,
+    ) {
+        let dispatcher = IVaultDispatcher { contract_address: self.perpetuals_contract };
+        let positions_dispatcher = IPositionsDispatcher {
+            contract_address: self.perpetuals_contract,
+        };
+        let user_balance_before = positions_dispatcher
+            .get_position_assets(position_id: user.position_id);
+        let user_collateral_balance_before = user_balance_before.collateral_balance;
+        let user_synthetic_balance_before = get_asset_balance(
+            assets: user_balance_before.assets, :asset_id,
+        );
+        let vault_balance_before = positions_dispatcher
+            .get_position_assets(position_id: vault.position_id);
+        let vault_collateral_balance_before = vault_balance_before.collateral_balance;
+
+        let account = user.account;
+        let position_id = user.position_id;
+        let vault_position_id = vault.position_id;
+        let expiration = Time::now().add(Time::seconds(10));
+        let salt = self.generate_salt();
+        let request_hash = VaultDepositArgs {
+            position_id, vault_position_id, collateral_quantized_amount, expiration, salt,
+        }
+            .get_message_hash(public_key: account.key_pair.public_key);
+        let signature = account.sign_message(message: request_hash);
+
+        // Calculating amount of vault shares.
+        let quantized_shares_amount: u64 = (IERC4626Dispatcher { contract_address: vault_address }
+            .preview_deposit(assets: (collateral_quantized_amount * self.collateral_quantum).into())
+            / vault_asset_quantum.into())
+            .try_into()
+            .unwrap();
+
+        let operator_nonce = self.get_nonce();
+        self.operator.set_as_caller(self.perpetuals_contract);
+        dispatcher
+            .deposit_into_vault(
+                :operator_nonce,
+                :signature,
+                :position_id,
+                :vault_position_id,
+                :collateral_quantized_amount,
+                :expiration,
+                :salt,
+            );
+
+        // In `deposit_into_vault`, the salt is set to be the tx nonce.
+        let salt = operator_nonce.into();
+        let operator_nonce = self.get_nonce();
+        self.operator.set_as_caller(self.perpetuals_contract);
+        IDepositDispatcher { contract_address: self.perpetuals_contract }
+            .process_deposit(
+                :operator_nonce,
+                :asset_id,
+                depositor: self.perpetuals_contract,
+                :position_id,
+                quantized_amount: quantized_shares_amount,
+                :salt,
+            );
+
+        self
+            .validate_collateral_balance(
+                :position_id,
+                expected_balance: user_collateral_balance_before
+                    - collateral_quantized_amount.into(),
+            );
+
+        self
+            .validate_synthetic_balance(
+                :position_id,
+                :asset_id,
+                expected_balance: user_synthetic_balance_before + quantized_shares_amount.into(),
+            );
+
+        self
+            .validate_collateral_balance(
+                position_id: vault_position_id,
+                expected_balance: vault_collateral_balance_before
+                    + collateral_quantized_amount.into(),
+            );
+
+        assert_deposit_into_vault_event_with_expected(
+            spied_event: self.get_last_event(contract_address: self.perpetuals_contract),
+            :position_id,
+            :vault_position_id,
+            collateral_id: self.collateral_id,
+            quantized_amount: collateral_quantized_amount,
+            :expiration,
+            :salt,
+            :quantized_shares_amount,
+        );
+    }
+
+    fn redeem_from_vault(
+        ref self: PerpsTestsFacade,
+        user: User,
+        vault: User,
+        asset_id: AssetId,
+        number_of_shares: u64,
+        minimum_received_total_amount: u64,
+        vault_share_execution_price: Price,
+    ) {
+        let dispatcher = IVaultDispatcher { contract_address: self.perpetuals_contract };
+        let positions_dispatcher = IPositionsDispatcher {
+            contract_address: self.perpetuals_contract,
+        };
+        let user_balance_before = positions_dispatcher
+            .get_position_assets(position_id: user.position_id);
+        let user_collateral_balance_before = user_balance_before.collateral_balance;
+        let user_synthetic_balance_before = get_asset_balance(
+            assets: user_balance_before.assets, :asset_id,
+        );
+
+        let vault_balance_before = positions_dispatcher
+            .get_position_assets(position_id: vault.position_id);
+        let vault_collateral_balance_before = vault_balance_before.collateral_balance;
+
+        // arguments for `redeem_from_vault`.
+        let account = user.account;
+        let position_id = user.position_id;
+        let vault_position_id = vault.position_id;
+        let number_of_shares_in_balance: Balance = number_of_shares.into();
+        let quantized_asset_amount: u64 = vault_share_execution_price
+            .mul(number_of_shares_in_balance)
+            .abs()
+            .try_into()
+            .unwrap();
+        let expiration = Time::now().add(Time::seconds(10));
+        let salt = self.generate_salt();
+        let user_hash = RedeemFromVaultUserArgs {
+            position_id,
+            vault_position_id,
+            number_of_shares,
+            minimum_received_total_amount,
+            expiration,
+            salt,
+        }
+            .get_message_hash(public_key: account.key_pair.public_key);
+        let user_signature = account.sign_message(message: user_hash);
+
+        let vault_hash = RedeemFromVaultOwnerArgs {
+            redeem_from_vault_user_hash: user_hash, vault_share_execution_price,
+        }
+            .get_message_hash(public_key: vault.account.key_pair.public_key);
+        let vault_owner_signature = vault.account.sign_message(message: vault_hash);
+
+        let operator_nonce = self.get_nonce();
+        self.operator.set_as_caller(self.perpetuals_contract);
+        dispatcher
+            .redeem_from_vault(
+                :operator_nonce,
+                :user_signature,
+                :position_id,
+                :vault_owner_signature,
+                :vault_position_id,
+                :number_of_shares,
+                :minimum_received_total_amount,
+                :vault_share_execution_price,
+                :expiration,
+                :salt,
+            );
+
+        // Balance validations.
+        self
+            .validate_collateral_balance(
+                :position_id,
+                expected_balance: user_collateral_balance_before + quantized_asset_amount.into(),
+            );
+
+        self
+            .validate_synthetic_balance(
+                :position_id,
+                :asset_id,
+                expected_balance: user_synthetic_balance_before + number_of_shares_in_balance,
+            );
+
+        self
+            .validate_collateral_balance(
+                position_id: vault_position_id,
+                expected_balance: vault_collateral_balance_before - quantized_asset_amount.into(),
+            );
+
+        assert_redeem_from_vault_event_with_expected(
+            spied_event: self.get_last_event(contract_address: self.perpetuals_contract),
+            :position_id,
+            :vault_position_id,
+            collateral_id: self.collateral_id,
+            quantized_amount: quantized_asset_amount,
+            :expiration,
+            :salt,
+            quantized_shares_amount: number_of_shares,
+            price: vault_share_execution_price,
         );
     }
 
