@@ -20,8 +20,8 @@ use snforge_std::signature::stark_curve::StarkCurveSignerImpl;
 use snforge_std::{
     ContractClassTrait, DeclareResultTrait, start_cheat_block_timestamp_global, test_address,
 };
-use starknet::ContractAddress;
 use starknet::storage::StoragePointerWriteAccess;
+use starknet::{ClassHash, ContractAddress};
 use starkware_utils::components::roles::interface::{
     IRoles, IRolesDispatcher, IRolesDispatcherTrait,
 };
@@ -133,6 +133,7 @@ pub struct PerpetualsInitConfig {
     pub insurance_fund_position_owner_public_key: felt252,
     pub collateral_cfg: CollateralCfg,
     pub synthetic_cfg: SyntheticCfg,
+    pub vault_logic_class_hash: ClassHash,
 }
 
 #[generate_trait]
@@ -151,6 +152,7 @@ pub impl CoreImpl of CoreTrait {
         self.cancel_delay.serialize(ref calldata);
         self.fee_position_owner_public_key.serialize(ref calldata);
         self.insurance_fund_position_owner_public_key.serialize(ref calldata);
+        self.vault_logic_class_hash.serialize(ref calldata);
 
         let core_contract = snforge_std::declare("Core").unwrap().contract_class();
         let (core_contract_address, _) = core_contract.deploy(@calldata).unwrap();
@@ -188,9 +190,16 @@ impl PerpetualsInitConfigDefault of Default<PerpetualsInitConfig> {
                 quorum: COLLATERAL_QUORUM,
             },
             synthetic_cfg: SyntheticCfg { synthetic_id: SYNTHETIC_ASSET_ID_1() },
+            vault_logic_class_hash: VAULT_LOGIC_CLASS_HASH(),
         }
     }
 }
+
+
+pub fn VAULT_LOGIC_CLASS_HASH() -> ClassHash {
+    *snforge_std::declare("Vault").unwrap().contract_class().class_hash
+}
+
 
 /// The 'CollateralCfg' struct represents a deployed collateral with an associated asset id.
 #[derive(Drop)]
@@ -367,6 +376,7 @@ pub fn initialized_contract_state(
         cancel_delay: CANCEL_DELAY,
         fee_position_owner_public_key: OPERATOR_PUBLIC_KEY(),
         insurance_fund_position_owner_public_key: OPERATOR_PUBLIC_KEY(),
+        vault_logic_library: *cfg.vault_logic_class_hash,
     );
     state
 }
