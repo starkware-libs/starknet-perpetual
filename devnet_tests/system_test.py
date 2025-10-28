@@ -1,11 +1,8 @@
 import pytest
 from test_utils.starknet_test_utils import StarknetTestUtils
+from starknet_py.contract import Contract
 
 
 # TODO: Implement system tests for the forked Starknet environment.
-@pytest.mark.asyncio
-async def test_dummy(
-    starknet_forked_with_impersonated_accounts: StarknetTestUtils,
-    declare_perpetuals_core_contract: int,
-):
-    assert starknet_forked_with_impersonated_accounts
+def test_dummy(upgrade_perpetuals_core_contract: Contract):
+    assert upgrade_perpetuals_core_contract

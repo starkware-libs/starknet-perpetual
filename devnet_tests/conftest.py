@@ -18,6 +18,7 @@ from starknet_test_util import AccountNonceManager
 
 
 perpetuals_Core = "perpetuals_Core"
+vault_contract = "vault_ProtocolVault"
 
 resource_bounds = ResourceBoundsMapping(
     l1_gas=ResourceBounds(max_amount=10**15, max_price_per_unit=10**12),
@@ -53,7 +54,7 @@ def deployer_address() -> int:
     return 0x0522E5BA327BFBD85138B29BDE060A5340A460706B00AE2E10E6D2A16FBF8C57
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def starknet_forked(
     starknet_test_utils_factory: Callable[..., Iterator[StarknetTestUtils]]
 ) -> Iterator[StarknetTestUtils]:
@@ -66,7 +67,7 @@ def starknet_forked(
         yield val
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def starknet_forked_with_impersonated_accounts(
     starknet_forked: StarknetTestUtils, operator_address: int, deployer_address: int
 ) -> StarknetTestUtils:
@@ -75,7 +76,7 @@ def starknet_forked_with_impersonated_accounts(
     """
     client = starknet_forked.starknet.get_client()
     for address in [operator_address, deployer_address]:
-        client.impersonate_account(address)
+        client.impersonate_account_sync(address)
 
     return starknet_forked
 
@@ -151,3 +152,59 @@ async def declare_perpetuals_core_contract(
     )
     await declare_result.wait_for_acceptance(check_interval=0.1)
     return declare_result.class_hash
+
+
+@pytest_asyncio.fixture(scope="function")
+async def upgrade_perpetuals_core_contract(
+    declare_perpetuals_core_contract: int,
+    contract_address: int,
+    deployer_account: Account,
+    operator_account: Account,
+) -> Contract:
+    abi, cairo_version = await ContractAbiResolver(
+        address=contract_address,
+        client=deployer_account.client,
+        proxy_config=ProxyConfig(),
+    ).resolve()
+
+    deployer_contract = Contract(
+        address=contract_address,
+        abi=abi,
+        provider=deployer_account,
+        cairo_version=cairo_version,
+    )
+
+    invocation = await deployer_contract.functions["add_new_implementation"].invoke_v3(
+        {
+            "impl_hash": declare_perpetuals_core_contract,
+            "eic_data": None,
+            "final": False,
+        },
+        auto_estimate=True,
+    )
+    await invocation.wait_for_acceptance(check_interval=0.1)
+
+    invocation = await deployer_contract.functions["replace_to"].invoke_v3(
+        {
+            "impl_hash": declare_perpetuals_core_contract,
+            "eic_data": None,
+            "final": False,
+        },
+        auto_estimate=True,
+    )
+    await invocation.wait_for_acceptance(check_interval=0.1)
+
+    abi, cairo_version = await ContractAbiResolver(
+        address=contract_address,
+        client=operator_account.client,
+        proxy_config=ProxyConfig(),
+    ).resolve()
+
+    operator_contract = Contract(
+        address=contract_address,
+        abi=abi,
+        provider=operator_account,
+        cairo_version=cairo_version,
+    )
+
+    return operator_contract
