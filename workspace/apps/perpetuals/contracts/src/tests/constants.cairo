@@ -65,6 +65,7 @@ pub const CANCEL_DELAY: TimeDelta = TimeDelta { seconds: WEEK };
 pub const MAX_FUNDING_RATE: u32 = 35792; // Which is ~3% in an hour.
 pub const COLLATERAL_QUORUM: u8 = 0;
 pub const COLLATERAL_QUANTUM: u64 = 1_000;
+pub const COLLATERAL_DECIMALS: u8 = 6; // for USDC.
 pub const SYNTHETIC_QUORUM: u8 = 1;
 pub const SYNTHETIC_RESOLUTION_FACTOR: u64 = 1_000_000_000;
 pub const INITIAL_SUPPLY: u256 = 10_000_000_000_000_000;
