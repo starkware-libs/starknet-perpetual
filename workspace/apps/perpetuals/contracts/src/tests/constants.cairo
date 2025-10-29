@@ -119,6 +119,9 @@ pub fn COLLATERAL_NAME() -> ByteArray {
 pub fn COLLATERAL_SYMBOL() -> ByteArray {
     "COL"
 }
+pub fn COLLATERAL_DECIMALS() -> u8 {
+    6 // for USDC.
+}
 pub fn SYNTHETIC_SYMBOL() -> ByteArray {
     "SYN"
 }

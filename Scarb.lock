@@ -157,7 +157,7 @@ dependencies = [
 [[package]]
 name = "starkware_utils"
 version = "1.0.0"
-source = "git+https://github.com/starkware-libs/starkware-starknet-utils?branch=oz-3.0.0-alpha.2#f1273496b5c121b2927ad63110368fa809771818"
+source = "git+https://github.com/starkware-libs/starkware-starknet-utils?branch=mohammad%2Ftoken-state%2Fuse-erc20-decimals-mock#0a17e7931d62ec05da368b6228f8d0e0e03834ea"
 dependencies = [
  "openzeppelin",
 ]
@@ -165,7 +165,7 @@ dependencies = [
 [[package]]
 name = "starkware_utils_testing"
 version = "1.0.0"
-source = "git+https://github.com/starkware-libs/starkware-starknet-utils?branch=oz-3.0.0-alpha.2#f1273496b5c121b2927ad63110368fa809771818"
+source = "git+https://github.com/starkware-libs/starkware-starknet-utils?branch=mohammad%2Ftoken-state%2Fuse-erc20-decimals-mock#0a17e7931d62ec05da368b6228f8d0e0e03834ea"
 dependencies = [
  "openzeppelin",
  "snforge_std",

@@ -159,7 +159,7 @@ fn test_two_users_ten_synthetics_flow() {
                 (STRK_ASSET, 256 + 100), // Value diff user_a: -400, user_b: +400. Risk(both): 142
                 (SOL_ASSET, 128 + 100), // Value diff user_a: -800, user_b: +800. Risk(both): 182
                 (DOGE_ASSET, 64 + 100), // Value diff user_a: -1600, user_b: +1600. Risk(both): 262
-                (PEPE_ASSET, 32 + 100), // Value diff user_a: +3200, user_b: -3200. Risk(both): 422 
+                (PEPE_ASSET, 32 + 100), // Value diff user_a: +3200, user_b: -3200. Risk(both): 422
                 (ETC_ASSET, 16 + 100), // Value diff user_a: +6400, user_b: -6400. Risk(both): 742
                 (TAO_ASSET, 8 + 100), // Value diff user_a: +12800, user_b: -12800. Risk(both): 2764
                 (XRP_ASSET, 4 + 100), // Value diff user_a: +25600, user_b: -25600 Risk(both): 13312
@@ -901,7 +901,7 @@ fn test_multi_trade_with_price_and_funding_ticks() {
                 (STRK_ASSET, 256 + 100), // Value diff user_a: -400, user_b: +400. Risk(both): 142
                 (SOL_ASSET, 128 + 100), // Value diff user_a: -800, user_b: +800. Risk(both): 182
                 (DOGE_ASSET, 64 + 100), // Value diff user_a: -1600, user_b: +1600. Risk(both): 262
-                (PEPE_ASSET, 32 + 100), // Value diff user_a: +3200, user_b: -3200. Risk(both): 422 
+                (PEPE_ASSET, 32 + 100), // Value diff user_a: +3200, user_b: -3200. Risk(both): 422
                 (ETC_ASSET, 16 + 100), // Value diff user_a: +6400, user_b: -6400. Risk(both): 742
                 (TAO_ASSET, 8 + 100), // Value diff user_a: +12800, user_b: -12800. Risk(both): 2764
                 (XRP_ASSET, 4 + 100), // Value diff user_a: +25600, user_b: -25600 Risk(both): 13312
