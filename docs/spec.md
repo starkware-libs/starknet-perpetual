@@ -982,7 +982,6 @@ impl StructHashImpl of StructHash<RedeemFromVaultOwnerArgs> {
 pub struct LiquidateVaultSharesArgs {
     position_id: PositionId,
     vault_position_id: PositionId,
-    collateral_id: AssetId,
     number_of_shares: u64,
     vault_share_execution_price: Price,
     expiration: Timestamp,
@@ -993,7 +992,6 @@ pub struct LiquidateVaultSharesArgs {
 ///   "\"LiquidateVaultSharesArgs\"(
 ///    \"position_id\":\"PositionId\",
 ///    \"vault_position_id\":\"PositionId\",
-///    \"collateral_id\":\"AssetId\",
 ///    \"number_of_shares\":\"u64\",
 ///    \"vault_share_execution_price\":\"Price\",
 ///    \"expiration\":\"Timestamp\",
@@ -1001,9 +999,6 @@ pub struct LiquidateVaultSharesArgs {
 ///    )
 ///    \"PositionId\"(
 ///    \"value\":\"u32\"
-///    )"
-///    \"AssetId\"(
-///    \"value\":\"felt\"
 ///    )"
 ///    \"Timestamp\"(
 ///    \"seconds\":\"u64\"
@@ -3815,10 +3810,8 @@ Only the Operator can execute.
 8. position id is not a vault position and exists.
 9. number_of_shares is non zero.
 10. vault_share_execution_price is non zero.
-11. collateral_id is the protocol collateral asset.
-12. position id is liquidatable.
-13. Caller is the operator.
-14. Request is new (check payload hash not exists in the fulfillment map).
+11. position id is liquidatable or deleveragable.
+12. Request is new (check payload hash not exists in the fulfillment map).
 
 **Logic:**
 
@@ -3829,7 +3822,7 @@ Only the Operator can execute.
 5. call the new redeem function of the vault contract (a version where the price of a vault share is dicateded by the operator) which burns the vault shares and transfers the assets from the vault contract to the perps contract
 6. increase the position_id collateral_id balance by vault_share_execution_price*number_of_shares
 7. reduce the vault_position_id collateral_id balance by vault_share_execution_price*number_of_shares
-8. position id becomes healthier (no longer liquidatable) as a result of the collateral increase.
+8. position id becomes healthier.
 
 **Emits:**
 
