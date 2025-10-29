@@ -241,7 +241,7 @@ pub mod Vault {
         /// - Validate the liquidated position becomes healthier.
         /// - Emit `LiquidatedFromVault`.
         fn liquidate_vault_shares(
-            ref self: ComponentState<TContractState>,
+            ref self: ContractState,
             operator_nonce: u64,
             vault_owner_signature: Signature,
             position_id: PositionId,
@@ -252,12 +252,8 @@ pub mod Vault {
             salt: felt252,
         ) {
             /// Validations:
-            get_dep_component!(@self, Pausable).assert_not_paused();
-            let mut nonce = get_dep_component_mut!(ref self, OperatorNonce);
-            nonce.use_checked_nonce(:operator_nonce);
             let current_time = Time::now();
-            let mut assets = get_dep_component_mut!(ref self, Assets);
-            assets.validate_price_interval_integrity(:current_time);
+            self.assets.validate_price_interval_integrity(:current_time);
 
             let vault_share_asset_id = self.vault_positions_to_assets.read(vault_position_id);
 
@@ -290,7 +286,7 @@ pub mod Vault {
                     events::LiquidatedFromVault {
                         position_id,
                         vault_position_id,
-                        collateral_id: get_dep_component!(@self, Assets).get_collateral_id(),
+                        collateral_id: self.assets.get_collateral_id(),
                         quantized_amount: actual_collateral_quantized_amount,
                         expiration,
                         salt,
@@ -609,7 +605,7 @@ pub mod Vault {
         }
 
         fn _validate_liquidate_vault_shares(
-            ref self: ComponentState<TContractState>,
+            ref self: ContractState,
             position_id: PositionId,
             vault_position_id: PositionId,
             number_of_shares: u64,
@@ -620,20 +616,21 @@ pub mod Vault {
             vault_share_asset_id: AssetId,
         ) -> (StoragePath<Position>, StoragePath<Position>) {
             validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
-            let positions = get_dep_component!(@self, Positions);
 
             assert(number_of_shares.is_non_zero(), INVALID_ZERO_AMOUNT);
             assert(vault_share_execution_price.is_non_zero(), INVALID_ZERO_AMOUNT);
 
-            let vault_position = positions.get_position_snapshot(position_id: vault_position_id);
-            get_dep_component!(@self, Assets).validate_active_asset(asset_id: vault_share_asset_id);
+            let vault_position = self
+                .positions
+                .get_position_snapshot(position_id: vault_position_id);
+            self.assets.validate_active_asset(asset_id: vault_share_asset_id);
 
-            let position = positions.get_position_snapshot(:position_id);
+            let position = self.positions.get_position_snapshot(:position_id);
             assert(
                 self.vault_positions_to_addresses.read(position_id).is_zero(),
                 POSITION_IS_VAULT_POSITION,
             );
-            assert(positions.is_liquidatable(:position_id), CANT_LIQUIDATE_IF_POSITION);
+            assert(self.positions.is_liquidatable(:position_id), CANT_LIQUIDATE_IF_POSITION);
 
             let request_hash = validate_signature(
                 public_key: vault_position.get_owner_public_key(),

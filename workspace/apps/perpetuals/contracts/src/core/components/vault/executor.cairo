@@ -157,5 +157,35 @@ pub mod VaultExcecutorComponent {
                     :salt,
                 );
         }
+
+
+        fn liquidate_vault_shares(
+            ref self: ComponentState<TContractState>,
+            operator_nonce: u64,
+            vault_owner_signature: Signature,
+            position_id: PositionId,
+            vault_position_id: PositionId,
+            number_of_shares: u64,
+            vault_share_execution_price: Price,
+            expiration: Timestamp,
+            salt: felt252,
+        ) {
+            /// Validations:
+            get_dep_component!(@self, Pausable).assert_not_paused();
+            let mut nonce = get_dep_component_mut!(ref self, OperatorNonce);
+            nonce.use_checked_nonce(:operator_nonce);
+
+            IVaultLibraryDispatcher { class_hash: self.vault_logic_library.read() }
+                .liquidate_vault_shares(
+                    :operator_nonce,
+                    :vault_owner_signature,
+                    :position_id,
+                    :vault_position_id,
+                    :number_of_shares,
+                    :vault_share_execution_price,
+                    :expiration,
+                    :salt,
+                );
+        }
     }
 }
