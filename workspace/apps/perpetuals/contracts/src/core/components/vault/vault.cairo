@@ -10,6 +10,8 @@ pub mod VaultComponent {
     use perpetuals::core::components::assets::interface::IAssets;
     use perpetuals::core::components::deposit::Deposit as DepositComponent;
     use perpetuals::core::components::deposit::interface::IDeposit;
+    use perpetuals::core::components::fulfillment::FulfillmentComponent;
+    use perpetuals::core::components::fulfillment::FulfillmentComponent::InternalTrait as FulfillmentInternal;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalTrait as NonceInternal;
     use perpetuals::core::components::positions::Positions as PositionsComponent;
@@ -18,7 +20,6 @@ pub mod VaultComponent {
         COLLATERAL_BALANCE_MISMATCH, INVALID_VAULT_CONTRACT_ADDRESS, NOT_VAULT_SHARE_ASSET,
         POSITION_IS_VAULT_POSITION, RECEIVED_AMOUNT_TOO_SMALL, SHARES_BALANCE_MISMATCH,
         VAULT_CONTRACT_ALREADY_EXISTS, VAULT_POSITION_ALREADY_EXISTS, VAULT_POSITION_HAS_SHARES,
-        VAULT_REQUEST_ALREADY_FULFILLED,
     };
     use perpetuals::core::components::vault::events;
     use perpetuals::core::components::vault::interface::IVault;
@@ -34,10 +35,7 @@ pub mod VaultComponent {
     };
     use perpetuals::core::types::register_vault::RegisterVaultArgs;
     use perpetuals::core::utils::validate_signature;
-    use starknet::storage::{
-        Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePath, StoragePathEntry,
-        StoragePointerReadAccess, StoragePointerWriteAccess,
-    };
+    use starknet::storage::{Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePath};
     use starknet::{ContractAddress, get_contract_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
@@ -61,7 +59,6 @@ pub mod VaultComponent {
         // Maps vault contract address to its vault position.
         // Ensures each vault contract is assigned to only one position.
         pub addresses_to_vault_positions: Map<ContractAddress, PositionId>,
-        pub fulfilled_vault_requests: Map<HashType, bool>,
     }
 
     #[event]
@@ -80,6 +77,7 @@ pub mod VaultComponent {
         +AccessControlComponent::HasComponent<TContractState>,
         +SRC5Component::HasComponent<TContractState>,
         impl Assets: AssetsComponent::HasComponent<TContractState>,
+        impl Fulfillment: FulfillmentComponent::HasComponent<TContractState>,
         impl OperatorNonce: OperatorNonceComponent::HasComponent<TContractState>,
         impl Pausable: PausableComponent::HasComponent<TContractState>,
         impl Positions: PositionsComponent::HasComponent<TContractState>,
@@ -341,6 +339,7 @@ pub mod VaultComponent {
         impl OperatorNonce: OperatorNonceComponent::HasComponent<TContractState>,
         impl Pausable: PausableComponent::HasComponent<TContractState>,
         impl Assets: AssetsComponent::HasComponent<TContractState>,
+        impl Fulfillment: FulfillmentComponent::HasComponent<TContractState>,
         impl Deposit: DepositComponent::HasComponent<TContractState>,
         impl Positions: PositionsComponent::HasComponent<TContractState>,
         +RolesComponent::HasComponent<TContractState>,
@@ -384,9 +383,12 @@ pub mod VaultComponent {
                 },
                 :signature,
             );
-            let fulfilled_vault_request = self.fulfilled_vault_requests.entry(hash);
-            assert(!fulfilled_vault_request.read(), VAULT_REQUEST_ALREADY_FULFILLED);
-            fulfilled_vault_request.write(true);
+            let amount: i64 = collateral_quantized_amount.try_into().expect(AMOUNT_OVERFLOW);
+            let mut fulfillment = get_dep_component_mut!(ref self, Fulfillment);
+            fulfillment
+                .update_fulfillment(
+                    :position_id, :hash, order_base_amount: amount, actual_base_amount: amount,
+                );
         }
 
         /// Executes a deposit into vault by transferring collateral and receiving vault shares.
@@ -581,11 +583,15 @@ pub mod VaultComponent {
                 },
                 signature: user_signature,
             );
-            assert(
-                !self.fulfilled_vault_requests.read(redeem_from_vault_user_hash),
-                VAULT_REQUEST_ALREADY_FULFILLED,
-            );
-            self.fulfilled_vault_requests.write(redeem_from_vault_user_hash, true);
+            let amount: i64 = number_of_shares.try_into().expect(AMOUNT_OVERFLOW);
+            let mut fulfillment = get_dep_component_mut!(ref self, Fulfillment);
+            fulfillment
+                .update_fulfillment(
+                    :position_id,
+                    hash: redeem_from_vault_user_hash,
+                    order_base_amount: amount,
+                    actual_base_amount: amount,
+                );
 
             validate_signature(
                 public_key: vault_position.get_owner_public_key(),
