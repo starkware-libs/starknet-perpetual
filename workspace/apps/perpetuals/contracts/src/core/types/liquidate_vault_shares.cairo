@@ -28,9 +28,6 @@ pub struct LiquidateVaultSharesArgs {
 ///    \"PositionId\"(
 ///    \"value\":\"u32\"
 ///    )"
-///    \"AssetId\"(
-///    \"value\":\"felt\"
-///    )"
 ///    \"Price\"(
 ///    \"value\":\"u64\"
 ///    )"
@@ -39,7 +36,7 @@ pub struct LiquidateVaultSharesArgs {
 ///    )"
 /// );
 const LIQUIDATE_VAULT_SHARES_ARGS_TYPE_HASH: HashType =
-    0x0198043d1a2a3892f10e94fb3ad87295b01599b2e7329436d107398f7b6ea6ec;
+    0x0141b4c09491cda786aa7d765d022e0a2a45ededc52f93227c12f2107810c9d1;
 
 impl StructHashImpl of StructHash<LiquidateVaultSharesArgs> {
     fn hash_struct(self: @LiquidateVaultSharesArgs) -> HashType {
@@ -56,7 +53,7 @@ mod tests {
     #[test]
     fn test_liquidate_vault_shares_args_type_hash() {
         let expected = selector!(
-            "\"LiquidateVaultSharesArgs\"(\"position_id\":\"PositionId\",\"vault_position_id\":\"PositionId\",\"number_of_shares\":\"u64\",\"vault_share_execution_price\":\"Price\",\"expiration\":\"Timestamp\",\"salt\":\"felt\")\"PositionId\"(\"value\":\"u32\")\"AssetId\"(\"value\":\"felt\")\"Price\"(\"value\":\"u64\")\"Timestamp\"(\"seconds\":\"u64\")",
+            "\"LiquidateVaultSharesArgs\"(\"position_id\":\"PositionId\",\"vault_position_id\":\"PositionId\",\"number_of_shares\":\"u64\",\"vault_share_execution_price\":\"Price\",\"expiration\":\"Timestamp\",\"salt\":\"felt\")\"PositionId\"(\"value\":\"u32\")\"Price\"(\"value\":\"u64\")\"Timestamp\"(\"seconds\":\"u64\")",
         );
         assert_eq!(
             to_base_16_string(LIQUIDATE_VAULT_SHARES_ARGS_TYPE_HASH), to_base_16_string(expected),
