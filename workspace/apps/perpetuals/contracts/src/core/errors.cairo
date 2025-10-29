@@ -23,10 +23,6 @@ pub const SIGNED_TX_EXPIRED: felt252 = 'SIGNED_TX_EXPIRED';
 pub const SYNTHETIC_IS_ACTIVE: felt252 = 'SYNTHETIC_IS_ACTIVE';
 pub const TRANSFER_FAILED: felt252 = 'TRANSFER_FAILED';
 
-pub fn fulfillment_exceeded_err(position_id: PositionId) -> ByteArray {
-    format!("FULFILLMENT_EXCEEDED position_id: {:?}", position_id)
-}
-
 pub fn illegal_base_to_quote_ratio_err(position_id: PositionId) -> ByteArray {
     format!("ILLEGAL_BASE_TO_QUOTE_RATIO position_id: {:?}", position_id)
 }

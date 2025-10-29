@@ -13,6 +13,8 @@ pub mod Core {
     use perpetuals::core::components::assets::errors::{ASSET_NOT_EXISTS, NOT_SYNTHETIC};
     use perpetuals::core::components::deposit::Deposit;
     use perpetuals::core::components::deposit::Deposit::InternalTrait as DepositInternal;
+    use perpetuals::core::components::fulfillment::FulfillmentComponent;
+    use perpetuals::core::components::fulfillment::FulfillmentComponent::InternalTrait as FulfillmentInternal;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalTrait as OperatorNonceInternal;
     use perpetuals::core::components::positions::Positions;
@@ -26,7 +28,7 @@ pub mod Core {
         INVALID_ACTUAL_QUOTE_SIGN, INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE,
         INVALID_QUOTE_AMOUNT_SIGN, INVALID_QUOTE_FEE_AMOUNT, INVALID_SAME_POSITIONS,
         INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED, SYNTHETIC_IS_ACTIVE, TRANSFER_FAILED,
-        fulfillment_exceeded_err, order_expired_err,
+        order_expired_err,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
@@ -43,10 +45,7 @@ pub mod Core {
     };
     use starknet::ContractAddress;
     use starknet::event::EventEmitter;
-    use starknet::storage::{
-        Map, StorageMapReadAccess, StoragePath, StoragePathEntry, StoragePointerReadAccess,
-        StoragePointerWriteAccess,
-    };
+    use starknet::storage::{StorageMapReadAccess, StoragePath};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
@@ -57,7 +56,7 @@ pub mod Core {
     use starkware_utils::components::roles::RolesComponent::InternalTrait as RolesInternal;
     use starkware_utils::math::abs::Abs;
     use starkware_utils::math::utils::have_same_sign;
-    use starkware_utils::signature::stark::{HashType, PublicKey, Signature};
+    use starkware_utils::signature::stark::{PublicKey, Signature};
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
@@ -71,6 +70,7 @@ pub mod Core {
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
     component!(path: AssetsComponent, storage: assets, event: AssetsEvent);
     component!(path: Deposit, storage: deposits, event: DepositEvent);
+    component!(path: FulfillmentComponent, storage: fulfillment, event: FulfillmentEvent);
     component!(
         path: RequestApprovalsComponent, storage: request_approvals, event: RequestApprovalsEvent,
     );
@@ -122,8 +122,6 @@ pub mod Core {
 
     #[storage]
     struct Storage {
-        // Order hash to fulfilled absolute base amount.
-        fulfillment: Map<HashType, u64>,
         // --- Components ---
         #[substorage(v0)]
         accesscontrol: AccessControlComponent::Storage,
@@ -141,6 +139,8 @@ pub mod Core {
         pub assets: AssetsComponent::Storage,
         #[substorage(v0)]
         pub deposits: Deposit::Storage,
+        #[substorage(v0)]
+        pub fulfillment: FulfillmentComponent::Storage,
         #[substorage(v0)]
         pub request_approvals: RequestApprovalsComponent::Storage,
         #[substorage(v0)]
@@ -168,6 +168,8 @@ pub mod Core {
         AssetsEvent: AssetsComponent::Event,
         #[flat]
         DepositEvent: Deposit::Event,
+        #[flat]
+        FulfillmentEvent: FulfillmentComponent::Event,
         #[flat]
         RequestApprovalsEvent: RequestApprovalsComponent::Event,
         #[flat]
@@ -630,7 +632,8 @@ pub mod Core {
 
             // Validate and update fulfillment.
             self
-                ._update_fulfillment(
+                .fulfillment
+                .update_fulfillment(
                     position_id: liquidator_position_id,
                     hash: liquidator_order_hash,
                     order_base_amount: liquidator_order.base_amount,
@@ -956,7 +959,8 @@ pub mod Core {
 
             // Validate and update fulfillments.
             self
-                ._update_fulfillment(
+                .fulfillment
+                .update_fulfillment(
                     position_id: position_id_a,
                     hash: hash_a,
                     order_base_amount: order_a.base_amount,
@@ -964,7 +968,8 @@ pub mod Core {
                 );
 
             self
-                ._update_fulfillment(
+                .fulfillment
+                .update_fulfillment(
                     position_id: position_id_b,
                     hash: hash_b,
                     order_base_amount: order_b.base_amount,
@@ -1081,22 +1086,6 @@ pub mod Core {
             self
                 .positions
                 .apply_diff(position_id: recipient, position_diff: position_diff_recipient);
-        }
-
-        fn _update_fulfillment(
-            ref self: ContractState,
-            position_id: PositionId,
-            hash: HashType,
-            order_base_amount: i64,
-            actual_base_amount: i64,
-        ) {
-            let fulfillment_entry = self.fulfillment.entry(hash);
-            let total_amount = fulfillment_entry.read() + actual_base_amount.abs();
-            if (total_amount > order_base_amount.abs()) {
-                let err = @fulfillment_exceeded_err(:position_id);
-                panic_with_byte_array(:err);
-            }
-            fulfillment_entry.write(total_amount);
         }
 
         fn _validate_order(ref self: ContractState, order: Order) {

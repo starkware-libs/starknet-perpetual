@@ -1,5 +1,6 @@
 pub mod assets;
 pub mod deposit;
+pub mod fulfillment;
 pub mod operator_nonce;
 pub mod positions;
 pub mod vault;
