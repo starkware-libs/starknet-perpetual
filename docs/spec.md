@@ -67,7 +67,7 @@ classDiagram
         pub asset_config: Map< AssetId, Option [AssetConfig]>,
         // Renamed for multi asset types support (synthetics, vault shares and spots)
         #[rename("synthetic_timely_data")]
-        pub asset_timely_data: IterableMap< AssetId, AssetTimelyData>,
+        pub timely_data: IterableMap< AssetId, AssetTimelyData>,
         pub risk_factor_tiers: Map<AssetId, Vec [FixedTwoDecimal] >,
         asset_oracle: Map< AssetId, Map [PublicKey, felt252 ]>,
         max_oracle_price_validity: TimeDelta,
@@ -344,10 +344,9 @@ pub struct Position {
     pub version: u8,
     pub owner_account: Option<ContractAddress>,
     pub owner_public_key: PublicKey,
-    // main collateral balance (USDC)
-    pub collateral_balance: Balance,
-    // other collateral balances (vault_shares, spot_assets) and synthetics
-    pub asset_balance: IterableMap<AssetId, AssetBalance>,
+    pub asset_balances: IterableMap<AssetId, AssetBalance>,
+    // other collateral balances (vault shares, spot assets)
+    pub collateral_balance: IterableMap<AssetId, Balance>,
 }
 ```
 
@@ -405,8 +404,9 @@ pub struct Asset {
 
 ```rust
 pub struct PositionData {
-    pub collateral_balance: Balance,
-    pub assets: Span<Asset>,
+    pub base_collateral_balance: Balance,
+    pub asset_balances: Span<Asset>,
+    pub other_collateral_balance: Span<Asset>,
 }
 ```
 
@@ -905,56 +905,60 @@ impl StructHashImpl of StructHash<DepositIntoVaultArgs> {
 }
 ```
 
-##### RedeemFromVaultUserArgs
+##### WithdrawFromVaultUserArgs
 
 ```rust
-pub struct RedeemFromVaultUserArgs {
+pub struct WithdrawFromVaultUserArgs {
     pub position_id: PositionId,
     pub vault_position_id: PositionId,
     pub collateral_id: AssetId,
     pub number_of_shares: u64
-    pub minimum_received_total_amount: u64,
+    pub minimum_quantized_amount: u64,
     pub expiration: Timestamp,
     pub salt: felt
 }
 
 /// selector!(
-///   "\"RedeemFromVaultUserArgs\"(
+///   "\"WithdrawFromVaultUserArgs\"(
 ///    \"position_id\":\"PositionId\",
 ///    \"vault_position_id\":\"PositionId\",
+///    \"collateral_id\":\"AssetId\",
 ///    \"number_of_shares\":\"u64\",
-///    \"minimum_received_total_amount\":\"u64\",
+///    \"minimum_quantized_amount\":\"u64\",
 ///    \"expiration\":\"Timestamp\",
 ///    \"salt\":\"felt\"
 ///    )
 ///    \"PositionId\"(
 ///    \"value\":\"u32\"
 ///    )"
+///    \"AssetId\"(
+///    \"value\":\"felt\"
+///    )"
 ///    \"Timestamp\"(
 ///    \"seconds\":\"u64\"
 ///    )"
 /// );
 
-const REDEEM_FROM_VAULT_USER_ARGS_TYPE_HASH: HashType = XXX;
+const WITHDRAW_FROM_VAULT_USER_ARGS_TYPE_HASH: HashType = XXX;
 
-impl StructHashImpl of StructHash<RedeemFromVaultUserArgs> {
-    fn hash_struct(self: @RedeemFromVaultUserArgs) -> HashType {
+impl StructHashImpl of StructHash<WithdrawFromVaultUserArgs> {
+    fn hash_struct(self: @WithdrawFromVaultUserArgs) -> HashType {
         let hash_state = PoseidonTrait::new();
-        hash_state.update_with(REDEEM_FROM_VAULT_USER_ARGS_TYPE_HASH).update_with(*self).finalize()
+        hash_state.update_with(WITHDRAW_FROM_VAULT_USER_ARGS_TYPE_HASH).update_with(*self).finalize()
     }
 }
 ```
 
-##### RedeemFromVaultOwnerArgs
+##### WithdrawFromVaultOwnerArgs
 
 ```rust
-pub struct RedeemFromVaultOwnerArgs {
+pub struct WithdrawFromVaultOwnerArgs {
     user_hash: HashType,
     vault_share_execution_price: Price
 }
 
 /// selector!(
-///   "\"RedeemFromVaultOwnerArgs\"(
+///   "\"WithdrawFromVaultOwnerArgs\"(
 ///    \"user_hash\":\"HashType\",
 ///    \"vault_share_execution_price\":\"Price\",
 ///    )
@@ -966,12 +970,12 @@ pub struct RedeemFromVaultOwnerArgs {
 ///    )"
 /// );
 
-const REDEEM_FROM_VAULT_OWNER_ARGS_TYPE_HASH: HashType = XXX;
+const WITHDRAW_FROM_VAULT_OWNER_ARGS_TYPE_HASH: HashType = XXX;
 
-impl StructHashImpl of StructHash<RedeemFromVaultOwnerArgs> {
-    fn hash_struct(self: @RedeemFromVaultOwnerArgs) -> HashType {
+impl StructHashImpl of StructHash<WithdrawFromVaultOwnerArgs> {
+    fn hash_struct(self: @WithdrawFromVaultOwnerArgs) -> HashType {
         let hash_state = PoseidonTrait::new();
-        hash_state.update_with(REDEEM_FROM_VAULT_OWNER_ARGS_TYPE_HASH).update_with(*self).finalize()
+        hash_state.update_with(WITHDRAW_FROM_VAULT_OWNER_ARGS_TYPE_HASH).update_with(*self).finalize()
     }
 }
 ```
@@ -980,25 +984,28 @@ impl StructHashImpl of StructHash<RedeemFromVaultOwnerArgs> {
 
 ```rust
 pub struct LiquidateVaultSharesArgs {
-    position_id: PositionId,
-    vault_position_id: PositionId,
-    number_of_shares: u64,
     vault_share_execution_price: Price,
+    vault_position_id: PositionId,
+    collateral_id: AssetId,
+    number_of_shares: u64,
     expiration: Timestamp,
     salt: felt252,
 }
 
 /// selector!(
 ///   "\"LiquidateVaultSharesArgs\"(
-///    \"position_id\":\"PositionId\",
-///    \"vault_position_id\":\"PositionId\",
-///    \"number_of_shares\":\"u64\",
 ///    \"vault_share_execution_price\":\"Price\",
+///    \"vault_position_id\":\"PositionId\",
+///    \"collateral_id\":\"AssetId\",
+///    \"number_of_shares\":\"u64\",
 ///    \"expiration\":\"Timestamp\",
 ///    \"salt\":\"felt\"
 ///    )
 ///    \"PositionId\"(
 ///    \"value\":\"u32\"
+///    )"
+///    \"AssetId\"(
+///    \"value\":\"felt\"
 ///    )"
 ///    \"Timestamp\"(
 ///    \"seconds\":\"u64\"
@@ -1356,7 +1363,7 @@ pub struct Storage {
     collateral_quantum: u64,
     num_of_active_synthetic_assets: usize,
     pub asset_config: Map<AssetId, Option<AssetConfig>>,
-    pub asset_timely_data: IterableMap<AssetId, AssetTimelyData>,
+    pub timely_data: IterableMap<AssetId, AssetTimelyData>,
     pub collateral_timely_data: IterableMap<AssetId, AssetTimelyData>,
     pub risk_factor_tiers: Map<AssetId, Vec<FixedTwoDecimal>>,
     asset_oracle: Map<AssetId, Map<PublicKey, felt252>>,
@@ -1619,7 +1626,7 @@ Only the Operator can execute.
       `)`
 2. calculate median price using the formula:
 $median\\_price = \frac{price*2^{28}}{asset\\_id.resolution\\_factor *10^{12} }$
-3. `self.asset_timely_data[asset_id].price = median_price`
+3. `self.timely_data[asset_id].price = median_price`
 
    Explanation: Oracles sign prices in the same format as StarkEx \- they sign process of major unit with 18 decimals precision. So to ge the asset price of 1 Starknet unit of synthetic asset:
 
@@ -1932,13 +1939,11 @@ Register vault is called by the operator to register a vault position
 
 ```rust
 fn register_vault(
-        ref self: TContractState,
-        operator_nonce: u64,
-        vault_position_id: PositionId,
-        vault_contract_address: ContractAddress,
-        vault_asset_id: AssetId,
-        expiration: Timestamp,
-        signature: Signature,
+    ref self: ContractState,
+    vault_position_id: PositionId,
+    vault_contract_address: ContractAddress,
+    vault_asset_id: AssetId,
+    vault_owner_signature: Signature,
 );
 ```
 
@@ -1953,13 +1958,13 @@ Only the Operator can execute.
 **Validations:**
 
 1. [signature validation](#signature) for vault register request by the vault_position_id public key
-2. [Operator Nonce check](#operator-nonce)
-3. [Position check](#position) for `vault_position_id`
-4. [Expiration validation](#expiration)
+2. [Pausable check](#pausable)
+3. [Operator Nonce check](#operator-nonce)
+4. [Position check](#position) for `vault_position_id`
 5. Caller is the operator.
-6. `vault_position_id` is a registered position that is not a vault position.
-7. `vault_position_id` corresponding postion data has no vault shares of any kind.
-8. `vault_contract_address` is not zero and not already linked to another vault.
+6. `vault_position_id` is not a registered position.
+7. `vault_position_id` is not a registered vault position.
+8. `vault_contract_address` is not zero.
 9. `vault_asset_id` is not zero and registered.
 
 **Logic:**
@@ -2135,9 +2140,8 @@ The user registers a deposit request using the [Deposit component](#deposit) \- 
 ```rust
 fn deposit(
     ref self: ContractState,
-    asset_id: AssetId,
-    depositor: ContractAddress,
     position_id: PositionId,
+    asset_id: AssetId,
     quantized_amount: u64,
     salt: felt252,
 )
@@ -2266,15 +2270,13 @@ We assume that the position is always healthier for deposit
 
 [deposit\_processed](#depositprocessed)
 
-###### Cancel Deposit
+###### Cancel Pending Deposit
 
 The user cancels a registered deposit request in the Deposit component.
 
 ```rust
-fn cancel_deposit(
+fn cancel_pending_deposit(
     ref self: ContractState,
-    asset_id: AssetId,
-    depositor: ContractAddress,
     position_id: PositionId,
     quantized_amount: u64,
     salt: felt252,
@@ -2339,7 +2341,7 @@ fn reject_deposit(
     position_id: PositionId,
     quantized_amount: u64,
     salt: felt252,
-) 
+)
 ```
 
 **Access Control:**
@@ -2985,28 +2987,26 @@ pub struct DepositedIntoVault {
     #[key]
     pub vault_position_id: PositionId,
     pub collateral_id: AssetId,
-    pub quantized_amount: u64,
-    pub expiration: Timestamp,
-    pub salt: felt252,
-    pub quantized_shares_amount: u64,
+    pub quantized_amount: u64
 }
 ```
 
-##### RedeemedFromVault
+##### WithdrawnFromVault
 
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
-pub struct RedeemedFromVault {
+pub struct WithdrawnFromVault {
     #[key]
     pub position_id: PositionId,
     #[key]
     pub vault_position_id: PositionId,
+    #[key]
     pub collateral_id: AssetId,
-    pub quantized_amount: u64,
+    pub number_of_shares: u64,
+    pub minimum_quantized_amount: u64,
+    pub vault_share_execution_price: Price,
     pub expiration: Timestamp,
     pub salt: felt252,
-    pub quantized_shares_amount: u64,
-    pub price: Price,
 }
 ```
 
@@ -3019,12 +3019,13 @@ pub struct LiquidatedFromVault {
     pub position_id: PositionId,
     #[key]
     pub vault_position_id: PositionId,
+    #[key]
     pub collateral_id: AssetId,
-    pub quantized_amount: u64,
+    pub number_of_shares: u64,
+    pub minimum_quantized_amount: u64,
+    pub vault_share_execution_price: Price,
     pub expiration: Timestamp,
     pub salt: felt252,
-    pub quantized_shares_amount: u64,
-    pub price: Price,
 }
 ```
 
@@ -3665,7 +3666,7 @@ fn deposit_into_vault(
     position_id: PositionId,
     vault_position_id: PositionId,
     collateral_id: AssetId,
-    collateral_quantized_amount: u64,
+    quantized_amount: u64,
     expiration: Timestamp,
     salt: felt252,
     signature: Signature,
@@ -3709,18 +3710,19 @@ Only the Operator can execute.
 
 **Errors:**
 
-#### RedeemFromVault
+#### WithdrawFromVault
 
 Withdraw from vault is called by the operator to let the user "cash out" his vault shares from the vault position into his position
 
 ```rust
-fn redeem_from_vault(
+fn withdraw_from_vault(
     ref self: ContractState,
     operator_nonce: u64,
     position_id: PositionId,
     vault_position_id: PositionId,
+    collateral_id: AssetId,
     number_of_shares: u64,
-    minimum_received_total_amount: u64,
+    minimum_quantized_amount: u64,
     vault_share_execution_price: Price,
     expiration: Timestamp,
     salt: felt252,
@@ -3735,9 +3737,9 @@ Only the Operator can execute.
 
 **Hash:**
 
-[get\_message\_hash](#get-message-hash) on [RedeemFromVaultUserArgs](#redeemfromvaultuserargs) with `position_id` public_key.
+[get\_message\_hash](#get-message-hash) on [WithdrawFromVaultUserArgs](#withdrawfromvaultuserargs) with `position_id` public_key.
 
-[get\_message\_hash](#get-message-hash) on [RedeemFromVaultOwnerArgs](#redeemfromvaultownerargs) with `vault_position_id` public_key.
+[get\_message\_hash](#get-message-hash) on [WithdrawFromVaultOwnerArgs](#withdrawfromvaultownerargs) with `vault_position_id` public_key.
 
 **Validations:**
 
@@ -3750,11 +3752,11 @@ Only the Operator can execute.
 7. `vault_position_id` is a registered vault position.
 8. position id is not a vault position and exists.
 9. number_of_shares is non zero.
-10. minimum_received_total_amount is non zero.
+10. minimum_quantized_amount is non zero.
 11. vault_share_execution_price is non zero.
 12. Caller is the operator.
 13. Request is new (check user payload hash not exists in the fulfillment map).
-14. `number_of_shares * vault_share_execution_price >= minimum_received_total_amount`
+14. `number_of_shares * vault_share_execution_price >= minimum_quantized_amount`
 
 **Logic:**
 
@@ -3768,25 +3770,26 @@ Only the Operator can execute.
 
 **Emits:**
 
-[RedeemedFromVault](#redeedmedfromvault)
+[WithdrawnFromVault](#withdrawnfromvault)
 
 **Errors:**
 
 #### LiquidateVaultShares
 
-Liquidate vault shares is called by the operator to liquidate a liquidatable position against his vault shares
+Withdraw from vault is called by the operator to let the user "cash out" his vault shares from the vault position into his position
 
 ```rust
 fn liquidate_vault_shares(
     ref self: TContractState,
     operator_nonce: u64,
-    vault_owner_signature: Signature,
     position_id: PositionId,
     vault_position_id: PositionId,
+    collateral_id: AssetId,
     number_of_shares: u64,
     vault_share_execution_price: Price,
     expiration: Timestamp,
     salt: felt252,
+    vault_owner_signature: Signature,
 );
 ```
 
@@ -3809,9 +3812,9 @@ Only the Operator can execute.
 7. `vault_position_id` is a registered vault position.
 8. position id is not a vault position and exists.
 9. number_of_shares is non zero.
-10. vault_share_execution_price is non zero.
-11. position id is liquidatable or deleveragable.
-12. Request is new (check payload hash not exists in the fulfillment map).
+10. position id is liquidatable.
+11. vault_share_execution_price is non zero.
+12. Caller is the operator.
 
 **Logic:**
 
@@ -3822,7 +3825,7 @@ Only the Operator can execute.
 5. call the new redeem function of the vault contract (a version where the price of a vault share is dicateded by the operator) which burns the vault shares and transfers the assets from the vault contract to the perps contract
 6. increase the position_id collateral_id balance by vault_share_execution_price*number_of_shares
 7. reduce the vault_position_id collateral_id balance by vault_share_execution_price*number_of_shares
-8. position id becomes healthier.
+8. position id is healthier
 
 **Emits:**
 

@@ -18,5 +18,8 @@ unstable-add-statements-functions-debug-info = true
 inlining-strategy = "avoid"
 panic-backtrace = true
 
+[profile.release.cairo]
+inlining-strategy = "avoid"
+
 [workspace.tool.scarb]
 allow-prebuilt-plugins = ["snforge_std"]

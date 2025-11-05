@@ -1,4 +1,4 @@
-use perpetuals::core::core::Core::{InternalCoreFunctions, SNIP12MetadataImpl};
+use perpetuals::core::core::Core::InternalCoreFunctions;
 use perpetuals::core::interface::{ICoreDispatcher, ICoreDispatcherTrait, Settlement};
 use perpetuals::core::types::order::Order;
 use perpetuals::core::types::position::PositionId;

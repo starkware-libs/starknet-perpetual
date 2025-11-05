@@ -103,31 +103,3 @@ pub struct Deleverage {
     pub quote_asset_id: AssetId,
     pub deleveraged_quote_amount: i64,
 }
-
-#[derive(Debug, Drop, PartialEq, starknet::Event)]
-pub struct TransferRequest {
-    #[key]
-    pub recipient: PositionId,
-    #[key]
-    pub position_id: PositionId,
-    pub collateral_id: AssetId,
-    pub amount: u64,
-    pub expiration: Timestamp,
-    #[key]
-    pub transfer_request_hash: felt252,
-    pub salt: felt252,
-}
-
-#[derive(Debug, Drop, PartialEq, starknet::Event)]
-pub struct Transfer {
-    #[key]
-    pub recipient: PositionId,
-    #[key]
-    pub position_id: PositionId,
-    pub collateral_id: AssetId,
-    pub amount: u64,
-    pub expiration: Timestamp,
-    #[key]
-    pub transfer_request_hash: felt252,
-    pub salt: felt252,
-}

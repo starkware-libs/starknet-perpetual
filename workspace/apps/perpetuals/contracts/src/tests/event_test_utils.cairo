@@ -1,7 +1,7 @@
 use perpetuals::core::components::assets::events as assets_events;
 use perpetuals::core::components::deposit::events as deposit_events;
 use perpetuals::core::components::positions::events as positions_events;
-use perpetuals::core::core::Core::SNIP12MetadataImpl;
+use perpetuals::core::components::snip::SNIP12MetadataImpl;
 use perpetuals::core::events;
 use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::funding::FundingIndex;
@@ -14,6 +14,7 @@ use starknet::ContractAddress;
 use starkware_utils::signature::stark::PublicKey;
 use starkware_utils::time::time::Timestamp;
 use starkware_utils_testing::test_utils::assert_expected_event_emitted;
+use crate::core::components::transfer::transfer_manager::{Transfer, TransferRequest};
 
 
 pub fn assert_new_position_event_with_expected(
@@ -76,7 +77,7 @@ pub fn assert_deposit_canceled_event_with_expected(
         depositing_address,
         collateral_id,
         quantized_amount,
-        unquantized_amount,
+        unquantized_amount: unquantized_amount.into(),
         deposit_request_hash,
         salt,
     };
@@ -103,7 +104,7 @@ pub fn assert_deposit_processed_event_with_expected(
         depositing_address,
         collateral_id,
         quantized_amount,
-        unquantized_amount,
+        unquantized_amount: unquantized_amount.into(),
         deposit_request_hash,
         salt,
     };
@@ -280,7 +281,7 @@ pub fn assert_transfer_request_event_with_expected(
     transfer_request_hash: felt252,
     salt: felt252,
 ) {
-    let expected_event = events::TransferRequest {
+    let expected_event = TransferRequest {
         position_id, recipient, collateral_id, amount, expiration, transfer_request_hash, salt,
     };
     assert_expected_event_emitted(
@@ -301,7 +302,7 @@ pub fn assert_transfer_event_with_expected(
     transfer_request_hash: felt252,
     salt: felt252,
 ) {
-    let expected_event = events::Transfer {
+    let expected_event = Transfer {
         position_id, recipient, collateral_id, amount, expiration, transfer_request_hash, salt,
     };
     assert_expected_event_emitted(
@@ -426,6 +427,58 @@ pub fn assert_add_synthetic_event_with_expected(
         :expected_event,
         expected_event_selector: @selector!("SyntheticAdded"),
         expected_event_name: "SyntheticAdded",
+    );
+}
+
+pub fn assert_change_synthetic_event_with_expected(
+    spied_event: @(ContractAddress, Event),
+    asset_id: AssetId,
+    risk_factor_tiers: Span<u16>,
+    risk_factor_first_tier_boundary: u128,
+    risk_factor_tier_size: u128,
+    resolution_factor: u64,
+    quorum: u8,
+) {
+    let expected_event = assets_events::SyntheticChanged {
+        asset_id,
+        risk_factor_tiers,
+        risk_factor_first_tier_boundary,
+        risk_factor_tier_size,
+        resolution_factor,
+        quorum,
+    };
+    assert_expected_event_emitted(
+        :spied_event,
+        :expected_event,
+        expected_event_selector: @selector!("SyntheticChanged"),
+        expected_event_name: "SyntheticChanged",
+    );
+}
+
+pub fn assert_add_spot_event_with_expected(
+    spied_event: @(ContractAddress, Event),
+    asset_id: AssetId,
+    risk_factor_tiers: Span<u16>,
+    risk_factor_first_tier_boundary: u128,
+    risk_factor_tier_size: u128,
+    resolution_factor: u64,
+    quorum: u8,
+    contract_address: ContractAddress,
+) {
+    let expected_event = assets_events::SpotAssetAdded {
+        asset_id,
+        risk_factor_tiers,
+        risk_factor_first_tier_boundary,
+        risk_factor_tier_size,
+        resolution_factor,
+        quorum,
+        contract_address,
+    };
+    assert_expected_event_emitted(
+        :spied_event,
+        :expected_event,
+        expected_event_selector: @selector!("SpotAssetAdded"),
+        expected_event_name: "SpotAssetAdded",
     );
 }
 

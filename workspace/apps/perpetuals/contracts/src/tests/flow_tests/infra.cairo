@@ -61,6 +61,36 @@ pub impl FlowTestBaseImpl of FlowTestBaseTrait {
             );
         user
     }
+
+    fn new_user_with_position_and_no_owner(ref self: FlowTestBase) -> User {
+        let user = UserTrait::new(
+            self.facade.token_state,
+            secret_key: self.generate_key(),
+            position_id: self.generate_position_id(),
+        );
+        self
+            .facade
+            .new_position(
+                position_id: user.position_id,
+                owner_public_key: user.account.key_pair.public_key,
+                owner_account: user.account.address,
+            );
+        user
+    }
+
+    fn new_user_with_position_id(ref self: FlowTestBase, position_id: PositionId) -> User {
+        let user = UserTrait::new(
+            self.facade.token_state, secret_key: self.generate_key(), :position_id,
+        );
+        self
+            .facade
+            .new_position(
+                position_id: user.position_id,
+                owner_public_key: user.account.key_pair.public_key,
+                owner_account: user.account.address,
+            );
+        user
+    }
 }
 
 #[derive(Copy, Drop)]
@@ -195,7 +225,7 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
         let synthetic_price = self
             .flow_test_base
             .facade
-            .get_synthetic_price(synthetic_id: synthetic_info.asset_id);
+            .get_asset_price(synthetic_id: synthetic_info.asset_id);
         let quote: i64 = PriceMulTrait::<Balance>::mul(@synthetic_price, -base.into())
             .try_into()
             .expect('Value should not overflow');
@@ -305,13 +335,13 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
         ref self: FlowTestExtended, liquidated_user: User, mut liquidator_order: OrderRequest,
     ) -> OrderRequest {
         let synthetic_id = liquidator_order.order_info.order.base_asset_id;
-        let assets_balance: i64 = self
+        let asset_balances: i64 = self
             .flow_test_base
             .facade
-            .get_position_synthetic_balance(position_id: liquidated_user.position_id, :synthetic_id)
+            .get_position_asset_balance(position_id: liquidated_user.position_id, :synthetic_id)
             .into();
 
-        let base = min(assets_balance.abs(), liquidator_order.actual_base);
+        let base = min(asset_balances.abs(), liquidator_order.actual_base);
 
         let quote = base
             * liquidator_order.order_info.order.quote_amount.abs()
@@ -380,7 +410,7 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
         let balance_a: i64 = self
             .flow_test_base
             .facade
-            .get_position_synthetic_balance(
+            .get_position_asset_balance(
                 position_id: user_a.position_id, synthetic_id: synthetic_info.asset_id,
             )
             .into();
@@ -388,7 +418,7 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
         let balance_b: i64 = self
             .flow_test_base
             .facade
-            .get_position_synthetic_balance(
+            .get_position_asset_balance(
                 position_id: user_b.position_id, synthetic_id: synthetic_info.asset_id,
             )
             .into();

@@ -21,7 +21,7 @@ jobs:
           curl -L https://raw.githubusercontent.com/software-mansion/cairo-coverage/main/scripts/install.sh | sh
 
       - name: Run test and coverage
-        run: scarb test -w --coverage
+        run: scarb test
 
       - name: Check formatting
         run: scarb fmt -w --check

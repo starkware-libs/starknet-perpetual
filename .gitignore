@@ -70,3 +70,5 @@ coverage_report
 #python
 venv/
 __pycache__
+
+prod_deploy/**
