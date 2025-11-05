@@ -9,7 +9,6 @@ pub trait IDeposit<TContractState> {
     fn deposit(
         ref self: TContractState,
         asset_id: AssetId,
-        depositor: ContractAddress,
         position_id: PositionId,
         quantized_amount: u64,
         salt: felt252,
@@ -17,7 +16,6 @@ pub trait IDeposit<TContractState> {
     fn cancel_deposit(
         ref self: TContractState,
         asset_id: AssetId,
-        depositor: ContractAddress,
         position_id: PositionId,
         quantized_amount: u64,
         salt: felt252,
@@ -25,8 +23,8 @@ pub trait IDeposit<TContractState> {
     fn reject_deposit(
         ref self: TContractState,
         operator_nonce: u64,
-        asset_id: AssetId,
         depositor: ContractAddress,
+        asset_id: AssetId,
         position_id: PositionId,
         quantized_amount: u64,
         salt: felt252,
@@ -34,8 +32,8 @@ pub trait IDeposit<TContractState> {
     fn process_deposit(
         ref self: TContractState,
         operator_nonce: u64,
-        asset_id: AssetId,
         depositor: ContractAddress,
+        asset_id: AssetId,
         position_id: PositionId,
         quantized_amount: u64,
         salt: felt252,

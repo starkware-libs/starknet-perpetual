@@ -1022,6 +1022,53 @@ fn test_transfer() {
 }
 
 #[test]
+fn test_withdraw_with_owner() {
+    // Setup.
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+
+    // Create users.
+    let user_1 = state.new_user_with_position();
+
+    // Deposit to users.
+    let deposit_info_user_1 = state
+        .facade
+        .deposit(
+            depositor: user_1.account, position_id: user_1.position_id, quantized_amount: 100000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_info_user_1);
+
+    // Withdraw.
+    let mut withdraw_info = state.facade.withdraw_request(user: user_1, amount: 15000);
+    state.facade.withdraw(:withdraw_info);
+}
+
+#[test]
+#[should_panic(expected: 'CALLER_IS_NOT_OWNER_ACCOUNT')]
+fn test_withdraw_with_owner_fails_if_not_caller() {
+    // Setup.
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+
+    // Create users.
+    let user_1 = state.new_user_with_position();
+    let user_2 = state.new_user_with_position();
+
+    // Deposit to users.
+    let deposit_info_user_1 = state
+        .facade
+        .deposit(
+            depositor: user_1.account, position_id: user_1.position_id, quantized_amount: 100000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_info_user_1);
+
+    // Withdraw.
+    let mut withdraw_info = state
+        .facade
+        .withdraw_request_with_caller(user: user_1, amount: 15000, caller: user_2);
+    state.facade.withdraw(:withdraw_info);
+}
+
+#[test]
+#[should_panic(expected: 'ASSET_BALANCE_NEGATIVE')]
 fn test_transfer_withdraw_with_negative_collateral() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {
@@ -2282,4 +2329,119 @@ fn test_funding_index_rounding() {
     /// which rounds down to -1.
     state.facade.validate_collateral_balance(user_1.position_id, 1000_i64.into());
     state.facade.validate_collateral_balance(user_2.position_id, 999_i64.into());
+}
+
+#[test]
+#[should_panic(
+    expected: "POSITION_IS_NOT_FAIR_DELEVERAGE position_id: PositionId { value: 101 } TV before -2, TR before 2, TV after 2, TR after 0",
+)]
+fn test_unfair_deleverage() {
+    // Setup.
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    // Create a custom asset configuration to test interesting risk factor scenarios.
+    let synthetic_info = SyntheticInfoTrait::new(
+        asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
+    );
+    let asset_id = synthetic_info.asset_id;
+
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+
+    state.facade.add_active_synthetic(synthetic_info: @synthetic_info, initial_price: 100);
+
+    // Create users.
+    let deleveraged_user = state.new_user_with_position();
+    let deleverager_user = state.new_user_with_position();
+
+    // Deposit to users.
+    let deposit_info_user_1 = state
+        .facade
+        .deposit(
+            depositor: deleverager_user.account,
+            position_id: deleverager_user.position_id,
+            quantized_amount: 100000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_info_user_1);
+
+    // Create orders.
+    // User willing to buy 2 synthetic assets for 168 (quote) + 20 (fee).
+    let order_deleveraged_user = state
+        .facade
+        .create_order(
+            user: deleveraged_user,
+            base_amount: 2,
+            base_asset_id: asset_id,
+            quote_amount: -168,
+            fee_amount: 20,
+        );
+
+    let order_deleverager_user = state
+        .facade
+        .create_order(
+            user: deleverager_user,
+            base_amount: -2,
+            base_asset_id: asset_id,
+            quote_amount: 168,
+            fee_amount: 20,
+        );
+
+    // Make trades.
+    // User recieves 2 synthetic asset for 168 (quote) + 20 (fee).
+    state
+        .facade
+        .trade(
+            order_info_a: order_deleveraged_user,
+            order_info_b: order_deleverager_user,
+            base: 2,
+            quote: -168,
+            fee_a: 20,
+            fee_b: 20,
+        );
+
+    //                            TV                                  TR                 TV / TR
+    //                COLLATERAL*1 + SYNTHETIC*PRICE        |SYNTHETIC*PRICE*RISK|
+    // deleveraged User:   -188 + 2 * 100 = 12                 2 * 100 * 0.01 = 2           6
+    state
+        .facade
+        .validate_total_value(position_id: deleveraged_user.position_id, expected_total_value: 12);
+    state
+        .facade
+        .validate_total_risk(position_id: deleveraged_user.position_id, expected_total_risk: 2);
+
+    advance_time(10000);
+    let mut new_funding_index = FundingIndex { value: 7 * FUNDING_SCALE };
+    state
+        .facade
+        .funding_tick(
+            funding_ticks: array![
+                FundingTick { asset_id: asset_id, funding_index: new_funding_index },
+            ]
+                .span(),
+        );
+
+    //                            TV                                  TR                 TV / TR
+    //                COLLATERAL*1 + SYNTHETIC*PRICE        |SYNTHETIC*PRICE*RISK|
+    // deleveraged User:   -202 + 2 * 100 = -2                 2 * 100 * 0.01 = 2          - 1
+    state
+        .facade
+        .validate_total_value(position_id: deleveraged_user.position_id, expected_total_value: -2);
+    state
+        .facade
+        .validate_total_risk(position_id: deleveraged_user.position_id, expected_total_risk: 2);
+
+    assert(
+        state.facade.is_deleveragable(position_id: deleveraged_user.position_id),
+        'user is not deleveragable',
+    );
+
+    state
+        .facade
+        .deleverage(
+            deleveraged_user: deleveraged_user,
+            deleverager_user: deleverager_user,
+            base_asset_id: asset_id,
+            deleveraged_base: -2,
+            deleveraged_quote: 204,
+        );
 }
