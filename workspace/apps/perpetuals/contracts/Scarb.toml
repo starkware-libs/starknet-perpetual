@@ -33,6 +33,9 @@ unstable-add-statements-functions-debug-info = true
 inlining-strategy = "avoid"
 panic-backtrace = true
 
+[profile.release.cairo]
+inlining-strategy = "avoid"
+
 [[test]]
 name = "perpetuals_unittest"
 build-external-contracts = [

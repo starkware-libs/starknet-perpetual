@@ -26,7 +26,7 @@ pub struct SyntheticAdded {
 }
 
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
-pub struct VaultShareCollateralAdded {
+pub struct SyntheticChanged {
     #[key]
     pub asset_id: AssetId,
     pub risk_factor_tiers: Span<u16>,
@@ -34,9 +34,18 @@ pub struct VaultShareCollateralAdded {
     pub risk_factor_tier_size: u128,
     pub resolution_factor: u64,
     pub quorum: u8,
+}
+
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct SpotAssetAdded {
     #[key]
-    pub erc20_contract_address: ContractAddress,
-    pub quantum: u64,
+    pub asset_id: AssetId,
+    pub risk_factor_tiers: Span<u16>,
+    pub risk_factor_first_tier_boundary: u128,
+    pub risk_factor_tier_size: u128,
+    pub resolution_factor: u64,
+    pub quorum: u8,
+    pub contract_address: ContractAddress,
 }
 
 #[derive(Debug, Drop, PartialEq, starknet::Event)]

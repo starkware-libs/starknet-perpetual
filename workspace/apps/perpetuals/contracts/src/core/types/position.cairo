@@ -1,5 +1,6 @@
 use core::num::traits::Zero;
-use perpetuals::core::types::asset::{Asset, AssetDiffEnriched, AssetId};
+use perpetuals::core::types::asset::AssetId;
+use perpetuals::core::types::asset::synthetic::{AssetBalanceDiffEnriched, AssetBalanceInfo};
 use perpetuals::core::types::balance::{Balance, BalanceDiff};
 use perpetuals::core::types::funding::FundingIndex;
 use starknet::ContractAddress;
@@ -18,7 +19,8 @@ pub struct Position {
     pub owner_public_key: PublicKey,
     pub collateral_balance: Balance,
     #[rename("synthetic_balance")]
-    pub assets_balance: IterableMap<AssetId, AssetBalance>,
+    pub asset_balances: IterableMap<AssetId, AssetBalance>,
+    pub owner_protection_enabled: bool,
 }
 
 /// Asset balance in a position.
@@ -79,30 +81,30 @@ pub struct PositionDiff {
 #[derive(Copy, Debug, Drop, Serde, Default)]
 pub struct AssetEnrichedPositionDiff {
     pub collateral_diff: Balance,
-    pub asset_enriched: Option<AssetDiffEnriched>,
+    pub asset_diff_enriched: Option<AssetBalanceDiffEnriched>,
 }
 
 /// Diff where both collateral and synthetic are enriched.
 #[derive(Copy, Debug, Drop, Serde, Default)]
 pub struct PositionDiffEnriched {
     pub collateral_enriched: BalanceDiff,
-    pub asset_enriched: Option<AssetDiffEnriched>,
+    pub asset_diff_enriched: Option<AssetBalanceDiffEnriched>,
 }
 
-pub impl PositionDiffEnrichedIntoAssetEnrichedPositionDiff of Into<
+pub impl PositionDiffEnrichedIntoSyntheticEnrichedPositionDiff of Into<
     PositionDiffEnriched, AssetEnrichedPositionDiff,
 > {
     fn into(self: PositionDiffEnriched) -> AssetEnrichedPositionDiff {
         AssetEnrichedPositionDiff {
             collateral_diff: self.collateral_enriched.after - self.collateral_enriched.before,
-            asset_enriched: self.asset_enriched,
+            asset_diff_enriched: self.asset_diff_enriched,
         }
     }
 }
 
 #[derive(Copy, Debug, Drop, Serde, PartialEq)]
 pub struct PositionData {
-    pub assets: Span<Asset>,
+    pub assets: Span<AssetBalanceInfo>,
     pub collateral_balance: Balance,
 }
 
