@@ -18,6 +18,7 @@ pub trait IPositions<TContractState> {
         position_id: PositionId,
         owner_public_key: PublicKey,
         owner_account: ContractAddress,
+        owner_protection_enabled: bool,
     );
     fn set_owner_account_request(
         ref self: TContractState,
@@ -46,5 +47,12 @@ pub trait IPositions<TContractState> {
         position_id: PositionId,
         new_public_key: PublicKey,
         expiration: Timestamp,
+    );
+
+    fn enable_owner_protection(
+        ref self: TContractState,
+        operator_nonce: u64,
+        position_id: PositionId,
+        signature: Signature,
     );
 }

@@ -1,5 +1,5 @@
 #[starknet::component]
-pub(crate) mod Positions {
+pub mod Positions {
     use core::nullable::{FromNullableResult, match_nullable};
     use core::num::traits::Zero;
     use core::panic_with_felt252;
@@ -7,6 +7,7 @@ pub(crate) mod Positions {
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::AssetsComponent::InternalTrait as AssetsInternalTrait;
+    use perpetuals::core::components::assets::interface::IAssets;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalTrait as NonceInternal;
     use perpetuals::core::components::positions::errors::{
@@ -17,8 +18,12 @@ pub(crate) mod Positions {
     };
     use perpetuals::core::components::positions::events;
     use perpetuals::core::components::positions::interface::IPositions;
-    use perpetuals::core::core::Core::SNIP12MetadataImpl;
-    use perpetuals::core::types::asset::{Asset, AssetDiffEnriched, AssetId};
+    use perpetuals::core::components::snip::SNIP12MetadataImpl;
+    use perpetuals::core::errors::{
+        INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE, INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT,
+    };
+    use perpetuals::core::types::asset::AssetId;
+    use perpetuals::core::types::asset::synthetic::{AssetBalanceDiffEnriched, AssetBalanceInfo};
     use perpetuals::core::types::balance::{Balance, BalanceDiff};
     use perpetuals::core::types::funding::calculate_funding;
     use perpetuals::core::types::position::{
@@ -41,6 +46,8 @@ pub(crate) mod Positions {
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent::InternalTrait as RequestApprovalsInternal;
     use starkware_utils::components::roles::RolesComponent;
+    use starkware_utils::math::abs::Abs;
+    use starkware_utils::math::utils::have_same_sign;
     use starkware_utils::signature::stark::{PublicKey, Signature};
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
@@ -50,6 +57,8 @@ pub(crate) mod Positions {
 
     pub const FEE_POSITION: PositionId = PositionId { value: 0 };
     pub const INSURANCE_FUND_POSITION: PositionId = PositionId { value: 1 };
+
+    impl SnipImpl = SNIP12MetadataImpl;
 
 
     #[storage]
@@ -164,6 +173,7 @@ pub(crate) mod Positions {
             position_id: PositionId,
             owner_public_key: PublicKey,
             owner_account: ContractAddress,
+            owner_protection_enabled: bool,
         ) {
             get_dep_component!(@self, Pausable).assert_not_paused();
             let mut operator_nonce_component = get_dep_component_mut!(ref self, OperatorNonce);
@@ -173,6 +183,7 @@ pub(crate) mod Positions {
             assert(owner_public_key.is_non_zero(), INVALID_ZERO_PUBLIC_KEY);
             position.version.write(POSITION_VERSION);
             position.owner_public_key.write(owner_public_key);
+            position.owner_protection_enabled.write(owner_protection_enabled);
             if owner_account.is_non_zero() {
                 position.owner_account.write(Option::Some(owner_account));
             }
@@ -184,6 +195,15 @@ pub(crate) mod Positions {
                         owner_account: owner_account,
                     },
                 );
+        }
+
+        fn enable_owner_protection(
+            ref self: ComponentState<TContractState>,
+            operator_nonce: u64,
+            position_id: PositionId,
+            signature: Signature,
+        ) {
+            panic_with_felt252('TODO')
         }
 
         /// Registers a request to set the position's owner_account.
@@ -406,65 +426,12 @@ pub(crate) mod Positions {
             let position_mut = self.get_position_mut(:position_id);
             position_mut.collateral_balance.add_and_write(position_diff.collateral_diff);
 
-            if let Option::Some((asset_id, asset_diff)) = position_diff.asset_diff {
+            if let Option::Some((synthetic_id, asset_diff)) = position_diff.asset_diff {
                 self
-                    ._update_asset_balance_and_funding(
-                        position: position_mut, :asset_id, :asset_diff,
+                    ._update_synthetic_balance_and_funding(
+                        position: position_mut, :synthetic_id, :asset_diff,
                     );
             };
-        }
-
-        /// Enriches collateral, producing a fully enriched diff.
-        /// This computation is relatively expensive due to the funding mechanism.
-        /// If the calculation can rely on the raw collateral values, prefer using
-        /// `PositionDiff` or `AssetEnrichedPositionDiff` without fully enriching.
-        fn enrich_collateral(
-            self: @ComponentState<TContractState>,
-            position: StoragePath<Position>,
-            position_diff: AssetEnrichedPositionDiff,
-            provisional_delta: Option<Balance>,
-        ) -> PositionDiffEnriched {
-            let before = self.get_collateral_provisional_balance(:position, :provisional_delta);
-            let after = before + position_diff.collateral_diff;
-            let collateral_enriched = BalanceDiff { before: before, after };
-
-            PositionDiffEnriched {
-                collateral_enriched: collateral_enriched,
-                asset_enriched: position_diff.asset_enriched,
-            }
-        }
-
-        /// Enriches the synthetic part, leaving collateral raw.
-        fn enrich_asset(
-            self: @ComponentState<TContractState>,
-            position: StoragePath<Position>,
-            position_diff: PositionDiff,
-        ) -> AssetEnrichedPositionDiff {
-            let asset_enriched = if let Option::Some((asset_id, diff)) = position_diff.asset_diff {
-                let balance_before = self.get_asset_balance(:position, :asset_id);
-                let balance_after = balance_before + diff;
-                let assets = get_dep_component!(self, Assets);
-                let price = assets.get_asset_price(:asset_id);
-                let risk_factor_before = assets
-                    .get_asset_risk_factor(:asset_id, balance: balance_before, :price);
-                let risk_factor_after = assets
-                    .get_asset_risk_factor(:asset_id, balance: balance_after, :price);
-
-                let asset_diff_enriched = AssetDiffEnriched {
-                    asset_id,
-                    balance_before,
-                    balance_after,
-                    price,
-                    risk_factor_before,
-                    risk_factor_after,
-                };
-                Option::Some(asset_diff_enriched)
-            } else {
-                Option::None
-            };
-            AssetEnrichedPositionDiff {
-                collateral_diff: position_diff.collateral_diff, asset_enriched,
-            }
         }
 
         fn get_position_snapshot(
@@ -485,13 +452,13 @@ pub(crate) mod Positions {
             position
         }
 
-        fn get_asset_balance(
+        fn get_synthetic_balance(
             self: @ComponentState<TContractState>,
             position: StoragePath<Position>,
-            asset_id: AssetId,
+            synthetic_id: AssetId,
         ) -> Balance {
-            if let Option::Some(asset) = position.assets_balance.read(asset_id) {
-                asset.balance
+            if let Option::Some(synthetic) = position.asset_balances.read(synthetic_id) {
+                synthetic.balance
             } else {
                 0_i64.into()
             }
@@ -508,20 +475,21 @@ pub(crate) mod Positions {
                 return collateral_provisional_balance + provisional_delta;
             }
 
-            for (asset_id, asset) in position.assets_balance {
-                if asset.balance.is_zero() {
+            for (synthetic_id, synthetic) in position.asset_balances {
+                if synthetic.balance.is_zero() {
                     continue;
                 }
-                let global_funding_index = assets.get_funding_index_unsafe(asset_id);
+                let global_funding_index = assets.get_funding_index_unsafe(:synthetic_id);
                 collateral_provisional_balance +=
                     calculate_funding(
-                        old_funding_index: asset.funding_index,
+                        old_funding_index: synthetic.funding_index,
                         new_funding_index: global_funding_index,
-                        balance: asset.balance,
+                        balance: synthetic.balance,
                     );
             }
             collateral_provisional_balance
         }
+
         /// Returns all assets from the position, excluding assets with zero balance
         /// and those included in `position_diff`.
         /// Also calculates the provisional funding delta for the position.
@@ -529,38 +497,111 @@ pub(crate) mod Positions {
             self: @ComponentState<TContractState>,
             position: StoragePath<Position>,
             position_diff: PositionDiff,
-        ) -> (Balance, Span<Asset>) {
+        ) -> (Balance, Span<AssetBalanceInfo>) {
             let assets = get_dep_component!(self, Assets);
             let mut unchanged_assets = array![];
 
-            let asset_diff_id = if let Option::Some((id, _)) = position_diff.asset_diff {
+            let synthetic_diff_id = if let Option::Some((id, _)) = position_diff.asset_diff {
                 id
             } else {
                 Default::default()
             };
             let mut provisional_delta: Balance = 0_i64.into();
 
-            for (asset_id, asset) in position.assets_balance {
-                let balance = asset.balance;
+            for (synthetic_id, synthetic) in position.asset_balances {
+                let balance = synthetic.balance;
                 if balance.is_zero() {
                     continue;
                 }
-                let (price, funding_index) = assets.get_price_and_funding_index(:asset_id);
-
+                let (price, funding_index) = assets
+                    .get_price_and_funding_index(asset_id: synthetic_id);
                 provisional_delta +=
                     calculate_funding(
-                        old_funding_index: asset.funding_index,
+                        old_funding_index: synthetic.funding_index,
                         new_funding_index: funding_index,
-                        balance: asset.balance,
+                        balance: synthetic.balance,
                     );
-                if asset_diff_id == asset_id {
+                if synthetic_diff_id == synthetic_id {
                     continue;
                 }
-                let risk_factor = assets.get_asset_risk_factor(:asset_id, :balance, :price);
-                unchanged_assets.append(Asset { id: asset_id, balance, price, risk_factor });
+
+                let risk_factor = assets.get_asset_risk_factor(synthetic_id, balance, price);
+                unchanged_assets
+                    .append(
+                        AssetBalanceInfo {
+                            id: synthetic_id,
+                            balance,
+                            price,
+                            risk_factor,
+                            cached_funding_index: synthetic.funding_index,
+                        },
+                    );
             }
 
             (provisional_delta, unchanged_assets.span())
+        }
+
+        fn validate_asset_balance_is_not_negative(
+            self: @ComponentState<TContractState>,
+            position: StoragePath<Position>,
+            asset_id: AssetId,
+        ) {
+            let assets = get_dep_component!(self, Assets);
+            let balance = if (asset_id == assets.get_collateral_id()) {
+                self.get_collateral_provisional_balance(position, None)
+            } else {
+                self.get_synthetic_balance(:position, synthetic_id: asset_id)
+            };
+
+            assert(balance >= 0_i64.into(), 'ASSET_BALANCE_NEGATIVE');
+        }
+
+        fn enrich_collateral(
+            self: @ComponentState<TContractState>,
+            position: StoragePath<Position>,
+            position_diff: AssetEnrichedPositionDiff,
+            provisional_delta: Option<Balance>,
+        ) -> PositionDiffEnriched {
+            let before = self.get_collateral_provisional_balance(:position, :provisional_delta);
+            let after = before + position_diff.collateral_diff;
+            let collateral_enriched = BalanceDiff { before: before, after };
+
+            PositionDiffEnriched {
+                collateral_enriched: collateral_enriched,
+                asset_diff_enriched: position_diff.asset_diff_enriched,
+            }
+        }
+
+        fn enrich_asset(
+            self: @ComponentState<TContractState>,
+            position: StoragePath<Position>,
+            position_diff: PositionDiff,
+        ) -> AssetEnrichedPositionDiff {
+            let asset_enriched = if let Option::Some((asset_id, diff)) = position_diff.asset_diff {
+                let balance_before = self.get_synthetic_balance(:position, synthetic_id: asset_id);
+                let balance_after = balance_before + diff;
+                let assets = get_dep_component!(self, Assets);
+                let price = assets.get_asset_price(:asset_id);
+                let risk_factor_before = assets
+                    .get_asset_risk_factor(:asset_id, balance: balance_before, :price);
+                let risk_factor_after = assets
+                    .get_asset_risk_factor(:asset_id, balance: balance_after, :price);
+
+                let asset_diff_enriched = AssetBalanceDiffEnriched {
+                    asset_id,
+                    balance_before,
+                    balance_after,
+                    price,
+                    risk_factor_before,
+                    risk_factor_after,
+                };
+                Option::Some(asset_diff_enriched)
+            } else {
+                Option::None
+            };
+            AssetEnrichedPositionDiff {
+                collateral_diff: position_diff.collateral_diff, asset_diff_enriched: asset_enriched,
+            }
         }
 
         fn validate_healthy_or_healthier_position(
@@ -586,9 +627,56 @@ pub(crate) mod Positions {
                 },
                 FromNullableResult::NotNull(value) => value.unbox(),
             };
-            let tvtr = calculate_position_tvtr_change(:tvtr_before, :asset_enriched_position_diff);
+            let tvtr = calculate_position_tvtr_change(
+                :tvtr_before, synthetic_enriched_position_diff: asset_enriched_position_diff,
+            );
             assert_healthy_or_healthier(:position_id, :tvtr);
             tvtr.after
+        }
+
+        fn _validate_synthetic_shrinks(
+            self: @ComponentState<TContractState>,
+            position: StoragePath<Position>,
+            asset_id: AssetId,
+            amount: i64,
+        ) {
+            let position_base_balance: i64 = self
+                .get_synthetic_balance(:position, synthetic_id: asset_id)
+                .into();
+
+            assert(!have_same_sign(amount, position_base_balance), INVALID_AMOUNT_SIGN);
+            assert(amount.abs() <= position_base_balance.abs(), INVALID_BASE_CHANGE);
+        }
+
+        fn _validate_imposed_reduction_trade(
+            ref self: ComponentState<TContractState>,
+            position_id_a: PositionId,
+            position_id_b: PositionId,
+            position_a: StoragePath<Position>,
+            position_b: StoragePath<Position>,
+            base_asset_id: AssetId,
+            base_amount_a: i64,
+            quote_amount_a: i64,
+        ) {
+            // Validate positions.
+            assert(position_id_a != position_id_b, INVALID_SAME_POSITIONS);
+
+            // Non-zero amount check.
+            assert(base_amount_a.is_non_zero(), INVALID_ZERO_AMOUNT);
+            assert(quote_amount_a.is_non_zero(), INVALID_ZERO_AMOUNT);
+
+            // Sign Validation for amounts.
+            assert(!have_same_sign(base_amount_a, quote_amount_a), INVALID_AMOUNT_SIGN);
+
+            // Ensure that TR does not increase and that the base amount retains the same sign.
+            self
+                ._validate_synthetic_shrinks(
+                    position: position_a, asset_id: base_asset_id, amount: base_amount_a,
+                );
+            self
+                ._validate_synthetic_shrinks(
+                    position: position_b, asset_id: base_asset_id, amount: -base_amount_a,
+                );
         }
     }
 
@@ -611,12 +699,12 @@ pub(crate) mod Positions {
         /// current funding index.
         ///
         /// The main collateral balance is updated using the following formula:
-        /// main_collateral_balance += assets_balance * (old_funding_index - new_funding_index).
+        /// main_collateral_balance += asset_balances * (old_funding_index - new_funding_index).
         /// After the adjustment, the `funding_index` is set to `global_funding_index`.
         ///
         /// Example:
         /// main_collateral_balance = 1000;
-        /// assets_balance = 50;
+        /// asset_balances = 50;
         /// old_funding_index = 200;
         /// new_funding_index = 210;
         ///
@@ -624,43 +712,44 @@ pub(crate) mod Positions {
         ///
         /// After the update:
         /// main_collateral_balance = 500; // 1000 + 50 * (200 - 210)
-        /// assets_balance = 300;
-        /// asset_funding_index = 210;
+        /// asset_balances = 300;
+        /// synthetic_funding_index = 210;
         ///
-        fn _update_asset_balance_and_funding(
+
+        fn _update_synthetic_balance_and_funding(
             ref self: ComponentState<TContractState>,
             position: StoragePath<Mutable<Position>>,
-            asset_id: AssetId,
+            synthetic_id: AssetId,
             asset_diff: Balance,
         ) {
             let assets = get_dep_component!(@self, Assets);
-            let global_funding_index = assets.get_funding_index(:asset_id);
+            let global_funding_index = assets.get_funding_index(:synthetic_id);
 
             // Adjusts the main collateral balance accordingly:
-            let (collateral_funding, current_asset_balance) = if let Option::Some(asset) = position
-                .assets_balance
-                .read(asset_id) {
-                let current_asset_balance = asset.balance;
+            let (collateral_funding, current_synthetic_balance) = if let Option::Some(synthetic) =
+                position
+                .asset_balances
+                .read(synthetic_id) {
+                let current_synthetic_balance = synthetic.balance;
                 (
                     calculate_funding(
-                        old_funding_index: asset.funding_index,
+                        old_funding_index: synthetic.funding_index,
                         new_funding_index: global_funding_index,
-                        balance: current_asset_balance,
+                        balance: current_synthetic_balance,
                     ),
-                    current_asset_balance,
+                    current_synthetic_balance,
                 )
             } else {
                 (0_i64.into(), 0_i64.into())
             };
             position.collateral_balance.add_and_write(collateral_funding);
-
-            // Updates the asset balance and funding index:
-            let asset_balance = AssetBalance {
+            // Updates the synthetic balance and funding index:
+            let synthetic_asset = AssetBalance {
                 version: POSITION_VERSION,
-                balance: current_asset_balance + asset_diff,
+                balance: current_synthetic_balance + asset_diff,
                 funding_index: global_funding_index,
             };
-            position.assets_balance.write(asset_id, asset_balance);
+            position.asset_balances.write(synthetic_id, synthetic_asset);
         }
 
         fn _get_position_state(
