@@ -1,6 +1,8 @@
 use core::num::traits::{One, Pow, Zero};
 use perpetuals::core::types::balance::Balance;
+use starkware_utils::math::utils::mul_wide_and_div;
 use starkware_utils::signature::stark::{PublicKey, Signature};
+
 
 // 2^28
 pub const PRICE_SCALE: u64 = 2_u64.pow(28);
@@ -9,31 +11,25 @@ pub const PRICE_SCALE: u64 = 2_u64.pow(28);
 const MAX_PRICE: u64 = 2_u64.pow(56);
 
 // Oracle always sign the price with 18 decimal places.
-const ORACLE_SCALE: u128 = 10_u128.pow(18);
+pub const ORACLE_SCALE: u128 = 10_u128.pow(18);
 
 // StarkNet Perps scale is with 6 decimal places.
 // The value here is 10^6 and it must correspond to the quantum of the collateral so the minimal
 // collateral unit is 10^-6 USD.
-const SN_PERPS_SCALE: u128 = 10_u128.pow(6);
+pub const SN_PERPS_SCALE: u128 = 10_u128.pow(6);
 
 // The ratio between the StarkNet Perps scale and the Oracle scale.
 const ORACLE_SCALE_SN_PERPS_RATIO: u128 = ORACLE_SCALE / SN_PERPS_SCALE;
 
 const MAX_PRICE_ERROR: felt252 = 'Value must be < 2^56';
 
-#[derive(Copy, Debug, Default, Drop, Hash, PartialEq, Serde, starknet::Store)]
+#[derive(Copy, Debug, Default, Drop, PartialEq, Serde, starknet::Store)]
 /// Price is the price of a synthetic asset in the Perps system.
 /// The price is the price of the minimal unit of the asset in 10^-6 USD.
 pub struct Price {
     // Unsigned 28-bit fixed point decimal precision.
     // 28-bit for the integer part and 28-bit for the fractional part.
     value: u64,
-}
-
-pub impl U64IntoPrice of Into<u64, Price> {
-    fn into(self: u64) -> Price {
-        Price { value: self }
-    }
 }
 
 #[derive(Copy, Debug, Drop, Serde)]
@@ -61,14 +57,19 @@ pub trait PriceMulTrait<T> {
 impl PriceMulU32 of PriceMulTrait<u32> {
     type Target = u128;
     fn mul(self: @Price, rhs: u32) -> Self::Target {
-        (*self.value).into() * rhs.into() / PRICE_SCALE.into()
+        mul_wide_and_div(*self.value, rhs.into(), PRICE_SCALE.try_into().unwrap())
+            .expect('Price mul overflow')
+            .into()
     }
 }
 
 impl PriceMulBalance of PriceMulTrait<Balance> {
     type Target = i128;
     fn mul(self: @Price, rhs: Balance) -> Self::Target {
-        (*self.value).into() * rhs.into() / PRICE_SCALE.into()
+        let price: i128 = (*self.value).try_into().unwrap();
+        let balance: i128 = rhs.into();
+        let intermediate: i128 = price * balance;
+        return intermediate / PRICE_SCALE.into();
     }
 }
 
@@ -172,5 +173,13 @@ mod tests {
     fn test_price_is_non_zero() {
         let price = PriceTrait::new(value: 100);
         assert!(price.is_non_zero());
+    }
+
+    #[test]
+    fn test_price_balance_mul_handles_max_values_balance_and_price() {
+        let price = Price { value: MAX_PRICE };
+        let balance = BalanceTrait::new(value: 9223372036854775807); // Maximum i64 value
+        let result = price.mul(balance);
+        assert!(result.is_non_zero());
     }
 }

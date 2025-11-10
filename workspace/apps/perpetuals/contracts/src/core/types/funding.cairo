@@ -1,9 +1,9 @@
 use core::num::traits::{Pow, Zero};
-use core::panics::panic_with_byte_array;
 use perpetuals::core::errors::invalid_funding_rate_err;
 use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::balance::{Balance, BalanceTrait};
 use perpetuals::core::types::price::{Price, PriceMulTrait};
+use starkware_utils::errors::assert_with_byte_array;
 use starkware_utils::math::utils::mul_wide_and_floor_div;
 
 pub const FUNDING_SCALE: i64 = 2_i64.pow(32);
@@ -25,12 +25,6 @@ pub struct FundingIndex {
     pub value: i64,
 }
 
-pub impl I64IntoFundingIndex of Into<i64, FundingIndex> {
-    fn into(self: i64) -> FundingIndex {
-        FundingIndex { value: self }
-    }
-}
-
 pub trait FundingIndexMulTrait {
     /// Multiply the funding index with a balance.
     /// The funding is calculated as: funding = funding_index * balance / 2^32.
@@ -42,6 +36,13 @@ impl FundingIndexMul of FundingIndexMulTrait {
         let result = mul_wide_and_floor_div(*self.value, balance.into(), FUNDING_SCALE)
             .expect('Funding index mul overflow');
         BalanceTrait::new(result.try_into().unwrap())
+    }
+}
+
+impl FundingIndexDefault of Default<FundingIndex> {
+    #[inline]
+    fn default() -> FundingIndex {
+        FundingIndex { value: 0 }
     }
 }
 
@@ -115,12 +116,11 @@ pub fn validate_funding_rate(
     time_diff: u64,
     synthetic_price: Price,
 ) {
-    let condition = index_diff.into() <= synthetic_price.mul(rhs: max_funding_rate)
-        * time_diff.into();
-    if (!condition) {
-        let err = @invalid_funding_rate_err(:synthetic_id);
-        panic_with_byte_array(:err);
-    }
+    assert_with_byte_array(
+        condition: index_diff.into() <= synthetic_price.mul(rhs: max_funding_rate)
+            * time_diff.into(),
+        err: invalid_funding_rate_err(:synthetic_id),
+    );
 }
 
 
@@ -233,14 +233,27 @@ mod tests {
         let result: i64 = index.mul(balance).into();
         assert_eq!(result, 0);
 
-        // extended contributed test
+        // positive funding, positive balance
         let index = FundingIndex { value: 38654705 };
         let balance = BalanceTrait::new(225000000);
         let result: i64 = index.mul(balance).into();
         assert_eq!(result, 2024999);
 
+        // positive funding, negative balance
         let index = FundingIndex { value: 38654705 };
         let balance = BalanceTrait::new(-225000000);
+        let result: i64 = index.mul(balance).into();
+        assert_eq!(result, -2025000);
+
+        // negative funding, negative balance
+        let index = FundingIndex { value: -38654705 };
+        let balance = BalanceTrait::new(-225000000);
+        let result: i64 = index.mul(balance).into();
+        assert_eq!(result, 2024999);
+
+        // negative funding, positive balance
+        let index = FundingIndex { value: -38654705 };
+        let balance = BalanceTrait::new(225000000);
         let result: i64 = index.mul(balance).into();
         assert_eq!(result, -2025000);
     }

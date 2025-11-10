@@ -4,43 +4,44 @@ pub mod AssetsComponent {
     use core::cmp::min;
     use core::num::traits::{Pow, Zero};
     use core::panic_with_felt252;
+    use core::panics::panic_with_byte_array;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
-    use openzeppelin::interfaces::token::erc20::{
+    use openzeppelin::interfaces::erc20::{
         IERC20Dispatcher, IERC20MetadataDispatcher, IERC20MetadataDispatcherTrait,
     };
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::errors::{
-        ALREADY_INITIALIZED, ASSET_ALREADY_EXISTS, ASSET_NAME_TOO_LONG, ASSET_NOT_ACTIVE,
-        ASSET_NOT_EXISTS, ASSET_REGISTERED_AS_COLLATERAL, ASSET_TYPE_NOT_SUPPORTED,
+        ALREADY_INITIALIZED, ASSET_NAME_TOO_LONG, ASSET_REGISTERED_AS_COLLATERAL,
         COLLATERAL_NOT_REGISTERED, FUNDING_EXPIRED, FUNDING_TICKS_NOT_SORTED, INACTIVE_ASSET,
-        INVALID_FUNDING_TICK_LEN, INVALID_MEDIAN, INVALID_PRICE_TIMESTAMP, INVALID_SAME_QUORUM,
-        INVALID_ZERO_ASSET_ID, INVALID_ZERO_ASSET_NAME, INVALID_ZERO_ORACLE_NAME,
-        INVALID_ZERO_PUBLIC_KEY, INVALID_ZERO_QUANTUM, INVALID_ZERO_QUORUM,
-        INVALID_ZERO_RESOLUTION_FACTOR, INVALID_ZERO_RF_FIRST_BOUNDRY, INVALID_ZERO_RF_TIERS_LEN,
-        INVALID_ZERO_RF_TIER_SIZE, INVALID_ZERO_TOKEN_ADDRESS, MISMATCHED_RESOLUTION, NOT_SYNTHETIC,
-        NO_TOKEN_CONTRACT, ORACLE_ALREADY_EXISTS, ORACLE_NAME_TOO_LONG, ORACLE_NOT_EXISTS,
-        ORACLE_PUBLIC_KEY_NOT_REGISTERED, QUORUM_NOT_REACHED, SIGNED_PRICES_UNSORTED,
-        SYNTHETIC_EXPIRED_PRICE, SYNTHETIC_NOT_ACTIVE, UNSORTED_RISK_FACTOR_TIERS,
-        ZERO_MAX_FUNDING_INTERVAL, ZERO_MAX_FUNDING_RATE, ZERO_MAX_ORACLE_PRICE,
-        ZERO_MAX_PRICE_INTERVAL,
+        INVALID_FUNDING_TICK_LEN, INVALID_MEDIAN, INVALID_PRICE_TIMESTAMP, INVALID_RF_VALUE,
+        INVALID_SAME_QUORUM, INVALID_TIMESTAMP, INVALID_ZERO_ASSET_ID, INVALID_ZERO_ASSET_NAME,
+        INVALID_ZERO_ORACLE_NAME, INVALID_ZERO_PUBLIC_KEY, INVALID_ZERO_QUANTUM,
+        INVALID_ZERO_QUORUM, INVALID_ZERO_RESOLUTION_FACTOR, INVALID_ZERO_RF_FIRST_BOUNDRY,
+        INVALID_ZERO_RF_TIERS_LEN, INVALID_ZERO_RF_TIER_SIZE, INVALID_ZERO_TOKEN_ADDRESS,
+        NOT_SYNTHETIC, ORACLE_ALREADY_EXISTS, ORACLE_NAME_TOO_LONG, ORACLE_NOT_EXISTS,
+        QUORUM_NOT_REACHED, SIGNED_PRICES_UNSORTED, SYNTHETIC_ALREADY_EXISTS,
+        SYNTHETIC_EXPIRED_PRICE, SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS,
+        UNSORTED_RISK_FACTOR_TIERS, ZERO_MAX_FUNDING_INTERVAL, ZERO_MAX_FUNDING_RATE,
+        ZERO_MAX_ORACLE_PRICE, ZERO_MAX_PRICE_INTERVAL, oracle_public_key_not_registered,
     };
     use perpetuals::core::components::assets::events;
     use perpetuals::core::components::assets::interface::IAssets;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalTrait as NonceInternal;
-    use perpetuals::core::types::asset::{
-        AssetConfig, AssetId, AssetStatus, AssetTimelyData, AssetTrait, AssetType,
+    use perpetuals::core::types::asset::synthetic::{
+        AssetConfig, AssetType, SyntheticTrait, TimelyData,
     };
-    use perpetuals::core::types::balance::Balance;
+    use perpetuals::core::types::asset::{AssetId, AssetStatus};
+    use perpetuals::core::types::balance::{Balance, BalanceImpl};
     use perpetuals::core::types::funding::{FundingIndex, FundingTick, validate_funding_rate};
     use perpetuals::core::types::price::{
-        Price, PriceMulTrait, SignedPrice, convert_oracle_to_perps_price,
+        Price, PriceImpl, PriceMulTrait, SignedPrice, convert_oracle_to_perps_price,
     };
     use perpetuals::core::types::risk_factor::{RiskFactor, RiskFactorTrait};
     use starknet::ContractAddress;
     use starknet::storage::{
-        Map, MutableVecTrait, StorageAsPointer, StorageMapReadAccess, StoragePathEntry,
-        StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
+        Map, MutableVecTrait, StorageMapReadAccess, StoragePathEntry, StoragePointerReadAccess,
+        StoragePointerWriteAccess, Vec, VecTrait,
     };
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
@@ -49,11 +50,13 @@ pub mod AssetsComponent {
     use starkware_utils::math::abs::Abs;
     use starkware_utils::signature::stark::{PublicKey, validate_stark_signature};
     use starkware_utils::storage::iterable_map::{
-        IterableMap, IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapTrait,
-        IterableMapWriteAccessImpl,
+        IterableMap, IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
     use starkware_utils::storage::utils::{AddToStorage, SubFromStorage};
     use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
+    use crate::core::types::price::SN_PERPS_SCALE;
+
+    const MAX_TIME: u64 = 2_u64.pow(56);
 
     #[storage]
     pub struct Storage {
@@ -71,7 +74,7 @@ pub mod AssetsComponent {
         #[rename("synthetic_config")]
         pub asset_config: Map<AssetId, Option<AssetConfig>>,
         #[rename("synthetic_timely_data")]
-        pub asset_timely_data: IterableMap<AssetId, AssetTimelyData>,
+        pub timely_data: IterableMap<AssetId, TimelyData>,
         pub risk_factor_tiers: Map<AssetId, Vec<RiskFactor>>,
         asset_oracle: Map<AssetId, Map<PublicKey, felt252>>,
         max_oracle_price_validity: TimeDelta,
@@ -83,13 +86,14 @@ pub mod AssetsComponent {
     pub enum Event {
         OracleAdded: events::OracleAdded,
         SyntheticAdded: events::SyntheticAdded,
+        SyntheticChanged: events::SyntheticChanged,
+        SpotAssetAdded: events::SpotAssetAdded,
         AssetActivated: events::AssetActivated,
         SyntheticAssetDeactivated: events::SyntheticAssetDeactivated,
         FundingTick: events::FundingTick,
         PriceTick: events::PriceTick,
         OracleRemoved: events::OracleRemoved,
         AssetQuorumUpdated: events::AssetQuorumUpdated,
-        VaultShareCollateralAdded: events::VaultShareCollateralAdded,
     }
 
     #[embeddable_as(AssetsImpl)]
@@ -122,7 +126,7 @@ pub mod AssetsComponent {
         ) {
             get_dep_component!(@self, Roles).only_app_governor();
 
-            let asset_config = self._get_asset_config(:asset_id);
+            let asset_config = self._get_asset_config(synthetic_id: asset_id);
             assert(asset_config.status != AssetStatus::INACTIVE, INACTIVE_ASSET);
 
             // Validate the oracle does not exist.
@@ -162,7 +166,7 @@ pub mod AssetsComponent {
         /// Execution:
         /// - Add new entry to asset_config.
         ///     - Set the asset as in-active.
-        /// - Add a new entry at the beginning of asset_timely_data
+        /// - Add a new entry at the beginning of timely_data
         ///     - Set the price to zero.
         ///     - Set the funding index to zero.
         ///     - Set the `last_price_update` to zero.
@@ -188,6 +192,11 @@ pub mod AssetsComponent {
             quorum: u8,
             resolution_factor: u64,
         ) {
+            // resolution_factor: u64,
+            // asset_type: AssetType,
+            // quantum: u64,
+            // erc20_address: ContractAddress,
+
             self
                 ._add_asset(
                     asset_id,
@@ -198,7 +207,7 @@ pub mod AssetsComponent {
                     resolution_factor,
                     AssetType::SYNTHETIC,
                     0,
-                    Zero::zero(),
+                    None,
                 )
         }
 
@@ -213,16 +222,23 @@ pub mod AssetsComponent {
             risk_factor_tier_size: u128,
             quorum: u8,
         ) {
-            assert(quantum.is_non_zero(), INVALID_ZERO_QUANTUM);
-            assert(erc20_contract_address.is_non_zero(), INVALID_ZERO_TOKEN_ADDRESS);
+            get_dep_component!(@self, Roles).only_app_governor();
+
+            assert(quantum == 1, 'INVALID_SHARE_QUANTUM');
             let erc20Contract = IERC20MetadataDispatcher {
                 contract_address: erc20_contract_address,
             };
             let underlying_decimals = erc20Contract.decimals();
-            let resolution: u64 = (10_u256.pow(underlying_decimals.into()) / quantum.into())
+            let underlying_resolution = 10_u128.pow(underlying_decimals.into());
+            assert(underlying_resolution == SN_PERPS_SCALE, 'INVALID_UNDERLYING');
+            let calculated_resolution: u64 = (10_u256.pow(underlying_decimals.into())
+                / quantum.into())
                 .try_into()
                 .unwrap();
-            assert(resolution == resolution_factor, MISMATCHED_RESOLUTION);
+            assert(
+                calculated_resolution == SN_PERPS_SCALE.try_into().unwrap(),
+                'INVALID_SHARE_RESOLUTION',
+            );
             self
                 ._add_asset(
                     asset_id,
@@ -230,12 +246,95 @@ pub mod AssetsComponent {
                     risk_factor_first_tier_boundary,
                     risk_factor_tier_size,
                     quorum,
-                    resolution,
+                    calculated_resolution,
                     AssetType::VAULT_SHARE_COLLATERAL,
                     quantum,
-                    erc20_contract_address,
+                    Some(erc20_contract_address),
                 );
         }
+
+        /// Update synthetic asset risk factors.
+        /// Validations:
+        /// - Only the operator can call this function, cause it must be sequenced.
+        /// (Liqudation may fail if submitted out of order)
+        /// - Each risk factor in risk_factor_tiers is less or equal to 1000.
+        /// - After update postitions risk must be the same or lower.
+        ///
+        /// Execution:
+        fn update_synthetic_asset_risk_factor(
+            ref self: ComponentState<TContractState>,
+            operator_nonce: u64,
+            asset_id: AssetId,
+            risk_factor_tiers: Span<u16>,
+            risk_factor_first_tier_boundary: u128,
+            risk_factor_tier_size: u128,
+        ) {
+            // Validations:
+            get_dep_component!(@self, Pausable).assert_not_paused();
+            let mut nonce = get_dep_component_mut!(ref self, OperatorNonce);
+            nonce.use_checked_nonce(:operator_nonce);
+
+            assert(asset_id.is_non_zero(), INVALID_ZERO_ASSET_ID);
+            assert(risk_factor_tiers.len().is_non_zero(), INVALID_ZERO_RF_TIERS_LEN);
+            assert(risk_factor_first_tier_boundary.is_non_zero(), INVALID_ZERO_RF_FIRST_BOUNDRY);
+            assert(risk_factor_tier_size.is_non_zero(), INVALID_ZERO_RF_TIER_SIZE);
+            if let Option::Some(collateral_id) = self.collateral_id.read() {
+                assert(collateral_id != asset_id, ASSET_REGISTERED_AS_COLLATERAL);
+            }
+
+            let mut old_synthetic_config = self._get_asset_config(asset_id);
+            let mut bound = risk_factor_first_tier_boundary;
+
+            for i in 0..risk_factor_tiers.len() {
+                let mut old_factor = self
+                    .get_synthetic_risk_factor_for_value(
+                        synthetic_id: asset_id, synthetic_value: bound - 1,
+                    );
+                assert(old_factor.value >= *risk_factor_tiers.at(i), INVALID_RF_VALUE);
+                old_factor = self
+                    .get_synthetic_risk_factor_for_value(
+                        synthetic_id: asset_id, synthetic_value: bound,
+                    );
+                if i + 1 < risk_factor_tiers.len() {
+                    assert(old_factor.value >= *risk_factor_tiers.at(i + 1), INVALID_RF_VALUE);
+                }
+
+                bound += risk_factor_tier_size;
+            }
+
+            old_synthetic_config.risk_factor_tier_size = risk_factor_tier_size;
+            old_synthetic_config.risk_factor_first_tier_boundary = risk_factor_first_tier_boundary;
+            let synthetic_entry = self.asset_config.entry(asset_id);
+            synthetic_entry.write(Option::Some(old_synthetic_config));
+
+            let mut prev_risk_factor = 0_u16;
+            let entry = self.risk_factor_tiers.entry(asset_id);
+            while true {
+                if entry.pop().is_none() {
+                    break;
+                }
+            }
+            for risk_factor in risk_factor_tiers {
+                assert(prev_risk_factor < *risk_factor, UNSORTED_RISK_FACTOR_TIERS);
+                self
+                    .risk_factor_tiers
+                    .entry(asset_id) // New function checks that `risk_factor` is lower than 100.
+                    .push(RiskFactorTrait::new(*risk_factor));
+                prev_risk_factor = *risk_factor;
+            }
+            self
+                .emit(
+                    events::SyntheticChanged {
+                        asset_id: asset_id,
+                        risk_factor_tiers: risk_factor_tiers,
+                        risk_factor_first_tier_boundary: risk_factor_first_tier_boundary,
+                        risk_factor_tier_size: risk_factor_tier_size,
+                        resolution_factor: old_synthetic_config.resolution_factor,
+                        quorum: old_synthetic_config.quorum,
+                    },
+                );
+        }
+
 
         /// - Deactivate synthetic asset.
         ///
@@ -253,10 +352,9 @@ pub mod AssetsComponent {
         /// reactivated.
         fn deactivate_synthetic(ref self: ComponentState<TContractState>, synthetic_id: AssetId) {
             get_dep_component!(@self, Roles).only_app_governor();
-            let mut config = self._get_asset_config(asset_id: synthetic_id);
-            assert(config.asset_type == AssetType::SYNTHETIC, NOT_SYNTHETIC);
+            let mut config = self._get_asset_config(:synthetic_id);
             assert(config.status == AssetStatus::ACTIVE, SYNTHETIC_NOT_ACTIVE);
-
+            assert(config.asset_type == AssetType::SYNTHETIC, NOT_SYNTHETIC);
             config.status = AssetStatus::INACTIVE;
             self.asset_config.entry(synthetic_id).write(Option::Some(config));
             self.num_of_active_synthetic_assets.sub_and_write(1);
@@ -289,10 +387,13 @@ pub mod AssetsComponent {
             ref self: ComponentState<TContractState>,
             operator_nonce: u64,
             funding_ticks: Span<FundingTick>,
+            timestamp: Timestamp,
         ) {
             get_dep_component!(@self, Pausable).assert_not_paused();
             let mut operator_nonce_component = get_dep_component_mut!(ref self, OperatorNonce);
             operator_nonce_component.use_checked_nonce(:operator_nonce);
+
+            assert(timestamp.into() < MAX_TIME, INVALID_TIMESTAMP);
 
             assert(
                 funding_ticks.len() == self.get_num_of_active_synthetic_assets(),
@@ -308,7 +409,7 @@ pub mod AssetsComponent {
                 let synthetic_id = *funding_tick.asset_id;
                 assert(synthetic_id > prev_synthetic_id, FUNDING_TICKS_NOT_SORTED);
                 assert(
-                    self._get_asset_config(asset_id: synthetic_id).status == AssetStatus::ACTIVE,
+                    self._get_asset_config(:synthetic_id).status == AssetStatus::ACTIVE,
                     SYNTHETIC_NOT_ACTIVE,
                 );
                 self
@@ -388,14 +489,14 @@ pub mod AssetsComponent {
             self.collateral_id.read().expect(COLLATERAL_NOT_REGISTERED)
         }
         fn get_asset_config(
-            self: @ComponentState<TContractState>, asset_id: AssetId,
+            self: @ComponentState<TContractState>, synthetic_id: AssetId,
         ) -> AssetConfig {
-            self._get_asset_config(:asset_id)
+            self._get_asset_config(:synthetic_id)
         }
-        fn get_asset_timely_data(
-            self: @ComponentState<TContractState>, asset_id: AssetId,
-        ) -> AssetTimelyData {
-            self._get_asset_timely_data(:asset_id)
+        fn get_timely_data(
+            self: @ComponentState<TContractState>, synthetic_id: AssetId,
+        ) -> TimelyData {
+            self._get_timely_data(:synthetic_id)
         }
 
         fn get_risk_factor_tiers(
@@ -431,7 +532,7 @@ pub mod AssetsComponent {
             self.emit(events::OracleRemoved { asset_id, oracle_public_key });
         }
 
-        /// Update asset quorum.
+        /// Update synthetic quorum.
         ///
         /// Validations:
         /// - Only the app governor can call this function.
@@ -442,18 +543,23 @@ pub mod AssetsComponent {
         /// Execution:
         /// - Update the quorum.
         /// - Emit AssetQuorumUpdated event.
-        fn update_asset_quorum(
-            ref self: ComponentState<TContractState>, asset_id: AssetId, quorum: u8,
+        fn update_synthetic_quorum(
+            ref self: ComponentState<TContractState>, synthetic_id: AssetId, quorum: u8,
         ) {
             get_dep_component!(@self, Roles).only_app_governor();
-            let mut asset_config = self._get_asset_config(:asset_id);
+            let mut asset_config = self._get_asset_config(:synthetic_id);
             assert(asset_config.status != AssetStatus::INACTIVE, INACTIVE_ASSET);
             assert(quorum.is_non_zero(), INVALID_ZERO_QUORUM);
             let old_quorum = asset_config.quorum;
             assert(old_quorum != quorum, INVALID_SAME_QUORUM);
             asset_config.quorum = quorum;
-            self.asset_config.write(asset_id, Option::Some(asset_config));
-            self.emit(events::AssetQuorumUpdated { asset_id, new_quorum: quorum, old_quorum });
+            self.asset_config.write(synthetic_id, Option::Some(asset_config));
+            self
+                .emit(
+                    events::AssetQuorumUpdated {
+                        asset_id: synthetic_id, new_quorum: quorum, old_quorum,
+                    },
+                );
         }
     }
 
@@ -501,36 +607,10 @@ pub mod AssetsComponent {
         }
 
         fn get_asset_price(self: @ComponentState<TContractState>, asset_id: AssetId) -> Price {
-            let entry = self.asset_timely_data.pointer(asset_id);
-            match AssetTrait::get_price(entry) {
-                Option::None => panic_with_felt252(ASSET_NOT_EXISTS),
-                Option::Some(price) => price,
-            }
-        }
-
-        /// Returns the stored price directly without checking whether it exists.
-        fn get_asset_price_unsafe(
-            self: @ComponentState<TContractState>, asset_id: AssetId,
-        ) -> Price {
-            let entry = self.asset_timely_data.pointer(asset_id);
-            AssetTrait::at_price(entry)
-        }
-
-
-        /// Returns both the stored price and funding index directly without checking their
-        /// existence.
-        fn get_price_and_funding_index(
-            self: @ComponentState<TContractState>, asset_id: AssetId,
-        ) -> (Price, FundingIndex) {
-            let entry = self.asset_timely_data.pointer(asset_id);
-            (AssetTrait::at_price(entry), AssetTrait::at_funding_index(entry))
-        }
-
-        fn get_asset_type(self: @ComponentState<TContractState>, asset_id: AssetId) -> AssetType {
-            let entry = self.asset_config.entry(asset_id).as_ptr();
-            match AssetTrait::get_asset_type(entry) {
-                Option::None => panic_with_felt252(ASSET_NOT_EXISTS),
-                Option::Some(asset_type) => asset_type,
+            if let Option::Some(data) = self.timely_data.read(asset_id) {
+                data.price
+            } else {
+                panic_with_felt252(NOT_SYNTHETIC)
             }
         }
 
@@ -548,9 +628,23 @@ pub mod AssetsComponent {
             balance: Balance,
             price: Price,
         ) -> RiskFactor {
-            if let Option::Some(asset_config) = self.asset_config.read(asset_id) {
-                let asset_risk_factor_tiers = self.risk_factor_tiers.entry(asset_id);
-                let synthetic_value: u128 = price.mul(rhs: balance).abs();
+            let synthetic_value: u128 = price.mul(rhs: balance).abs();
+            return self.get_synthetic_risk_factor_for_value(asset_id, synthetic_value);
+        }
+
+        /// Get the risk factor of a synthetic asset.
+        ///   - synthetic_value = |price * balance|
+        ///   - If the synthetic value is less than or equal to the first tier boundary, return the
+        ///   first risk factor.
+        ///   - index = (synthetic_value - risk_factor_first_tier_boundary) / risk_factor_tier_size
+        ///   - risk_factor = risk_factor_tiers[index]
+        ///   - If the index is out of bounds, return the last risk factor.
+        /// - If the asset is not synthetic, panic.
+        fn get_synthetic_risk_factor_for_value(
+            self: @ComponentState<TContractState>, synthetic_id: AssetId, synthetic_value: u128,
+        ) -> RiskFactor {
+            if let Option::Some(asset_config) = self.asset_config.read(synthetic_id) {
+                let asset_risk_factor_tiers = self.risk_factor_tiers.entry(synthetic_id);
                 let index = if synthetic_value < asset_config.risk_factor_first_tier_boundary {
                     0_u128
                 } else {
@@ -566,33 +660,25 @@ pub mod AssetsComponent {
                     .at(index.try_into().expect('INDEX_SHOULD_NEVER_OVERFLOW'))
                     .read()
             } else {
-                panic_with_felt252(ASSET_NOT_EXISTS)
+                panic_with_felt252(NOT_SYNTHETIC)
             }
         }
 
         fn get_funding_index(
-            self: @ComponentState<TContractState>, asset_id: AssetId,
+            self: @ComponentState<TContractState>, synthetic_id: AssetId,
         ) -> FundingIndex {
-            let entry = self.asset_timely_data.pointer(asset_id);
-            match AssetTrait::get_funding_index(entry) {
-                Option::None => panic_with_felt252(ASSET_NOT_EXISTS),
-                Option::Some(funding_index) => funding_index,
+            if let Option::Some(data) = self.timely_data.read(synthetic_id) {
+                data.funding_index
+            } else {
+                panic_with_felt252(NOT_SYNTHETIC)
             }
         }
 
-        /// Returns the stored funding index directly without checking whether it exists.
-        fn get_funding_index_unsafe(
-            self: @ComponentState<TContractState>, asset_id: AssetId,
-        ) -> FundingIndex {
-            let entry = self.asset_timely_data.pointer(asset_id);
-            AssetTrait::at_funding_index(entry)
-        }
-
-        fn validate_active_asset(self: @ComponentState<TContractState>, asset_id: AssetId) {
-            if let Option::Some(config) = self.asset_config.read(asset_id) {
-                assert(config.status == AssetStatus::ACTIVE, ASSET_NOT_ACTIVE);
+        fn validate_asset_active(self: @ComponentState<TContractState>, synthetic_id: AssetId) {
+            if let Option::Some(config) = self.asset_config.read(synthetic_id) {
+                assert(config.status == AssetStatus::ACTIVE, SYNTHETIC_NOT_ACTIVE);
             } else {
-                panic_with_felt252(ASSET_NOT_EXISTS);
+                panic_with_felt252(NOT_SYNTHETIC);
             }
         }
 
@@ -609,7 +695,6 @@ pub mod AssetsComponent {
             self.validate_price_interval_integrity(:current_time);
         }
 
-        /// Validates the price interval integrity.
         fn validate_price_interval_integrity(
             ref self: ComponentState<TContractState>, current_time: Timestamp,
         ) {
@@ -617,25 +702,8 @@ pub mod AssetsComponent {
             /// synthetic prices and update `last_price_validation` to current time.
             let max_price_interval = self.max_price_interval.read();
             if current_time.sub(self.last_price_validation.read()) > max_price_interval {
-                self._validate_asset_prices(:current_time, :max_price_interval);
+                self._validate_asset_prices(current_time, max_price_interval);
                 self.last_price_validation.write(current_time);
-            }
-        }
-
-        fn get_token_contract_and_quantum(
-            self: @ComponentState<TContractState>, asset_id: AssetId,
-        ) -> (AssetType, IERC20Dispatcher, u64) {
-            if (self.get_collateral_id() == asset_id) {
-                let token_contract = self.get_collateral_token_contract();
-                let quantum = self.get_collateral_quantum();
-                (AssetType::SPOT_COLLATERAL, token_contract, quantum)
-            } else {
-                let asset_config = self._get_asset_config(asset_id);
-                assert(asset_config.token_contract.is_non_zero(), NO_TOKEN_CONTRACT);
-                let token_contract = IERC20Dispatcher {
-                    contract_address: asset_config.token_contract,
-                };
-                (asset_config.asset_type, token_contract, asset_config.quantum)
             }
         }
     }
@@ -652,15 +720,15 @@ pub mod AssetsComponent {
         impl Roles: RolesComponent::HasComponent<TContractState>,
     > of PrivateTrait<TContractState> {
         fn _get_asset_config(
-            self: @ComponentState<TContractState>, asset_id: AssetId,
+            self: @ComponentState<TContractState>, synthetic_id: AssetId,
         ) -> AssetConfig {
-            self.asset_config.read(asset_id).expect(ASSET_NOT_EXISTS)
+            self.asset_config.read(synthetic_id).expect(SYNTHETIC_NOT_EXISTS)
         }
 
-        fn _get_asset_timely_data(
-            self: @ComponentState<TContractState>, asset_id: AssetId,
-        ) -> AssetTimelyData {
-            self.asset_timely_data.read(asset_id).expect(ASSET_NOT_EXISTS)
+        fn _get_timely_data(
+            self: @ComponentState<TContractState>, synthetic_id: AssetId,
+        ) -> TimelyData {
+            self.timely_data.read(synthetic_id).expect(SYNTHETIC_NOT_EXISTS)
         }
 
         fn _process_funding_tick(
@@ -670,8 +738,8 @@ pub mod AssetsComponent {
             new_funding_index: FundingIndex,
             synthetic_id: AssetId,
         ) {
-            let mut asset_timely_data = self._get_asset_timely_data(asset_id: synthetic_id);
-            let last_funding_index = asset_timely_data.funding_index;
+            let mut timely_data = self._get_timely_data(:synthetic_id);
+            let last_funding_index = timely_data.funding_index;
             let index_diff: i64 = (new_funding_index - last_funding_index).into();
             validate_funding_rate(
                 :synthetic_id,
@@ -680,8 +748,8 @@ pub mod AssetsComponent {
                 :time_diff,
                 synthetic_price: self.get_asset_price(asset_id: synthetic_id),
             );
-            asset_timely_data.funding_index = new_funding_index;
-            self.asset_timely_data.write(synthetic_id, asset_timely_data);
+            timely_data.funding_index = new_funding_index;
+            self.timely_data.write(synthetic_id, timely_data);
             self
                 .emit(
                     events::FundingTick {
@@ -704,7 +772,7 @@ pub mod AssetsComponent {
             oracle_price: u128,
             signed_prices: Span<SignedPrice>,
         ) {
-            let asset_config = self._get_asset_config(:asset_id);
+            let asset_config = self._get_asset_config(synthetic_id: asset_id);
             assert(asset_config.status != AssetStatus::INACTIVE, INACTIVE_ASSET);
             let signed_prices_len = signed_prices.len();
             assert(signed_prices_len >= asset_config.quorum.into(), QUORUM_NOT_REACHED);
@@ -745,7 +813,7 @@ pub mod AssetsComponent {
                     let current: u256 = (*signed_price.signer_public_key).into();
                     assert(prev < current, SIGNED_PRICES_UNSORTED);
                 }
-                previous_public_key_opt = Option::Some(*signed_price.signer_public_key);
+                previous_public_key_opt = Option::Some((*signed_price.signer_public_key));
             }
 
             assert(2 * (lower_amount + equal_amount) >= signed_prices_len, INVALID_MEDIAN);
@@ -755,21 +823,21 @@ pub mod AssetsComponent {
         fn _set_price(
             ref self: ComponentState<TContractState>, asset_id: AssetId, oracle_price: u128,
         ) {
-            let mut asset_config = self._get_asset_config(:asset_id);
+            let mut asset_config = self._get_asset_config(synthetic_id: asset_id);
             let price = convert_oracle_to_perps_price(
                 :oracle_price, resolution_factor: asset_config.resolution_factor,
             );
 
-            let mut asset_timely_data = self._get_asset_timely_data(:asset_id);
-            asset_timely_data.price = price;
-            asset_timely_data.last_price_update = Time::now();
-            self.asset_timely_data.write(asset_id, asset_timely_data);
+            let mut timely_data = self._get_timely_data(synthetic_id: asset_id);
+            timely_data.price = price;
+            timely_data.last_price_update = Time::now();
+            self.timely_data.write(asset_id, timely_data);
 
             // If the asset is pending, it'll be activated.
             if asset_config.status == AssetStatus::PENDING {
                 // Activates the synthetic asset.
                 asset_config.status = AssetStatus::ACTIVE;
-                if asset_config.asset_type == AssetType::SYNTHETIC {
+                if (asset_config.asset_type == AssetType::SYNTHETIC) {
                     self.num_of_active_synthetic_assets.add_and_write(1);
                 }
                 self.asset_config.write(asset_id, Option::Some(asset_config));
@@ -785,7 +853,12 @@ pub mod AssetsComponent {
                 .asset_oracle
                 .entry(asset_id)
                 .read(signed_price.signer_public_key);
-            assert(packed_asset_oracle.is_non_zero(), ORACLE_PUBLIC_KEY_NOT_REGISTERED);
+
+            if packed_asset_oracle.is_zero() {
+                panic_with_byte_array(
+                    @oracle_public_key_not_registered(asset_id, signed_price.signer_public_key),
+                );
+            }
             let packed_price_timestamp: felt252 = signed_price.oracle_price.into()
                 * TWO_POW_32.into()
                 + signed_price.timestamp.into();
@@ -802,11 +875,11 @@ pub mod AssetsComponent {
             current_time: Timestamp,
             max_price_interval: TimeDelta,
         ) {
-            for (asset_id, asset_timely_data) in self.asset_timely_data {
+            for (synthetic_id, timely_data) in self.timely_data {
                 // Validate only active asset
-                if self._get_asset_config(:asset_id).status == AssetStatus::ACTIVE {
+                if self._get_asset_config(:synthetic_id).status == AssetStatus::ACTIVE {
                     assert(
-                        max_price_interval >= current_time.sub(asset_timely_data.last_price_update),
+                        max_price_interval >= current_time.sub(timely_data.last_price_update),
                         SYNTHETIC_EXPIRED_PRICE,
                     );
                 }
@@ -823,13 +896,13 @@ pub mod AssetsComponent {
             resolution_factor: u64,
             asset_type: AssetType,
             quantum: u64,
-            erc20_address: ContractAddress,
+            erc20_address: Option<ContractAddress>,
         ) {
             /// Validations:
             get_dep_component!(@self, Roles).only_app_governor();
 
             let asset_entry = self.asset_config.entry(asset_id);
-            assert(asset_entry.read().is_none(), ASSET_ALREADY_EXISTS);
+            assert(asset_entry.read().is_none(), SYNTHETIC_ALREADY_EXISTS);
             if let Option::Some(collateral_id) = self.collateral_id.read() {
                 assert(collateral_id != asset_id, ASSET_REGISTERED_AS_COLLATERAL);
             }
@@ -841,59 +914,50 @@ pub mod AssetsComponent {
             assert(quorum.is_non_zero(), INVALID_ZERO_QUORUM);
             assert(resolution_factor.is_non_zero(), INVALID_ZERO_RESOLUTION_FACTOR);
 
-            let (asset_config, asset_added_event): (AssetConfig, Event) = match asset_type {
+            let asset_config = match asset_type {
                 AssetType::SYNTHETIC => {
-                    (
-                        AssetTrait::synthetic_config(
-                            AssetStatus::PENDING,
-                            risk_factor_first_tier_boundary,
-                            risk_factor_tier_size,
-                            quorum,
-                            resolution_factor,
-                        ),
-                        Event::SyntheticAdded(
-                            events::SyntheticAdded {
-                                asset_id,
-                                risk_factor_tiers,
-                                risk_factor_first_tier_boundary,
-                                risk_factor_tier_size,
-                                resolution_factor,
-                                quorum,
-                            },
-                        ),
+                    SyntheticTrait::synthetic(
+                        AssetStatus::PENDING,
+                        risk_factor_first_tier_boundary,
+                        risk_factor_tier_size,
+                        quorum,
+                        resolution_factor,
                     )
                 },
                 AssetType::VAULT_SHARE_COLLATERAL => {
-                    (
-                        AssetTrait::vault_share_collateral_config(
-                            AssetStatus::PENDING,
-                            risk_factor_first_tier_boundary,
-                            risk_factor_tier_size,
-                            quorum,
-                            resolution_factor,
-                            quantum,
-                            erc20_address,
-                        ),
-                        Event::VaultShareCollateralAdded(
-                            events::VaultShareCollateralAdded {
-                                asset_id,
-                                risk_factor_tiers,
-                                risk_factor_first_tier_boundary,
-                                risk_factor_tier_size,
-                                resolution_factor,
-                                quorum,
-                                erc20_contract_address: erc20_address,
-                                quantum,
-                            },
-                        ),
+                    assert(risk_factor_tiers.len() == 1, 'INVALID_VAULT_RF_TIERS');
+
+                    SyntheticTrait::vault_share(
+                        AssetStatus::PENDING,
+                        risk_factor_first_tier_boundary,
+                        risk_factor_tier_size,
+                        quorum,
+                        resolution_factor,
+                        quantum,
+                        erc20_address.expect('MISSING_ERC20_ADDRESS_FOR_VAULT'),
                     )
                 },
-                _ => panic_with_felt252(ASSET_TYPE_NOT_SUPPORTED),
+                AssetType::SPOT_COLLATERAL => {
+                    assert(risk_factor_tiers.len() == 1, 'INVALID_SPOT_RF_TIERS');
+                    SyntheticTrait::spot(
+                        AssetStatus::PENDING,
+                        risk_factor_first_tier_boundary,
+                        risk_factor_tier_size,
+                        quorum,
+                        resolution_factor,
+                        quantum,
+                        erc20_address.expect('MISSING_ERC20_ADDRESS_FOR_SPOT'),
+                    )
+                },
             };
 
             asset_entry.write(Option::Some(asset_config));
 
-            self.asset_timely_data.write(asset_id, Default::default());
+            let timely_data = SyntheticTrait::timely_data(
+                // These fields will be updated in the next price tick.
+                price: Zero::zero(), last_price_update: Zero::zero(), funding_index: Zero::zero(),
+            );
+            self.timely_data.write(asset_id, timely_data);
 
             let mut prev_risk_factor = 0_u16;
             for risk_factor in risk_factor_tiers {
@@ -905,7 +969,36 @@ pub mod AssetsComponent {
                 prev_risk_factor = *risk_factor;
             }
 
-            self.emit(asset_added_event);
+            match asset_type {
+                AssetType::SYNTHETIC => {
+                    self
+                        .emit(
+                            events::SyntheticAdded {
+                                asset_id,
+                                risk_factor_tiers,
+                                risk_factor_first_tier_boundary,
+                                risk_factor_tier_size,
+                                resolution_factor,
+                                quorum,
+                            },
+                        )
+                },
+                AssetType::VAULT_SHARE_COLLATERAL |
+                AssetType::SPOT_COLLATERAL => {
+                    self
+                        .emit(
+                            events::SpotAssetAdded {
+                                asset_id,
+                                risk_factor_tiers,
+                                risk_factor_first_tier_boundary,
+                                risk_factor_tier_size,
+                                resolution_factor,
+                                quorum,
+                                contract_address: erc20_address.expect('MISSING_ERC20_ADDRESS'),
+                            },
+                        );
+                },
+            }
         }
     }
 }
