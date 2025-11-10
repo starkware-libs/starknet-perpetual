@@ -1,4 +1,5 @@
 mod deposit;
+pub mod deposit_manager;
 mod errors;
 pub mod events;
 pub mod interface;
