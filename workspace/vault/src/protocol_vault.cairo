@@ -2,10 +2,7 @@
 pub mod ProtocolVault {
     use ERC4626Component::Fee;
     use core::num::traits::Zero;
-    use openzeppelin::interfaces::erc20::{
-        IERC20Dispatcher, IERC20DispatcherTrait, IERC20MetadataDispatcher,
-        IERC20MetadataDispatcherTrait,
-    };
+    use openzeppelin::interfaces::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin::token::erc20::extensions::erc4626::{
         ERC4626Component, ERC4626DefaultNoFees, ERC4626DefaultNoLimits,
     };
@@ -21,9 +18,9 @@ pub mod ProtocolVault {
         ONLY_PERPS_CAN_DEPOSIT, ONLY_PERPS_CAN_OWN, ONLY_PERPS_CAN_RECEIVE, ONLY_PERPS_CAN_WITHDRAW,
     };
     use vault::interface::IProtocolVault;
-
     component!(path: ERC4626Component, storage: erc4626, event: ERC4626Event);
     component!(path: ERC20Component, storage: erc20, event: ERC20Event);
+
 
     #[abi(embed_v0)]
     impl ERC4626Impl = ERC4626Component::ERC4626Impl<ContractState>;
@@ -62,48 +59,43 @@ pub mod ProtocolVault {
     }
 
     #[constructor]
-    fn constructor(
+    pub fn constructor(
         ref self: ContractState,
         name: ByteArray,
         symbol: ByteArray,
-        underlying_asset: ContractAddress,
+        pnl_collateral_contract: ContractAddress,
         perps_contract: ContractAddress,
         owning_position_id: u32,
-    ) {
+        recipient: ContractAddress,
+    ) -> u256 {
         assert(perps_contract.is_non_zero(), INVALID_ZERO_ADDRESS);
         assert(owning_position_id.is_non_zero(), INVALID_ZERO_POSITION_ID);
-        let asset_dispatcher = IERC20MetadataDispatcher { contract_address: underlying_asset };
-        let asset_decimals = asset_dispatcher.decimals();
-        assert(
-            asset_decimals == DecimalsConfig::UNDERLYING_DECIMALS, 'UNDERLYING_DECIMALS_MUST_MATCH',
-        );
         self.perps_contract.write(perps_contract);
         self.owning_position_id.write(owning_position_id);
-        self.erc20.initializer(:name, :symbol);
-        self.erc4626.initializer(asset_address: underlying_asset);
+        self.erc20.initializer(name, symbol);
+        self.erc4626.initializer(pnl_collateral_contract);
         let total_assets = self.erc4626.get_total_assets();
         assert(total_assets > 0_u256, 'INITIAL_ASSETS_MUST_BE_POSITIVE');
-        self.erc20.mint(recipient: perps_contract, amount: total_assets);
+        assert(recipient != perps_contract, 'RECIPIENT_CANNOT_BE_PERPS');
+        self.erc20.mint(recipient, total_assets);
+        return total_assets;
     }
 
     #[abi(embed_v0)]
     pub impl Impl of IProtocolVault<ContractState> {
-        fn redeem_with_price(
-            ref self: ContractState, shares: u256, value_of_shares_in_assets: u256,
-        ) -> u256 {
-            let caller = starknet::get_caller_address();
-            let perps_contract = self.get_perps_contract();
+        fn redeem_with_price(ref self: ContractState, shares: u256, value_of_shares: u256) -> u256 {
+            let perps = self.perps_contract.read();
             self
                 .erc4626
                 ._withdraw(
-                    :caller,
-                    receiver: perps_contract,
-                    owner: perps_contract,
-                    assets: value_of_shares_in_assets,
+                    caller: perps,
+                    receiver: perps,
+                    owner: perps,
+                    assets: value_of_shares,
                     :shares,
                     fee: Option::None,
                 );
-            value_of_shares_in_assets
+            value_of_shares
         }
 
         fn get_owning_position_id(self: @ContractState) -> u32 {

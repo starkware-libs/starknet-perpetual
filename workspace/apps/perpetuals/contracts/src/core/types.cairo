@@ -1,15 +1,12 @@
 pub mod asset;
 pub mod balance;
-pub mod deposit_into_vault;
 pub mod funding;
-pub mod liquidate_vault_shares;
 pub mod order;
 pub mod position;
 pub mod price;
-pub mod redeem_from_vault;
-pub mod register_vault;
 pub mod risk_factor;
 pub mod set_owner_account;
 pub mod set_public_key;
 pub mod transfer;
+pub mod vault;
 pub mod withdraw;
