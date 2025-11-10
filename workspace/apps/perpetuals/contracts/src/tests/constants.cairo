@@ -54,7 +54,7 @@ pub fn VAULT_CONTRACT_ADDRESS_3() -> ContractAddress {
     'VAULT_CONTRACT_ADDRESS_3'.try_into().unwrap()
 }
 
-pub const UPGRADE_DELAY: u64 = 5_u64;
+pub const UPGRADE_DELAY: u64 = 0_u64;
 /// 1 day in seconds.
 pub const MAX_PRICE_INTERVAL: TimeDelta = TimeDelta { seconds: DAY };
 /// 1 day in seconds.
@@ -64,8 +64,7 @@ pub const MAX_ORACLE_PRICE_VALIDITY: TimeDelta = TimeDelta { seconds: 10 * MINUT
 pub const CANCEL_DELAY: TimeDelta = TimeDelta { seconds: WEEK };
 pub const MAX_FUNDING_RATE: u32 = 35792; // Which is ~3% in an hour.
 pub const COLLATERAL_QUORUM: u8 = 0;
-pub const COLLATERAL_QUANTUM: u64 = 1_000;
-pub const COLLATERAL_DECIMALS: u8 = 6; // for USDC.
+pub const COLLATERAL_QUANTUM: u64 = 1;
 pub const SYNTHETIC_QUORUM: u8 = 1;
 pub const SYNTHETIC_RESOLUTION_FACTOR: u64 = 1_000_000_000;
 pub const INITIAL_SUPPLY: u256 = 10_000_000_000_000_000;
@@ -105,11 +104,23 @@ pub fn SYNTHETIC_ASSET_ID_3() -> AssetId {
     AssetIdTrait::new(value: selector!("SYNTHETIC_ASSET_ID_3"))
 }
 
-pub fn VAULT_ASSET_ID_1() -> AssetId {
-    AssetIdTrait::new(value: selector!("VAULT_ASSET_ID_1"))
+pub fn VAULT_SHARE_COLLATERAL_1_ID() -> AssetId {
+    AssetIdTrait::new(value: selector!("VS_1"))
 }
-pub fn VAULT_ASSET_ID_2() -> AssetId {
-    AssetIdTrait::new(value: selector!("VAULT_ASSET_ID_2"))
+pub fn VAULT_SHARE_COLLATERAL_1_NAME() -> ByteArray {
+    "VS_1"
+}
+pub fn VAULT_SHARE_COLLATERAL_1_SYMBOL() -> ByteArray {
+    "VS1"
+}
+pub fn VAULT_SHARE_COLLATERAL_2_ID() -> AssetId {
+    AssetIdTrait::new(value: selector!("VS_2"))
+}
+pub fn VAULT_SHARE_COLLATERAL_2_NAME() -> ByteArray {
+    "VS_2"
+}
+pub fn VAULT_SHARE_COLLATERAL_2_SYMBOL() -> ByteArray {
+    "VS2"
 }
 
 

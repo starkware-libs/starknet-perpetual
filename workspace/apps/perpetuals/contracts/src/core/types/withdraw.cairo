@@ -7,7 +7,7 @@ use starknet::ContractAddress;
 use starkware_utils::signature::stark::HashType;
 use starkware_utils::time::time::Timestamp;
 
-#[derive(Copy, Drop, Hash, Serde)]
+#[derive(Copy, Drop, Hash, Serde, Debug)]
 pub struct WithdrawArgs {
     pub recipient: ContractAddress,
     pub position_id: PositionId,
@@ -48,8 +48,9 @@ impl StructHashImpl of StructHash<WithdrawArgs> {
 
 #[cfg(test)]
 mod tests {
+    use perpetuals::core::types::asset::AssetIdTrait;
     use starkware_utils::math::utils::to_base_16_string;
-    use super::WITHDRAW_ARGS_TYPE_HASH;
+    use super::*;
 
     #[test]
     fn test_withdraw_type_hash() {
@@ -57,5 +58,25 @@ mod tests {
             "\"WithdrawArgs\"(\"recipient\":\"ContractAddress\",\"position_id\":\"PositionId\",\"collateral_id\":\"AssetId\",\"amount\":\"u64\",\"expiration\":\"Timestamp\",\"salt\":\"felt\")\"PositionId\"(\"value\":\"u32\")\"AssetId\"(\"value\":\"felt\")\"Timestamp\"(\"seconds\":\"u64\")",
         );
         assert!(to_base_16_string(WITHDRAW_ARGS_TYPE_HASH) == to_base_16_string(expected));
+    }
+
+    #[test]
+    fn test_withdraw_hash_struct() {
+        let withdraw_args = WithdrawArgs {
+            position_id: PositionId { value: 1_u32 },
+            salt: 123,
+            expiration: Timestamp { seconds: 5 },
+            collateral_id: AssetIdTrait::new(4),
+            amount: 1000,
+            recipient: 0x019ec96d4aea6fdc6f0b5f393fec3f186aefa8f0b8356f43d07b921ff48aa5da
+                .try_into()
+                .unwrap(),
+        };
+        let hash = withdraw_args.hash_struct();
+        assert!(
+            to_base_16_string(
+                hash,
+            ) == "0x04c22f625c59651e1219c60d03055f11f5dc23959929de35861548d86c0bc4ec",
+        );
     }
 }

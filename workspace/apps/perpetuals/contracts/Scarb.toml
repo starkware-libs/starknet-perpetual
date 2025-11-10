@@ -33,10 +33,13 @@ unstable-add-statements-functions-debug-info = true
 inlining-strategy = "avoid"
 panic-backtrace = true
 
+[profile.release.cairo]
+inlining-strategy = "avoid"
+
 [[test]]
 name = "perpetuals_unittest"
 build-external-contracts = [
-    "starkware_utils::erc20::erc20_mocks::ERC20DecimalsMock",
+    "starkware_utils::erc20::erc20_mocks::DualCaseERC20Mock",
     "openzeppelin_presets::account::AccountUpgradeable",
     "vault::protocol_vault::ProtocolVault",
 ]

@@ -1,4 +1,4 @@
-use perpetuals::core::core::Core::{InternalCoreFunctions, SNIP12MetadataImpl};
+use perpetuals::core::core::Core::InternalCoreFunctions;
 use perpetuals::core::interface::{ICoreDispatcher, ICoreDispatcherTrait, Settlement};
 use perpetuals::core::types::order::Order;
 use perpetuals::core::types::position::PositionId;
@@ -12,6 +12,7 @@ use starkware_utils::components::replaceability::interface::{
 use starkware_utils::storage::iterable_map::*;
 use starkware_utils::time::time::Timestamp;
 use starkware_utils_testing::test_utils::cheat_caller_address_once;
+use crate::core::components::snip::SNIP12MetadataImpl;
 
 // Performance test for Core contract multi-trade execution.
 //

@@ -1,5 +1,5 @@
 use core::hash::{HashStateExTrait, HashStateTrait};
-use core::num::traits::Zero;
+use core::num::traits::{Pow, Zero};
 use core::poseidon::PoseidonTrait;
 use openzeppelin::presets::interfaces::{
     AccountUpgradeableABIDispatcher, AccountUpgradeableABIDispatcherTrait,
@@ -8,20 +8,27 @@ use perpetuals::core::components::assets::interface::IAssets;
 use perpetuals::core::components::operator_nonce::interface::IOperatorNonce;
 use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
 use perpetuals::core::components::positions::interface::IPositions;
+use perpetuals::core::components::snip::SNIP12MetadataImpl;
 use perpetuals::core::core::Core;
-use perpetuals::core::core::Core::{InternalCoreFunctions, SNIP12MetadataImpl};
+use perpetuals::core::core::Core::InternalCoreFunctions;
 use perpetuals::core::types::asset::{AssetId, AssetStatus};
+use perpetuals::core::types::balance::Balance;
 use perpetuals::core::types::funding::FundingIndex;
 use perpetuals::core::types::position::{PositionDiff, PositionId};
-use perpetuals::core::types::price::{Price, SignedPrice};
+use perpetuals::core::types::price::{Price, PriceTrait, SignedPrice, convert_oracle_to_perps_price};
 use perpetuals::core::types::risk_factor::{RiskFactor, RiskFactorTrait};
 use perpetuals::tests::constants::*;
+use perpetuals::tests::event_test_utils::{
+    assert_asset_activated_event_with_expected, assert_price_tick_event_with_expected,
+};
 use snforge_std::signature::stark_curve::StarkCurveSignerImpl;
 use snforge_std::{
-    ContractClassTrait, DeclareResultTrait, start_cheat_block_timestamp_global, test_address,
+    CheatSpan, ContractClassTrait, DeclareResultTrait, EventSpyTrait, EventsFilterTrait,
+    cheat_caller_address, start_cheat_block_timestamp_global, stop_cheat_caller_address,
+    test_address,
 };
 use starknet::ContractAddress;
-use starknet::storage::StoragePointerWriteAccess;
+use starknet::storage::{StorageMapReadAccess, StoragePointerWriteAccess};
 use starkware_utils::components::roles::interface::{
     IRoles, IRolesDispatcher, IRolesDispatcherTrait,
 };
@@ -32,6 +39,12 @@ use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
 use starkware_utils_testing::signing::StarkKeyPair;
 use starkware_utils_testing::test_utils::{
     Deployable, TokenConfig, TokenState, TokenTrait, cheat_caller_address_once,
+};
+use crate::core::components::deposit::interface::IDeposit;
+use crate::core::components::external_components::interface::{
+    EXTERNAL_COMPONENT_DELEVERAGES, EXTERNAL_COMPONENT_DEPOSITS, EXTERNAL_COMPONENT_LIQUIDATIONS,
+    EXTERNAL_COMPONENT_TRANSFERS, EXTERNAL_COMPONENT_VAULT, EXTERNAL_COMPONENT_WITHDRAWALS,
+    IExternalComponents, IExternalComponentsDispatcher, IExternalComponentsDispatcherTrait,
 };
 
 /// The `User` struct represents a user corresponding to a position in the state of the Core
@@ -133,6 +146,7 @@ pub struct PerpetualsInitConfig {
     pub insurance_fund_position_owner_public_key: felt252,
     pub collateral_cfg: CollateralCfg,
     pub synthetic_cfg: SyntheticCfg,
+    pub vault_share_cfg: VaultCollateralCfg,
 }
 
 #[generate_trait]
@@ -158,8 +172,33 @@ pub impl CoreImpl of CoreTrait {
     }
 }
 
+
+fn deploy_vault_share(self: @TokenConfig) -> TokenState {
+    let mut calldata = ArrayTrait::new();
+    // self.name.serialize(ref calldata);
+    // self.symbol.serialize(ref calldata);
+    // self.initial_supply.serialize(ref calldata);
+    self.owner.serialize(ref calldata);
+    let token_contract = snforge_std::declare("VaultToken").unwrap().contract_class();
+    let (address, _) = token_contract.deploy(@calldata).unwrap();
+    TokenState { address, owner: *self.owner }
+}
+
 impl PerpetualsInitConfigDefault of Default<PerpetualsInitConfig> {
     fn default() -> PerpetualsInitConfig {
+        let vault_share_cfg = TokenConfig {
+            name: VAULT_SHARE_COLLATERAL_1_NAME(),
+            symbol: VAULT_SHARE_COLLATERAL_1_SYMBOL(),
+            initial_supply: 10_u256.pow(24),
+            owner: COLLATERAL_OWNER(),
+        };
+
+        let vault_share_state = deploy_vault_share(@vault_share_cfg);
+
+        let vault_share_risk_factor_first_tier_boundary = MAX_U128;
+        let vault_share_risk_factor_tier_size = 1;
+        let vault_share_risk_factor_1 = array![10].span();
+
         PerpetualsInitConfig {
             governance_admin: GOVERNANCE_ADMIN(),
             upgrade_delay: UPGRADE_DELAY,
@@ -179,7 +218,6 @@ impl PerpetualsInitConfigDefault of Default<PerpetualsInitConfig> {
                 token_cfg: TokenConfig {
                     name: COLLATERAL_NAME(),
                     symbol: COLLATERAL_SYMBOL(),
-                    decimals: COLLATERAL_DECIMALS,
                     initial_supply: INITIAL_SUPPLY,
                     owner: COLLATERAL_OWNER(),
                 },
@@ -189,6 +227,18 @@ impl PerpetualsInitConfigDefault of Default<PerpetualsInitConfig> {
                 quorum: COLLATERAL_QUORUM,
             },
             synthetic_cfg: SyntheticCfg { synthetic_id: SYNTHETIC_ASSET_ID_1() },
+            vault_share_cfg: VaultCollateralCfg {
+                token_cfg: vault_share_cfg,
+                token_state: vault_share_state,
+                collateral_id: VAULT_SHARE_COLLATERAL_1_ID(),
+                quantum: 1,
+                risk_factor_tiers: vault_share_risk_factor_1,
+                risk_factor_first_tier_boundary: vault_share_risk_factor_first_tier_boundary,
+                risk_factor_tier_size: vault_share_risk_factor_tier_size,
+                quorum: 1,
+                contract_address: vault_share_state.address,
+                resolution_factor: 1000000,
+            },
         }
     }
 }
@@ -203,6 +253,22 @@ pub struct CollateralCfg {
     pub quorum: u8,
 }
 
+/// The 'VaultCollateralCfg' struct represents a deployed vault share collateral with an associated
+/// asset id.
+#[derive(Drop)]
+pub struct VaultCollateralCfg {
+    pub token_cfg: TokenConfig,
+    pub token_state: TokenState,
+    pub collateral_id: AssetId,
+    pub quantum: u64,
+    pub risk_factor_tiers: Span<u16>,
+    pub risk_factor_first_tier_boundary: u128,
+    pub risk_factor_tier_size: u128,
+    pub quorum: u8,
+    pub contract_address: ContractAddress,
+    pub resolution_factor: u64,
+}
+
 /// The 'SyntheticCfg' struct represents a synthetic asset config with an associated asset id.
 #[derive(Drop)]
 pub struct SyntheticCfg {
@@ -212,10 +278,11 @@ pub struct SyntheticCfg {
 // Internal functions.
 
 fn CONTRACT_STATE() -> Core::ContractState {
-    Core::contract_state_for_testing()
+    let mut state = Core::contract_state_for_testing();
+    state
 }
 
-fn deploy_account(key_pair: StarkKeyPair) -> ContractAddress {
+pub fn deploy_account(key_pair: StarkKeyPair) -> ContractAddress {
     let calldata = array![key_pair.public_key];
 
     let contract_class = snforge_std::declare("AccountUpgradeable").unwrap().contract_class();
@@ -239,6 +306,17 @@ pub fn set_roles(ref state: Core::ContractState, cfg: @PerpetualsInitConfig) {
         contract_address: test_address(), caller_address: *cfg.app_role_admin,
     );
     state.register_operator(account: *cfg.operator);
+
+    cheat_caller_address_once(
+        contract_address: test_address(), caller_address: *cfg.governance_admin,
+    );
+    state.register_upgrade_governor(account: *cfg.governance_admin)
+}
+
+pub fn assert_with_error(boolean: bool, array: ByteArray) {
+    if !boolean {
+        panic!("{}", array);
+    }
 }
 
 pub fn setup_state_with_active_asset(
@@ -278,6 +356,7 @@ pub fn setup_state_with_pending_asset(
 ) -> Core::ContractState {
     let mut state = init_state(:cfg, :token_state);
     // Synthetic asset configs.
+    cheat_caller_address_once(contract_address: test_address(), caller_address: *cfg.app_governor);
     state
         .assets
         .add_synthetic_asset(
@@ -291,16 +370,226 @@ pub fn setup_state_with_pending_asset(
     state
 }
 
+pub fn setup_state_with_pending_vault_share(
+    cfg: @PerpetualsInitConfig, token_state: @TokenState,
+) -> Core::ContractState {
+    let mut state = init_state(:cfg, :token_state);
+    cheat_caller_address_once(contract_address: test_address(), caller_address: *cfg.app_governor);
+    state
+        .assets
+        .add_synthetic_asset(
+            asset_id: *cfg.synthetic_cfg.synthetic_id,
+            risk_factor_tiers: array![RISK_FACTOR].span(),
+            risk_factor_first_tier_boundary: MAX_U128,
+            risk_factor_tier_size: MAX_U128,
+            quorum: SYNTHETIC_QUORUM,
+            resolution_factor: SYNTHETIC_RESOLUTION_FACTOR,
+        );
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: *cfg.app_governor);
+    state
+        .add_vault_collateral_asset(
+            asset_id: *cfg.vault_share_cfg.collateral_id,
+            erc20_contract_address: *cfg.vault_share_cfg.contract_address,
+            quantum: *cfg.vault_share_cfg.quantum,
+            resolution_factor: *cfg.vault_share_cfg.resolution_factor,
+            risk_factor_tiers: *cfg.vault_share_cfg.risk_factor_tiers,
+            risk_factor_first_tier_boundary: *cfg.vault_share_cfg.risk_factor_first_tier_boundary,
+            risk_factor_tier_size: *cfg.vault_share_cfg.risk_factor_tier_size,
+            quorum: 1_u8,
+        );
+    state
+}
+
+pub fn send_price_tick_for_vault_share(
+    ref state: Core::ContractState, cfg: @PerpetualsInitConfig, price: u64,
+) {
+    let mut spy = snforge_std::spy_events();
+    let asset_name = 'VAULT_SHARE';
+    let oracle1_name = 'ORCL1';
+    let oracle1 = Oracle { oracle_name: oracle1_name, asset_name, key_pair: KEY_PAIR_1() };
+    let vault_share_id = *cfg.vault_share_cfg.collateral_id;
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: *cfg.app_governor);
+    state
+        .add_oracle_to_asset(
+            asset_id: vault_share_id,
+            oracle_public_key: oracle1.key_pair.public_key,
+            oracle_name: oracle1_name,
+            :asset_name,
+        );
+    let old_time: u64 = Time::now().into();
+    let new_time = Time::now().add(delta: MAX_ORACLE_PRICE_VALIDITY);
+    assert!(state.assets.get_num_of_active_synthetic_assets() == 0);
+    start_cheat_block_timestamp_global(block_timestamp: new_time.into());
+    cheat_caller_address_once(contract_address: test_address(), caller_address: *cfg.operator);
+    //one unit of vault share is priced at $12
+    let oracle_price: u128 = price.into() * 10_u128.pow(18);
+    let operator_nonce = state.get_operator_nonce();
+    state
+        .price_tick(
+            :operator_nonce,
+            asset_id: vault_share_id,
+            :oracle_price,
+            signed_prices: [
+                oracle1.get_signed_price(:oracle_price, timestamp: old_time.try_into().unwrap())
+            ]
+                .span(),
+        );
+
+    // Catch the event.
+    let events = spy.get_events().emitted_by(test_address()).events;
+
+    let expected_price = convert_oracle_to_perps_price(
+        oracle_price: oracle_price, resolution_factor: *cfg.vault_share_cfg.resolution_factor,
+    );
+    assert_asset_activated_event_with_expected(spied_event: events[1], asset_id: vault_share_id);
+    assert_price_tick_event_with_expected(
+        spied_event: events[2], asset_id: vault_share_id, price: expected_price,
+    );
+    assert!(state.assets.get_asset_config(vault_share_id).status == AssetStatus::ACTIVE);
+    //check synthetic count is not incremented
+    assert!(state.assets.get_num_of_active_synthetic_assets() == 0);
+
+    let data = state.assets.get_timely_data(vault_share_id);
+    assert!(data.last_price_update == new_time);
+    assert!(data.price.value() == expected_price.value());
+}
+
+pub fn deposit_vault_share(
+    ref state: Core::ContractState, cfg: @PerpetualsInitConfig, user: User, number_of_shares: u64,
+) {
+    let on_chain_amount = (number_of_shares.into()) * 10_u128.pow(6);
+    let quantum = *(cfg.vault_share_cfg.quantum);
+    let quantized_amount: u64 = (on_chain_amount / (quantum.into())).try_into().unwrap();
+
+    let vault_share_state = cfg.vault_share_cfg.token_state;
+    vault_share_state.fund(recipient: user.address, amount: on_chain_amount);
+    vault_share_state
+        .approve(owner: user.address, spender: test_address(), amount: on_chain_amount);
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: user.address);
+    state
+        .deposit(
+            asset_id: *cfg.vault_share_cfg.collateral_id,
+            position_id: user.position_id,
+            quantized_amount: quantized_amount,
+            salt: user.salt_counter,
+        );
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: *cfg.operator);
+    state
+        .process_deposit(
+            operator_nonce: state.get_operator_nonce(),
+            depositor: user.address,
+            asset_id: *cfg.vault_share_cfg.collateral_id,
+            position_id: user.position_id,
+            quantized_amount: quantized_amount,
+            salt: user.salt_counter,
+        );
+}
+
 pub fn init_state(cfg: @PerpetualsInitConfig, token_state: @TokenState) -> Core::ContractState {
     start_cheat_block_timestamp_global(
         block_timestamp: Time::now().add(delta: Time::weeks(count: 1)).into(),
     );
     let mut state = initialized_contract_state(:cfg, :token_state);
     set_roles(ref :state, :cfg);
-    cheat_caller_address_once(contract_address: test_address(), caller_address: *cfg.app_governor);
     // Fund the contract.
     (*token_state)
         .fund(recipient: test_address(), amount: CONTRACT_INIT_BALANCE.try_into().unwrap());
+
+    let vault_external_component = snforge_std::declare("VaultsManager").unwrap().contract_class();
+    let withdrawals_external_component = snforge_std::declare("WithdrawalManager")
+        .unwrap()
+        .contract_class();
+    let transfers_external_component = snforge_std::declare("TransferManager")
+        .unwrap()
+        .contract_class();
+    let liquidations_external_component = snforge_std::declare("LiquidationManager")
+        .unwrap()
+        .contract_class();
+
+    let deleverage_external_component = snforge_std::declare("DeleverageManager")
+        .unwrap()
+        .contract_class();
+
+    let deposit_external_component = snforge_std::declare("DepositManager")
+        .unwrap()
+        .contract_class();
+
+    cheat_caller_address(
+        contract_address: test_address(),
+        caller_address: *cfg.governance_admin,
+        span: CheatSpan::Indefinite,
+    );
+
+    state
+        .register_external_component(
+            component_type: EXTERNAL_COMPONENT_VAULT,
+            component_address: *vault_external_component.class_hash,
+        );
+    state
+        .register_external_component(
+            component_type: EXTERNAL_COMPONENT_WITHDRAWALS,
+            component_address: *withdrawals_external_component.class_hash,
+        );
+
+    state
+        .register_external_component(
+            component_type: EXTERNAL_COMPONENT_TRANSFERS,
+            component_address: *transfers_external_component.class_hash,
+        );
+    state
+        .register_external_component(
+            component_type: EXTERNAL_COMPONENT_LIQUIDATIONS,
+            component_address: *liquidations_external_component.class_hash,
+        );
+    state
+        .register_external_component(
+            component_type: EXTERNAL_COMPONENT_DELEVERAGES,
+            component_address: *deleverage_external_component.class_hash,
+        );
+
+    state
+        .register_external_component(
+            component_type: EXTERNAL_COMPONENT_DEPOSITS,
+            component_address: *deposit_external_component.class_hash,
+        );
+
+    state
+        .activate_external_component(
+            component_type: EXTERNAL_COMPONENT_DELEVERAGES,
+            component_address: *deleverage_external_component.class_hash,
+        );
+    state
+        .activate_external_component(
+            component_type: EXTERNAL_COMPONENT_LIQUIDATIONS,
+            component_address: *liquidations_external_component.class_hash,
+        );
+    state
+        .activate_external_component(
+            component_type: EXTERNAL_COMPONENT_TRANSFERS,
+            component_address: *transfers_external_component.class_hash,
+        );
+    state
+        .activate_external_component(
+            component_type: EXTERNAL_COMPONENT_VAULT,
+            component_address: *vault_external_component.class_hash,
+        );
+    state
+        .activate_external_component(
+            component_type: EXTERNAL_COMPONENT_WITHDRAWALS,
+            component_address: *withdrawals_external_component.class_hash,
+        );
+
+    state
+        .activate_external_component(
+            component_type: EXTERNAL_COMPONENT_DEPOSITS,
+            component_address: *deposit_external_component.class_hash,
+        );
+
+    stop_cheat_caller_address(contract_address: test_address());
 
     state
 }
@@ -309,7 +598,16 @@ pub fn create_token_state() -> TokenState {
     let token_config = TokenConfig {
         name: COLLATERAL_NAME(),
         symbol: COLLATERAL_SYMBOL(),
-        decimals: COLLATERAL_DECIMALS,
+        initial_supply: INITIAL_SUPPLY,
+        owner: COLLATERAL_OWNER(),
+    };
+    Deployable::deploy(@token_config)
+}
+
+pub fn create_vault_share_1_token_state() -> TokenState {
+    let token_config = TokenConfig {
+        name: VAULT_SHARE_COLLATERAL_1_NAME(),
+        symbol: VAULT_SHARE_COLLATERAL_1_SYMBOL(),
         initial_supply: INITIAL_SUPPLY,
         owner: COLLATERAL_OWNER(),
     };
@@ -325,6 +623,7 @@ pub fn init_position(cfg: @PerpetualsInitConfig, ref state: Core::ContractState,
             :position_id,
             owner_public_key: user.get_public_key(),
             owner_account: Zero::zero(),
+            owner_protection_enabled: false,
         );
     let position_diff = PositionDiff {
         collateral_diff: COLLATERAL_BALANCE_AMOUNT.into(), asset_diff: Option::None,
@@ -333,12 +632,28 @@ pub fn init_position(cfg: @PerpetualsInitConfig, ref state: Core::ContractState,
     state.positions.apply_diff(:position_id, :position_diff);
 }
 
+pub fn init_position_zero_collateral(
+    cfg: @PerpetualsInitConfig, ref state: Core::ContractState, user: User,
+) {
+    cheat_caller_address_once(contract_address: test_address(), caller_address: *cfg.operator);
+    let position_id = user.position_id;
+    state
+        .new_position(
+            operator_nonce: state.get_operator_nonce(),
+            :position_id,
+            owner_public_key: user.get_public_key(),
+            owner_account: Zero::zero(),
+            owner_protection_enabled: false,
+        );
+}
+
 pub fn init_position_with_owner(
     cfg: @PerpetualsInitConfig, ref state: Core::ContractState, user: User,
 ) {
     init_position(cfg, ref :state, :user);
     let position = state.positions.get_position_mut(position_id: user.position_id);
     position.owner_account.write(Option::Some(user.address));
+    position.owner_protection_enabled.write(true);
 }
 
 pub fn add_synthetic_to_position(
@@ -349,6 +664,17 @@ pub fn add_synthetic_to_position(
         asset_diff: Option::Some((synthetic_id, balance.into())),
     };
     state.positions.apply_diff(:position_id, :position_diff);
+}
+
+pub fn validate_asset_balance(
+    ref state: Core::ContractState,
+    position_id: PositionId,
+    asset_id: AssetId,
+    expected_balance: Balance,
+) {
+    let snapshot = state.positions.get_position_snapshot(:position_id);
+    let balance = snapshot.asset_balances.read(asset_id).map_or(0_i64.into(), |b| b.balance);
+    assert!(balance == expected_balance);
 }
 
 pub fn initialized_contract_state(
@@ -402,10 +728,10 @@ pub fn check_asset_timely_data(
     last_price_update: Timestamp,
     funding_index: FundingIndex,
 ) {
-    let asset_timely_data = state.assets.get_asset_timely_data(synthetic_id);
-    assert!(asset_timely_data.price == price);
-    assert!(asset_timely_data.last_price_update == last_price_update);
-    assert!(asset_timely_data.funding_index == funding_index);
+    let timely_data = state.assets.get_timely_data(synthetic_id);
+    assert!(timely_data.price == price);
+    assert!(timely_data.last_price_update == last_price_update);
+    assert!(timely_data.funding_index == funding_index);
 }
 
 pub fn is_asset_in_asset_timely_data_list(
@@ -413,7 +739,7 @@ pub fn is_asset_in_asset_timely_data_list(
 ) -> bool {
     let mut flag = false;
 
-    for (asset_id, _) in state.assets.asset_timely_data {
+    for (asset_id, _) in state.assets.timely_data {
         if asset_id == synthetic_id {
             flag = true;
             break;
@@ -452,7 +778,7 @@ pub fn check_synthetic_asset(
         last_price_update: Zero::zero(),
         funding_index: Zero::zero(),
     );
-    // Check the asset_timely_data list.
+    // Check the timely_data list.
     assert!(is_asset_in_asset_timely_data_list(:state, :synthetic_id));
 }
 
@@ -460,6 +786,7 @@ pub fn validate_balance(token_state: TokenState, address: ContractAddress, expec
     let balance_to_check = token_state.balance_of(address);
     assert_eq!(balance_to_check, expected_balance);
 }
+
 
 // Utils for dispatcher usage.
 
@@ -471,11 +798,103 @@ pub fn set_roles_by_dispatcher(contract_address: ContractAddress, cfg: @Perpetua
     dispatcher.register_app_governor(account: *cfg.app_governor);
     cheat_caller_address_once(:contract_address, caller_address: *cfg.app_role_admin);
     dispatcher.register_operator(account: *cfg.operator);
+    cheat_caller_address_once(:contract_address, caller_address: *cfg.governance_admin);
+    dispatcher.register_upgrade_governor(account: *cfg.governance_admin);
+}
+
+pub fn register_external_components_by_dispatcher(
+    contract_address: ContractAddress, cfg: @PerpetualsInitConfig,
+) {
+    let vault_external_component = snforge_std::declare("VaultsManager").unwrap().contract_class();
+    let withdrawals_external_component = snforge_std::declare("WithdrawalManager")
+        .unwrap()
+        .contract_class();
+    let transfers_external_component = snforge_std::declare("TransferManager")
+        .unwrap()
+        .contract_class();
+    let liquidations_external_component = snforge_std::declare("LiquidationManager")
+        .unwrap()
+        .contract_class();
+
+    let deleverage_external_component = snforge_std::declare("DeleverageManager")
+        .unwrap()
+        .contract_class();
+    let deposit_external_component = snforge_std::declare("DepositManager")
+        .unwrap()
+        .contract_class();
+
+    cheat_caller_address(
+        :contract_address, caller_address: GOVERNANCE_ADMIN(), span: CheatSpan::Indefinite,
+    );
+    let external_components_dispatcher = IExternalComponentsDispatcher { contract_address };
+    external_components_dispatcher
+        .register_external_component(
+            component_type: EXTERNAL_COMPONENT_VAULT,
+            component_address: *vault_external_component.class_hash,
+        );
+    external_components_dispatcher
+        .register_external_component(
+            component_type: EXTERNAL_COMPONENT_WITHDRAWALS,
+            component_address: *withdrawals_external_component.class_hash,
+        );
+    external_components_dispatcher
+        .register_external_component(
+            component_type: EXTERNAL_COMPONENT_TRANSFERS,
+            component_address: *transfers_external_component.class_hash,
+        );
+    external_components_dispatcher
+        .register_external_component(
+            component_type: EXTERNAL_COMPONENT_LIQUIDATIONS,
+            component_address: *liquidations_external_component.class_hash,
+        );
+    external_components_dispatcher
+        .register_external_component(
+            component_type: EXTERNAL_COMPONENT_DELEVERAGES,
+            component_address: *deleverage_external_component.class_hash,
+        );
+    external_components_dispatcher
+        .register_external_component(
+            component_type: EXTERNAL_COMPONENT_DEPOSITS,
+            component_address: *deposit_external_component.class_hash,
+        );
+    start_cheat_block_timestamp_global(Time::now().add(Time::seconds(*cfg.upgrade_delay)).into());
+    external_components_dispatcher
+        .activate_external_component(
+            component_type: EXTERNAL_COMPONENT_DELEVERAGES,
+            component_address: *deleverage_external_component.class_hash,
+        );
+    external_components_dispatcher
+        .activate_external_component(
+            component_type: EXTERNAL_COMPONENT_LIQUIDATIONS,
+            component_address: *liquidations_external_component.class_hash,
+        );
+    external_components_dispatcher
+        .activate_external_component(
+            component_type: EXTERNAL_COMPONENT_TRANSFERS,
+            component_address: *transfers_external_component.class_hash,
+        );
+    external_components_dispatcher
+        .activate_external_component(
+            component_type: EXTERNAL_COMPONENT_WITHDRAWALS,
+            component_address: *withdrawals_external_component.class_hash,
+        );
+    external_components_dispatcher
+        .activate_external_component(
+            component_type: EXTERNAL_COMPONENT_VAULT,
+            component_address: *vault_external_component.class_hash,
+        );
+    external_components_dispatcher
+        .activate_external_component(
+            component_type: EXTERNAL_COMPONENT_DEPOSITS,
+            component_address: *deposit_external_component.class_hash,
+        );
+    stop_cheat_caller_address(:contract_address);
 }
 
 pub fn init_by_dispatcher(cfg: @PerpetualsInitConfig, token_state: @TokenState) -> ContractAddress {
     let contract_address = cfg.deploy(:token_state);
     set_roles_by_dispatcher(:contract_address, :cfg);
+    register_external_components_by_dispatcher(:contract_address, :cfg);
     contract_address
 }
 
