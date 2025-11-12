@@ -616,7 +616,7 @@ pub mod AssetsComponent {
         }
 
         /// Returns the stored price directly without checking whether it exists.
-        fn get_asset_price_unsafe(
+        fn get_asset_price_unsafe( 
             self: @ComponentState<TContractState>, asset_id: AssetId,
         ) -> Price {
             let entry = self.timely_data.pointer(asset_id);
