@@ -73,6 +73,9 @@ pub mod AssetsComponent {
         #[rename("synthetic_timely_data")]
         pub asset_timely_data: IterableMap<AssetId, AssetTimelyData>,
         pub risk_factor_tiers: Map<AssetId, Vec<RiskFactor>>,
+        #[allow(starknet::colliding_storage_paths)]
+        #[rename("risk_factor_tiers")]
+        pub unchecked_access_risk_factor_tiers: Map<AssetId, Map<u64, RiskFactor>>,
         asset_oracle: Map<AssetId, Map<PublicKey, felt252>>,
         max_oracle_price_validity: TimeDelta,
         collateral_id: Option<AssetId>,
@@ -548,26 +551,32 @@ pub mod AssetsComponent {
             balance: Balance,
             price: Price,
         ) -> RiskFactor {
-            if let Option::Some(asset_config) = self.asset_config.read(asset_id) {
-                let asset_risk_factor_tiers = self.risk_factor_tiers.entry(asset_id);
-                let synthetic_value: u128 = price.mul(rhs: balance).abs();
-                let index = if synthetic_value < asset_config.risk_factor_first_tier_boundary {
-                    0_u128
-                } else {
-                    let tier_size = asset_config.risk_factor_tier_size;
-                    let first_tier_offset = synthetic_value
-                        - asset_config.risk_factor_first_tier_boundary;
-                    min(
-                        1_u128 + (first_tier_offset / tier_size),
-                        asset_risk_factor_tiers.len().into() - 1,
-                    )
-                };
-                asset_risk_factor_tiers
-                    .at(index.try_into().expect('INDEX_SHOULD_NEVER_OVERFLOW'))
-                    .read()
-            } else {
+            let entry = self.asset_config.entry(asset_id).as_ptr();
+            if (!AssetTrait::is_some_config(entry)) {
                 panic_with_felt252(ASSET_NOT_EXISTS)
             }
+
+            let risk_factor_first_tier_boundary = AssetTrait::at_risk_factor_first_tier_boundary(
+                entry,
+            );
+            let risk_factor_tier_size = AssetTrait::at_risk_factor_tier_size(entry);
+            let asset_risk_factor_tiers = self.risk_factor_tiers.entry(asset_id);
+            let unchecked_access_risk_factor_tiers = self
+                .unchecked_access_risk_factor_tiers
+                .entry(asset_id);
+
+            let synthetic_value: u128 = price.mul(rhs: balance).abs();
+            let index = if synthetic_value < risk_factor_first_tier_boundary {
+                0_u128
+            } else {
+                let tier_size = risk_factor_tier_size;
+                let first_tier_offset = synthetic_value - risk_factor_first_tier_boundary;
+                min(
+                    1_u128 + (first_tier_offset / tier_size),
+                    asset_risk_factor_tiers.len().into() - 1,
+                )
+            };
+            unchecked_access_risk_factor_tiers.entry(index.try_into().unwrap()).read()
         }
 
         fn get_funding_index(

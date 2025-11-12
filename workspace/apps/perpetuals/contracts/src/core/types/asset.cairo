@@ -299,6 +299,26 @@ pub impl AssetImpl of AssetTrait {
             Option::None
         }
     }
+
+    /// Reads the risk factor first tier boundary from the Option<AssetConfig>.
+    /// This function does not check if the Option is Some or None.
+    fn at_risk_factor_first_tier_boundary(
+        entry: StoragePointer0Offset<Option<AssetConfig>>,
+    ) -> u128 {
+        let value = Self::read_config(
+            entry, OptionAssetConfigOffset::RISK_FACTOR_FIRST_TIER_BOUNDARY,
+        );
+        let value: u128 = value.try_into().unwrap();
+        value
+    }
+
+    /// Reads the risk factor tier size from the Option<AssetConfig>.
+    /// This function does not check if the Option is Some or None.
+    fn at_risk_factor_tier_size(entry: StoragePointer0Offset<Option<AssetConfig>>) -> u128 {
+        let value = Self::read_config(entry, OptionAssetConfigOffset::RISK_FACTOR_TIER_SIZE);
+        let value: u128 = value.try_into().unwrap();
+        value
+    }
 }
 
 
