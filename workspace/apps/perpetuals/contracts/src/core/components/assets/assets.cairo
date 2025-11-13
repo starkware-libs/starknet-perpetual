@@ -40,8 +40,8 @@ pub mod AssetsComponent {
     use perpetuals::core::types::risk_factor::{RiskFactor, RiskFactorTrait};
     use starknet::ContractAddress;
     use starknet::storage::{
-        Map, MutableVecTrait, StorageMapReadAccess, StoragePathEntry, StoragePointerReadAccess,
-        StoragePointerWriteAccess, Vec, VecTrait,
+        Map, MutableVecTrait, StorageAsPointer, StorageMapReadAccess, StoragePathEntry,
+        StoragePointerReadAccess, StoragePointerWriteAccess, Vec, VecTrait,
     };
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
@@ -50,7 +50,8 @@ pub mod AssetsComponent {
     use starkware_utils::math::abs::Abs;
     use starkware_utils::signature::stark::{PublicKey, validate_stark_signature};
     use starkware_utils::storage::iterable_map::{
-        IterableMap, IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
+        IterableMap, IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapTrait,
+        IterableMapWriteAccessImpl,
     };
     use starkware_utils::storage::utils::{AddToStorage, SubFromStorage};
     use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
@@ -76,6 +77,9 @@ pub mod AssetsComponent {
         #[rename("synthetic_timely_data")]
         pub timely_data: IterableMap<AssetId, TimelyData>,
         pub risk_factor_tiers: Map<AssetId, Vec<RiskFactor>>,
+        #[allow(starknet::colliding_storage_paths)]
+        #[rename("risk_factor_tiers")]
+        pub unchecked_access_risk_factor_tiers: Map<AssetId, Map<u64, RiskFactor>>,
         asset_oracle: Map<AssetId, Map<PublicKey, felt252>>,
         max_oracle_price_validity: TimeDelta,
         collateral_id: Option<AssetId>,
@@ -607,12 +611,30 @@ pub mod AssetsComponent {
         }
 
         fn get_asset_price(self: @ComponentState<TContractState>, asset_id: AssetId) -> Price {
-            if let Option::Some(data) = self.timely_data.read(asset_id) {
-                data.price
-            } else {
-                panic_with_felt252(NOT_SYNTHETIC)
+            let entry = self.timely_data.pointer(asset_id);
+            match SyntheticTrait::get_price(entry) {
+                Option::None => panic_with_felt252(NOT_SYNTHETIC),
+                Option::Some(price) => price,
             }
         }
+
+        /// Returns the stored price directly without checking whether it exists.
+        fn get_asset_price_unsafe(
+            self: @ComponentState<TContractState>, asset_id: AssetId,
+        ) -> Price {
+            let entry = self.timely_data.pointer(asset_id);
+            SyntheticTrait::at_price(entry)
+        }
+
+        /// Returns both the stored price and funding index directly without checking their
+        /// existence.
+        fn get_price_and_funding_index(
+            self: @ComponentState<TContractState>, asset_id: AssetId,
+        ) -> (Price, FundingIndex) {
+            let entry = self.timely_data.pointer(asset_id);
+            (SyntheticTrait::at_price(entry), SyntheticTrait::at_funding_index(entry))
+        }
+
 
         /// Get the risk factor of a synthetic asset.
         ///   - synthetic_value = |price * balance|
@@ -643,36 +665,54 @@ pub mod AssetsComponent {
         fn get_synthetic_risk_factor_for_value(
             self: @ComponentState<TContractState>, synthetic_id: AssetId, synthetic_value: u128,
         ) -> RiskFactor {
-            if let Option::Some(asset_config) = self.asset_config.read(synthetic_id) {
-                let asset_risk_factor_tiers = self.risk_factor_tiers.entry(synthetic_id);
-                let index = if synthetic_value < asset_config.risk_factor_first_tier_boundary {
-                    0_u128
-                } else {
-                    let tier_size = asset_config.risk_factor_tier_size;
-                    let first_tier_offset = synthetic_value
-                        - asset_config.risk_factor_first_tier_boundary;
-                    min(
-                        1_u128 + (first_tier_offset / tier_size),
-                        asset_risk_factor_tiers.len().into() - 1,
-                    )
-                };
-                asset_risk_factor_tiers
-                    .at(index.try_into().expect('INDEX_SHOULD_NEVER_OVERFLOW'))
-                    .read()
-            } else {
+            let entry = self.asset_config.entry(synthetic_id).as_ptr();
+            if (!SyntheticTrait::is_some_config(entry)) {
                 panic_with_felt252(NOT_SYNTHETIC)
             }
+            let risk_factor_first_tier_boundary =
+                SyntheticTrait::at_risk_factor_first_tier_boundary(
+                entry,
+            );
+            let risk_factor_tier_size = SyntheticTrait::at_risk_factor_tier_size(entry);
+            let asset_risk_factor_tiers = self.risk_factor_tiers.entry(synthetic_id);
+
+            let unchecked_access_risk_factor_tiers = self
+                .unchecked_access_risk_factor_tiers
+                .entry(synthetic_id);
+
+            let index = if synthetic_value < risk_factor_first_tier_boundary {
+                0_u128
+            } else {
+                let tier_size = risk_factor_tier_size;
+                let first_tier_offset = synthetic_value - risk_factor_first_tier_boundary;
+                min(
+                    1_u128 + (first_tier_offset / tier_size),
+                    asset_risk_factor_tiers.len().into() - 1,
+                )
+            };
+
+            unchecked_access_risk_factor_tiers.entry(index.try_into().unwrap()).read()
         }
 
         fn get_funding_index(
             self: @ComponentState<TContractState>, synthetic_id: AssetId,
         ) -> FundingIndex {
-            if let Option::Some(data) = self.timely_data.read(synthetic_id) {
-                data.funding_index
-            } else {
-                panic_with_felt252(NOT_SYNTHETIC)
+            let entry = self.timely_data.pointer(synthetic_id);
+
+            match SyntheticTrait::get_funding_index(entry) {
+                Option::None => panic_with_felt252(NOT_SYNTHETIC),
+                Option::Some(funding_index) => funding_index,
             }
         }
+
+        /// Returns the stored funding index directly without checking whether it exists.
+        fn get_funding_index_unsafe(
+            self: @ComponentState<TContractState>, asset_id: AssetId,
+        ) -> FundingIndex {
+            let entry = self.timely_data.pointer(asset_id);
+            SyntheticTrait::at_funding_index(entry)
+        }
+
 
         fn validate_asset_active(self: @ComponentState<TContractState>, synthetic_id: AssetId) {
             if let Option::Some(config) = self.asset_config.read(synthetic_id) {
