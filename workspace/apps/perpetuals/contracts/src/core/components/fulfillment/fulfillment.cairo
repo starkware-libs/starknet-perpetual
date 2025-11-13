@@ -4,11 +4,11 @@
 /// used to prevent replay attacks when contracts accept signatures as input.
 #[starknet::component]
 pub mod Fulfillement {
+    use core::panics::panic_with_byte_array;
     use perpetuals::core::components::fulfillment::interface::IFulfillment;
     use starknet::storage::{
         Map, StoragePathEntry, StoragePointerReadAccess, StoragePointerWriteAccess,
     };
-    use starkware_utils::errors::assert_with_byte_array;
     use starkware_utils::math::abs::Abs;
     use starkware_utils::signature::stark::HashType;
     use crate::core::errors::fulfillment_exceeded_err;
@@ -31,9 +31,11 @@ pub mod Fulfillement {
         ) {
             let mut fulfillment_entry = self.fulfillment.entry(hash);
             let total_amount = fulfillment_entry.read() + actual_base_amount.abs();
-            assert_with_byte_array(
-                total_amount <= order_base_amount.abs(), fulfillment_exceeded_err(:position_id),
-            );
+
+            if (total_amount > order_base_amount.abs()) {
+                let err = fulfillment_exceeded_err(:position_id);
+                panic_with_byte_array(err: @err);
+            }
             fulfillment_entry.write(total_amount);
         }
     }

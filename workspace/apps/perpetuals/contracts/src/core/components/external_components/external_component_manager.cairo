@@ -3,6 +3,7 @@ pub mod ExternalComponents {
     use RolesComponent::InternalTrait as RolesInternalTrait;
     use core::num::traits::Zero;
     use core::panic_with_felt252;
+    use core::panics::panic_with_byte_array;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use starknet::ClassHash;
@@ -12,7 +13,6 @@ pub mod ExternalComponents {
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
     use starkware_utils::components::replaceability::interface::IReplaceable;
     use starkware_utils::components::roles::RolesComponent;
-    use starkware_utils::errors::assert_with_byte_array;
     use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
     use crate::core::components::deleverage::deleverage_manager::IDeleverageManagerLibraryDispatcher;
     use crate::core::components::deposit::deposit_manager::IDepositExternalLibraryDispatcher;
@@ -172,14 +172,14 @@ pub mod ExternalComponents {
             let declared_type = ITypedComponentLibraryDispatcher { class_hash: class_hash }
                 .component_type();
 
-            assert_with_byte_array(
-                declared_type == component_type,
-                format!(
+            if (declared_type != component_type) {
+                let err = format!(
                     "Component type mismatch: declared {}, expected {}",
                     declared_type,
                     component_type,
-                ),
-            );
+                );
+                panic_with_byte_array(err: @err);
+            }
             if (component_type == EXTERNAL_COMPONENT_VAULT)
                 || (component_type == EXTERNAL_COMPONENT_WITHDRAWALS)
                 || (component_type == EXTERNAL_COMPONENT_DEPOSITS)
@@ -209,12 +209,15 @@ pub mod ExternalComponents {
             get_dep_component!(@self, Roles).only_upgrade_governor();
             let entry = self.registered_external_components.entry(component_type);
             let (registered_class_hash, activation_time) = entry.read();
-            assert_with_byte_array(
-                registered_class_hash == class_hash,
-                format!("{:?} not registered with hash {:?}", component_type, class_hash),
-            );
+            if (registered_class_hash != class_hash) {
+                let err = format!("{:?} not registered with hash {:?}", component_type, class_hash);
+                panic_with_byte_array(err: @err);
+            }
             let now = Time::now();
-            assert_with_byte_array(now >= activation_time, format!("Activation time not reached"));
+            if (now < activation_time) {
+                let err = format!("Activation time not reached");
+                panic_with_byte_array(err: @err);
+            }
             let impl_entry = self.external_component_implementations.entry(component_type);
             impl_entry.write(class_hash);
             self

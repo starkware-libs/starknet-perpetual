@@ -1,9 +1,9 @@
 use core::num::traits::{Pow, Zero};
+use core::panics::panic_with_byte_array;
 use perpetuals::core::errors::invalid_funding_rate_err;
 use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::balance::{Balance, BalanceTrait};
 use perpetuals::core::types::price::{Price, PriceMulTrait};
-use starkware_utils::errors::assert_with_byte_array;
 use starkware_utils::math::utils::mul_wide_and_floor_div;
 
 pub const FUNDING_SCALE: i64 = 2_i64.pow(32);
@@ -123,11 +123,10 @@ pub fn validate_funding_rate(
     time_diff: u64,
     synthetic_price: Price,
 ) {
-    assert_with_byte_array(
-        condition: index_diff.into() <= synthetic_price.mul(rhs: max_funding_rate)
-            * time_diff.into(),
-        err: invalid_funding_rate_err(:synthetic_id),
-    );
+    if (index_diff.into() > synthetic_price.mul(rhs: max_funding_rate) * time_diff.into()) {
+        let err = invalid_funding_rate_err(:synthetic_id);
+        panic_with_byte_array(err: @err);
+    }
 }
 
 

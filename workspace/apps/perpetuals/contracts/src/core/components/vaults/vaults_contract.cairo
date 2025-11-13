@@ -42,6 +42,7 @@ pub trait IVaultExternal<TContractState> {
 #[starknet::contract]
 pub(crate) mod VaultsManager {
     use core::num::traits::{WideMul, Zero};
+    use core::panics::panic_with_byte_array;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::interfaces::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin::interfaces::erc4626::{IERC4626Dispatcher, IERC4626DispatcherTrait};
@@ -60,7 +61,6 @@ pub(crate) mod VaultsManager {
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
     use starkware_utils::components::roles::RolesComponent;
-    use starkware_utils::errors::assert_with_byte_array;
     use starkware_utils::math::abs::Abs;
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
@@ -196,7 +196,10 @@ pub(crate) mod VaultsManager {
             assert(order.quote_amount < 0, 'INVALID_POSITIVE_QUOTE_AMOUNT');
             // Expiration check.
             let now = Time::now();
-            assert_with_byte_array(now <= order.expiration, order_expired_err(from_position_id));
+            if (now > order.expiration) {
+                let err = order_expired_err(from_position_id);
+                panic_with_byte_array(err: @err);
+            }
             assert(order.quote_asset_id == self.assets.get_collateral_id(), 'INVALID_QUOTE_ASSET');
 
             let receiving_position_id = order.receive_position;
@@ -412,14 +415,15 @@ pub(crate) mod VaultsManager {
             let redeeming_position_id = order.source_position;
             let receiving_position_id = order.receive_position;
 
-            assert_with_byte_array(
-                actual_shares_user < 0,
-                format!("INVALID_ACTUAL_SHARES_AMOUNT: {}", actual_shares_user),
-            );
-            assert_with_byte_array(
-                actual_collateral_user >= 0,
-                format!("INVALID_ACTUAL_COLLATERAL_AMOUNT: {}", actual_collateral_user),
-            );
+            if (actual_shares_user >= 0) {
+                let err = format!("INVALID_ACTUAL_SHARES_AMOUNT: {}", actual_shares_user);
+                panic_with_byte_array(err: @err);
+            }
+
+            if (actual_collateral_user < 0) {
+                let err = format!("INVALID_ACTUAL_COLLATERAL_AMOUNT: {}", actual_collateral_user);
+                panic_with_byte_array(err: @err);
+            }
 
             validate_trade(
                 order_a: order,
@@ -518,10 +522,12 @@ pub(crate) mod VaultsManager {
                     value_of_shares: value_to_receive.abs().into(),
                 );
 
-            assert_with_byte_array(
-                burn_result == value_to_receive.abs().into(),
-                format!("UNFAIR_REDEEM: expected {:?}, got {:?}", value_to_receive, burn_result),
-            );
+            if (burn_result != value_to_receive.abs().into()) {
+                let err = format!(
+                    "UNFAIR_REDEEM: expected {:?}, got {:?}", value_to_receive, burn_result,
+                );
+                panic_with_byte_array(err: @err);
+            }
 
             let vault_position_diff = PositionDiff {
                 collateral_diff: -value_to_receive.into(), asset_diff: None,

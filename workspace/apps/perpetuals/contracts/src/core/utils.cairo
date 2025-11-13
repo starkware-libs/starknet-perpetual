@@ -1,11 +1,11 @@
 use core::num::traits::Zero;
 use core::panic_with_felt252;
+use core::panics::panic_with_byte_array;
 use perpetuals::core::components::positions::Positions::FEE_POSITION;
 use perpetuals::core::errors::{
     CANT_TRADE_WITH_FEE_POSITION, DIFFERENT_BASE_ASSET_IDS, INVALID_QUOTE_FEE_AMOUNT,
     INVALID_ZERO_AMOUNT,
 };
-use starkware_utils::errors::assert_with_byte_array;
 use starkware_utils::hash::message_hash::OffchainMessageHash;
 use starkware_utils::math::abs::Abs;
 use starkware_utils::math::utils::have_same_sign;
@@ -94,7 +94,10 @@ pub fn validate_order<T, impl TValidateableOrder: ValidateableOrderTrait<T>, +Dr
 
     // Expiration check.
     let now = Time::now();
-    assert_with_byte_array(now <= order.expiration(), order_expired_err(order.position_id()));
+    if (now > order.expiration()) {
+        let err = order_expired_err(order.position_id());
+        panic_with_byte_array(err: @err);
+    }
 
     // Sign Validation for amounts.
     assert(!have_same_sign(order.quote_amount(), order.base_amount()), INVALID_AMOUNT_SIGN);
