@@ -95,6 +95,7 @@ pub(crate) mod DeleverageManager {
         #[substorage(v0)]
         pub roles: RolesComponent::Storage,
         #[substorage(v0)]
+        #[allow(starknet::colliding_storage_paths)]
         pub assets: AssetsComponent::Storage,
         #[substorage(v0)]
         pub positions: PositionsComponent::Storage,
