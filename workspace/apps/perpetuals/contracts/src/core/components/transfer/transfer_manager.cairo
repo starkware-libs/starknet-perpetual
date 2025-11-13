@@ -84,7 +84,7 @@ pub(crate) mod TransferManager {
     use crate::core::components::external_components::named_component::ITypedComponent;
     use crate::core::components::snip::SNIP12MetadataImpl;
     use crate::core::components::vaults::vaults::{IVaults, Vaults as VaultsComponent};
-    use crate::core::errors::{INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT, TRANSFER_EXPIRED};
+    use crate::core::errors::{INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED};
     use crate::core::types::asset::synthetic::AssetType;
     use crate::core::types::position::PositionDiff;
     use crate::core::types::transfer::TransferArgs;
@@ -261,7 +261,7 @@ pub(crate) mod TransferManager {
             expiration: Timestamp,
             salt: felt252,
         ) {
-            validate_expiration(:expiration, err: TRANSFER_EXPIRED);
+            validate_expiration(:expiration, err: SIGNED_TX_EXPIRED);
             assert(recipient != position_id, INVALID_SAME_POSITIONS);
             let position = self.positions.get_position_snapshot(:position_id);
             let hash = self

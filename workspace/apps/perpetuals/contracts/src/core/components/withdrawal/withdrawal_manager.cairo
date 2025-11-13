@@ -84,7 +84,7 @@ pub(crate) mod WithdrawalManager {
     use crate::core::components::external_components::interface::EXTERNAL_COMPONENT_WITHDRAWALS;
     use crate::core::components::external_components::named_component::ITypedComponent;
     use crate::core::components::snip::SNIP12MetadataImpl;
-    use crate::core::errors::{INVALID_ZERO_AMOUNT, WITHDRAW_EXPIRED};
+    use crate::core::errors::{INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED, TRANSFER_FAILED};
     use crate::core::types::position::PositionDiff;
     use crate::core::types::withdraw::WithdrawArgs;
     use super::{IWithdrawalManager, Signature, Timestamp, Withdraw, WithdrawRequest};
@@ -209,7 +209,7 @@ pub(crate) mod WithdrawalManager {
             expiration: super::Timestamp,
             salt: felt252,
         ) {
-            validate_expiration(expiration: expiration, err: WITHDRAW_EXPIRED);
+            validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
             let collateral_id = self.assets.get_collateral_id();
             let position = self.positions.get_position_snapshot(:position_id);
             let hash = self
@@ -236,7 +236,10 @@ pub(crate) mod WithdrawalManager {
             let quantum = self.assets.get_collateral_quantum();
             let withdraw_unquantized_amount = quantum * amount;
             let token_contract = self.assets.get_collateral_token_contract();
-            token_contract.transfer(:recipient, amount: withdraw_unquantized_amount.into());
+            assert(
+                token_contract.transfer(:recipient, amount: withdraw_unquantized_amount.into()),
+                TRANSFER_FAILED,
+            );
 
             self
                 .emit(

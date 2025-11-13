@@ -17,6 +17,7 @@ test = "snforge test --max-n-steps 10000000000"
 unstable-add-statements-code-locations-debug-info = true
 unstable-add-statements-functions-debug-info = true
 inlining-strategy = "avoid"
+panic-backtrace = true
 
 [profile.release.cairo]
 inlining-strategy = "avoid"

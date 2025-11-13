@@ -348,12 +348,16 @@ pub(crate) mod DepositManager {
 
             let unquantized_amount = quantized_amount * quantum.into();
 
-            token_contract
-                .transfer_from(
-                    sender: caller_address,
-                    recipient: get_contract_address(),
-                    amount: unquantized_amount.into(),
-                );
+            assert(
+                token_contract
+                    .transfer_from(
+                        sender: caller_address,
+                        recipient: get_contract_address(),
+                        amount: unquantized_amount.into(),
+                    ),
+                errors::TRANSFER_FAILED,
+            );
+
             self
                 .emit(
                     events::Deposit {
@@ -413,7 +417,10 @@ pub(crate) mod DepositManager {
                 .deposits
                 .registered_deposits
                 .write(key: deposit_hash, value: DepositStatus::CANCELED);
-            token_contract.transfer(recipient: depositor, amount: unquantized_amount.into());
+            assert(
+                token_contract.transfer(recipient: depositor, amount: unquantized_amount.into()),
+                errors::TRANSFER_FAILED,
+            );
             self
                 .emit(
                     events::DepositCanceled {
