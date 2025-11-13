@@ -6,7 +6,7 @@ pub mod Core {
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::AssetsComponent::InternalTrait as AssetsInternal;
-    use perpetuals::core::components::assets::errors::NOT_SYNTHETIC;
+    use perpetuals::core::components::assets::errors::{ASSET_NOT_EXISTS, NOT_SYNTHETIC};
     use perpetuals::core::components::deposit::Deposit;
     use perpetuals::core::components::deposit::Deposit::InternalTrait as DepositInternal;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
@@ -15,7 +15,7 @@ pub mod Core {
     use perpetuals::core::components::positions::Positions::{
         FEE_POSITION, InternalTrait as PositionsInternalTrait,
     };
-    use perpetuals::core::errors::SYNTHETIC_IS_ACTIVE;
+    use perpetuals::core::errors::{AMOUNT_OVERFLOW, SYNTHETIC_IS_ACTIVE};
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
     use perpetuals::core::types::asset::{AssetId, AssetStatus};
@@ -530,9 +530,10 @@ pub mod Core {
 
             // Validate base asset is inactive synthetic.
             if let Option::Some(config) = self.assets.asset_config.read(base_asset_id) {
+                assert(config.asset_type == AssetType::SYNTHETIC, NOT_SYNTHETIC);
                 assert(config.status == AssetStatus::INACTIVE, SYNTHETIC_IS_ACTIVE);
             } else {
-                panic_with_felt252(NOT_SYNTHETIC);
+                panic_with_felt252(ASSET_NOT_EXISTS);
             }
             let base_balance: Balance = base_amount_a.into();
             let quote_amount_a: i64 = -1
@@ -541,7 +542,7 @@ pub mod Core {
                     .get_asset_price(asset_id: base_asset_id)
                     .mul(rhs: base_balance)
                     .try_into()
-                    .expect('QUOTE_AMOUNT_OVERFLOW');
+                    .expect(AMOUNT_OVERFLOW);
             self
                 .positions
                 ._validate_imposed_reduction_trade(

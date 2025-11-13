@@ -38,7 +38,6 @@ pub impl U64IntoPrice of Into<u64, Price> {
     }
 }
 
-
 #[derive(Copy, Debug, Drop, Serde)]
 pub struct SignedPrice {
     pub signature: Signature,

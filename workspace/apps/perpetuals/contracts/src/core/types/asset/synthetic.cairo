@@ -1,3 +1,4 @@
+use core::num::traits::Zero;
 use perpetuals::core::types::asset::{AssetId, AssetStatus};
 use perpetuals::core::types::balance::Balance;
 use perpetuals::core::types::funding::FundingIndex;
@@ -53,6 +54,17 @@ pub struct TimelyData {
     pub price: Price,
     pub last_price_update: Timestamp,
     pub funding_index: FundingIndex,
+}
+
+impl TimelyDataDefault of Default<TimelyData> {
+    fn default() -> TimelyData {
+        TimelyData {
+            version: VERSION,
+            price: Zero::zero(),
+            last_price_update: Zero::zero(),
+            funding_index: Zero::zero(),
+        }
+    }
 }
 
 #[derive(Copy, Debug, Drop, Serde, PartialEq)]

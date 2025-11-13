@@ -11,7 +11,7 @@ pub mod AssetsComponent {
     };
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::errors::{
-        ALREADY_INITIALIZED, ASSET_NAME_TOO_LONG, ASSET_REGISTERED_AS_COLLATERAL,
+        ALREADY_INITIALIZED, ASSET_NAME_TOO_LONG, ASSET_NOT_EXISTS, ASSET_REGISTERED_AS_COLLATERAL,
         COLLATERAL_NOT_REGISTERED, FUNDING_EXPIRED, FUNDING_TICKS_NOT_SORTED, INACTIVE_ASSET,
         INVALID_FUNDING_TICK_LEN, INVALID_MEDIAN, INVALID_PRICE_TIMESTAMP, INVALID_RF_VALUE,
         INVALID_SAME_QUORUM, INVALID_TIMESTAMP, INVALID_ZERO_ASSET_ID, INVALID_ZERO_ASSET_NAME,
@@ -700,7 +700,7 @@ pub mod AssetsComponent {
             let entry = self.timely_data.pointer(synthetic_id);
 
             match SyntheticTrait::get_funding_index(entry) {
-                Option::None => panic_with_felt252(NOT_SYNTHETIC),
+                Option::None => panic_with_felt252(ASSET_NOT_EXISTS),
                 Option::Some(funding_index) => funding_index,
             }
         }
@@ -718,7 +718,7 @@ pub mod AssetsComponent {
             if let Option::Some(config) = self.asset_config.read(synthetic_id) {
                 assert(config.status == AssetStatus::ACTIVE, SYNTHETIC_NOT_ACTIVE);
             } else {
-                panic_with_felt252(NOT_SYNTHETIC);
+                panic_with_felt252(ASSET_NOT_EXISTS);
             }
         }
 
@@ -954,50 +954,84 @@ pub mod AssetsComponent {
             assert(quorum.is_non_zero(), INVALID_ZERO_QUORUM);
             assert(resolution_factor.is_non_zero(), INVALID_ZERO_RESOLUTION_FACTOR);
 
-            let asset_config = match asset_type {
+            let (asset_config, asset_added_event): (AssetConfig, Event) = match asset_type {
                 AssetType::SYNTHETIC => {
-                    SyntheticTrait::synthetic(
-                        AssetStatus::PENDING,
-                        risk_factor_first_tier_boundary,
-                        risk_factor_tier_size,
-                        quorum,
-                        resolution_factor,
+                    (
+                        SyntheticTrait::synthetic(
+                            AssetStatus::PENDING,
+                            risk_factor_first_tier_boundary,
+                            risk_factor_tier_size,
+                            quorum,
+                            resolution_factor,
+                        ),
+                        Event::SyntheticAdded(
+                            events::SyntheticAdded {
+                                asset_id,
+                                risk_factor_tiers,
+                                risk_factor_first_tier_boundary,
+                                risk_factor_tier_size,
+                                resolution_factor,
+                                quorum,
+                            },
+                        ),
                     )
                 },
                 AssetType::VAULT_SHARE_COLLATERAL => {
                     assert(risk_factor_tiers.len() == 1, 'INVALID_VAULT_RF_TIERS');
 
-                    SyntheticTrait::vault_share(
-                        AssetStatus::PENDING,
-                        risk_factor_first_tier_boundary,
-                        risk_factor_tier_size,
-                        quorum,
-                        resolution_factor,
-                        quantum,
-                        erc20_address.expect('MISSING_ERC20_ADDRESS_FOR_VAULT'),
+                    (
+                        SyntheticTrait::vault_share(
+                            AssetStatus::PENDING,
+                            risk_factor_first_tier_boundary,
+                            risk_factor_tier_size,
+                            quorum,
+                            resolution_factor,
+                            quantum,
+                            erc20_address.expect('MISSING_ERC20_ADDRESS_FOR_VAULT'),
+                        ),
+                        Event::SpotAssetAdded(
+                            events::SpotAssetAdded {
+                                asset_id,
+                                risk_factor_tiers,
+                                risk_factor_first_tier_boundary,
+                                risk_factor_tier_size,
+                                resolution_factor,
+                                quorum,
+                                contract_address: erc20_address.expect('MISSING_ERC20_ADDRESS'),
+                            },
+                        ),
                     )
                 },
                 AssetType::SPOT_COLLATERAL => {
                     assert(risk_factor_tiers.len() == 1, 'INVALID_SPOT_RF_TIERS');
-                    SyntheticTrait::spot(
-                        AssetStatus::PENDING,
-                        risk_factor_first_tier_boundary,
-                        risk_factor_tier_size,
-                        quorum,
-                        resolution_factor,
-                        quantum,
-                        erc20_address.expect('MISSING_ERC20_ADDRESS_FOR_SPOT'),
+                    (
+                        SyntheticTrait::spot(
+                            AssetStatus::PENDING,
+                            risk_factor_first_tier_boundary,
+                            risk_factor_tier_size,
+                            quorum,
+                            resolution_factor,
+                            quantum,
+                            erc20_address.expect('MISSING_ERC20_ADDRESS_FOR_SPOT'),
+                        ),
+                        Event::SpotAssetAdded(
+                            events::SpotAssetAdded {
+                                asset_id,
+                                risk_factor_tiers,
+                                risk_factor_first_tier_boundary,
+                                risk_factor_tier_size,
+                                resolution_factor,
+                                quorum,
+                                contract_address: erc20_address.expect('MISSING_ERC20_ADDRESS'),
+                            },
+                        ),
                     )
                 },
             };
 
             asset_entry.write(Option::Some(asset_config));
 
-            let timely_data = SyntheticTrait::timely_data(
-                // These fields will be updated in the next price tick.
-                price: Zero::zero(), last_price_update: Zero::zero(), funding_index: Zero::zero(),
-            );
-            self.timely_data.write(asset_id, timely_data);
+            self.timely_data.write(asset_id, Default::default());
 
             let mut prev_risk_factor = 0_u16;
             for risk_factor in risk_factor_tiers {
@@ -1009,36 +1043,7 @@ pub mod AssetsComponent {
                 prev_risk_factor = *risk_factor;
             }
 
-            match asset_type {
-                AssetType::SYNTHETIC => {
-                    self
-                        .emit(
-                            events::SyntheticAdded {
-                                asset_id,
-                                risk_factor_tiers,
-                                risk_factor_first_tier_boundary,
-                                risk_factor_tier_size,
-                                resolution_factor,
-                                quorum,
-                            },
-                        )
-                },
-                AssetType::VAULT_SHARE_COLLATERAL |
-                AssetType::SPOT_COLLATERAL => {
-                    self
-                        .emit(
-                            events::SpotAssetAdded {
-                                asset_id,
-                                risk_factor_tiers,
-                                risk_factor_first_tier_boundary,
-                                risk_factor_tier_size,
-                                resolution_factor,
-                                quorum,
-                                contract_address: erc20_address.expect('MISSING_ERC20_ADDRESS'),
-                            },
-                        );
-                },
-            }
+            self.emit(asset_added_event);
         }
     }
 }
