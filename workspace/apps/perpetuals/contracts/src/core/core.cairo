@@ -422,7 +422,6 @@ pub mod Core {
                 );
         }
 
-
         fn liquidate(
             ref self: ContractState,
             operator_nonce: u64,
@@ -662,6 +661,85 @@ pub mod Core {
                 ._get_vault_manager_dispatcher()
                 .invest_in_vault(operator_nonce: operator_nonce, :signature, :order)
         }
+
+        // Forced actions.
+
+        /// Requests a forced withdrawal of a collateral amount from a position.
+        ///
+        /// Validations:
+        /// - Validates the forced request signature.
+        /// - Validates the position exists.
+        /// - Validates no pending forced withdraw request already exists for this position.
+        /// - Validates the caller is the position owner.
+        ///
+        /// Execution:
+        /// - Stores the forced withdrawal request hash in pending forced actions.
+        /// - transfer `ForcedFee` amount.
+        /// - Emits a `ForcedWithdrawRequest` event.
+        fn forced_withdraw_request(
+            ref self: ContractState,
+            signature: Signature,
+            recipient: ContractAddress,
+            position_id: PositionId,
+            amount: u64,
+            expiration: Timestamp,
+            salt: felt252,
+        ) {}
+
+        /// Executes a previously submitted forced withdrawal request for a position.
+        ///
+        /// Validations:
+        /// - Validates that a matching forced withdrawal request exists.
+        /// - Validates the request is not already completed.
+        /// - Validates the forced request timeout has passed.
+        /// - Validates after the withdrawal the position still healthy.
+        ///
+        /// Execution:
+        /// - Processes the forced withdrawal and releases the collateral to the recipient.
+        /// - Marks the forced request as completed and clears the pending entry.
+        /// - Emits a `ForcedWithdraw` event.
+        fn forced_withdraw(
+            ref self: ContractState,
+            recipient: ContractAddress,
+            position_id: PositionId,
+            amount: u64,
+            expiration: Timestamp,
+            salt: felt252,
+        ) {}
+
+        /// Requests a forced trade - it enables withdrawal of synthetic amount from a position.
+        ///
+        /// Validations:
+        /// - Validates the forced request signature.
+        /// - Validates the position exists.
+        /// - Validates no pending forced withdraw request already exists for this position.
+        /// - Validates the caller is the position owner.
+        ///
+        /// Execution:
+        /// - Stores the forced withdrawal request hash in pending forced actions.
+        /// - transfer `ForcedFee` amount.
+        /// - Emits a `ForcedTradeRequest` event.
+        fn forced_trade_request(
+            ref self: ContractState,
+            signature_a: Signature,
+            signature_b: Signature,
+            order_a: Order,
+            order_b: Order,
+        ) {}
+
+        /// Executes a previously submitted forced trade request for a position.
+        ///
+        /// Validations:
+        /// - Validates that a matching forced trade request exists.
+        /// - Validates the request is not already completed.
+        /// - Validates the forced request timeout has passed.
+        /// - Execute regular trade validations.
+        ///
+        /// Execution:
+        /// - Processes the forced trade.
+        /// - Marks the forced request as completed and clears the pending entry.
+        /// - Emits a `ForcedTrade` event.
+        fn forced_trade(ref self: ContractState, order_a: Order, order_b: Order) {}
     }
 
     #[generate_trait]
