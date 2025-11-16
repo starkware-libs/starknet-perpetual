@@ -130,4 +130,40 @@ pub trait ICore<TContractState> {
         actual_shares_user: i64,
         actual_collateral_user: i64,
     );
+    fn forced_withdraw_request(
+        ref self: TContractState,
+        signature: Signature,
+        recipient: ContractAddress,
+        position_id: PositionId,
+        amount: u64,
+        expiration: Timestamp,
+        salt: felt252,
+    );
+    fn forced_withdraw(
+        ref self: TContractState,
+        recipient: ContractAddress,
+        position_id: PositionId,
+        amount: u64,
+        expiration: Timestamp,
+        salt: felt252,
+    );
+    fn forced_trade_request(
+        ref self: TContractState,
+        signature: Signature,
+        order_a: Order,
+        order_b: Order,
+        expiration: Timestamp,
+        salt: felt252,
+    );
+    fn forced_trade(
+        ref self: TContractState,
+        signature_a: Signature,
+        signature_b: Signature,
+        order_a: Order,
+        order_b: Order,
+        actual_amount_base_a: i64,
+        actual_amount_quote_a: i64,
+        expiration: Timestamp,
+        salt: felt252,
+    );
 }
