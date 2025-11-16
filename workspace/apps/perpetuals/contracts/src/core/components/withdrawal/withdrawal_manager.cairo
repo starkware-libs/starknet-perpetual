@@ -45,7 +45,6 @@ pub trait IWithdrawalManager<TContractState> {
     );
     fn withdraw(
         ref self: TContractState,
-        operator_nonce: u64,
         recipient: ContractAddress,
         position_id: PositionId,
         amount: u64,
@@ -203,7 +202,6 @@ pub(crate) mod WithdrawalManager {
 
         fn withdraw(
             ref self: ContractState,
-            operator_nonce: u64,
             recipient: starknet::ContractAddress,
             position_id: PositionId,
             amount: u64,
