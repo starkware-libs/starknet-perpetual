@@ -45,7 +45,6 @@ pub trait IWithdrawalManager<TContractState> {
     );
     fn withdraw(
         ref self: TContractState,
-        operator_nonce: u64,
         recipient: ContractAddress,
         position_id: PositionId,
         amount: u64,
@@ -71,7 +70,7 @@ pub(crate) mod WithdrawalManager {
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
     use perpetuals::core::types::position::{PositionId, PositionTrait};
     use starknet::ContractAddress;
-    use starknet::storage::StoragePointerReadAccess;
+    use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalImpl as PausableInternal;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
@@ -118,6 +117,7 @@ pub(crate) mod WithdrawalManager {
 
     #[storage]
     pub struct Storage {
+        // --- Components ---
         #[substorage(v0)]
         accesscontrol: AccessControlComponent::Storage,
         #[substorage(v0)]
@@ -137,6 +137,9 @@ pub(crate) mod WithdrawalManager {
         src5: SRC5Component::Storage,
         #[substorage(v0)]
         pub request_approvals: RequestApprovalsComponent::Storage,
+        // --- Contract storage ---
+        forced_request_timeout: u64,
+        premium_cost: u64,
     }
 
     component!(path: FulfillmentComponent, storage: fulfillment_tracking, event: FulfillmentEvent);
@@ -157,6 +160,14 @@ pub(crate) mod WithdrawalManager {
             EXTERNAL_COMPONENT_WITHDRAWALS
         }
     }
+
+    #[constructor]
+    pub fn constructor(ref self: ContractState, forced_request_timeout: u64, premium_cost: u64) {
+        assert(forced_request_timeout.is_non_zero(), INVALID_ZERO_AMOUNT);
+        self.forced_request_timeout.write(forced_request_timeout);
+        self.premium_cost.write(premium_cost);
+    }
+
 
     #[abi(embed_v0)]
     impl WithdrawalManagerImpl of IWithdrawalManager<ContractState> {
@@ -203,7 +214,6 @@ pub(crate) mod WithdrawalManager {
 
         fn withdraw(
             ref self: ContractState,
-            operator_nonce: u64,
             recipient: starknet::ContractAddress,
             position_id: PositionId,
             amount: u64,
