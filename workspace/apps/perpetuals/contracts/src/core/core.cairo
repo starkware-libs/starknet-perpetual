@@ -684,7 +684,17 @@ pub mod Core {
             amount: u64,
             expiration: Timestamp,
             salt: felt252,
-        ) {}
+        ) {
+            if (self._is_vault(vault_position: position_id)) {
+                panic_with_felt252('VAULT_CANNOT_INITIATE_WITHDRAW');
+            }
+            self
+                .external_components
+                ._get_withdrawal_manager_dispatcher()
+                .forced_withdraw_request(
+                    :signature, :recipient, :position_id, :amount, :expiration, :salt,
+                );
+        }
 
         /// Executes a previously submitted forced withdrawal request for a position.
         ///
