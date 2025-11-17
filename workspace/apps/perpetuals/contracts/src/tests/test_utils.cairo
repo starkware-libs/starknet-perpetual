@@ -695,6 +695,8 @@ pub fn initialized_contract_state(
         cancel_delay: CANCEL_DELAY,
         fee_position_owner_public_key: OPERATOR_PUBLIC_KEY(),
         insurance_fund_position_owner_public_key: OPERATOR_PUBLIC_KEY(),
+        forced_action_timeout: FORCED_ACTION_TIMEOUT,
+        premium_cost: PREMIUM_COST,
     );
     state
 }
