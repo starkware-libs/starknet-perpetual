@@ -71,7 +71,7 @@ use crate::core::components::external_components::interface::{
     IExternalComponentsDispatcher, IExternalComponentsDispatcherTrait,
 };
 use crate::core::types::funding::FundingIndex;
-use crate::tests::constants::KEY_PAIR_1;
+use crate::tests::constants::{KEY_PAIR_1, PREMIUM_COST};
 
 pub const TIME_STEP: u64 = MINUTE;
 const BEGINNING_OF_TIME: u64 = DAY * 365 * 50;
@@ -251,6 +251,8 @@ struct PerpetualsConfig {
     fee_position_owner_public_key: PublicKey,
     insurance_fund_position_owner_account: ContractAddress,
     insurance_fund_position_owner_public_key: PublicKey,
+    forced_action_timelock: u64,
+    premium_cost: u64,
 }
 
 #[generate_trait]
@@ -275,6 +277,8 @@ pub impl PerpetualsConfigImpl of PerpetualsConfigTrait {
             fee_position_owner_public_key: operator.key_pair.public_key,
             insurance_fund_position_owner_account: operator.address,
             insurance_fund_position_owner_public_key: operator.key_pair.public_key,
+            forced_action_timelock: FORCED_ACTION_TIMELOCK,
+            premium_cost: PREMIUM_COST,
         }
     }
 }
@@ -294,6 +298,8 @@ impl PerpetualsContractStateImpl of Deployable<PerpetualsConfig, ContractAddress
         self.cancel_delay.serialize(ref calldata);
         self.fee_position_owner_public_key.serialize(ref calldata);
         self.insurance_fund_position_owner_public_key.serialize(ref calldata);
+        self.forced_action_timelock.serialize(ref calldata);
+        self.premium_cost.serialize(ref calldata);
 
         let perpetuals_contract = snforge_std::declare("Core").unwrap().contract_class();
         let (address, _) = perpetuals_contract.deploy(@calldata).unwrap();
