@@ -1,6 +1,7 @@
 #[starknet::contract]
 pub mod Core {
     use core::dict::{Felt252Dict, Felt252DictTrait};
+    use core::num::traits::Zero;
     use core::panic_with_felt252;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
@@ -15,7 +16,7 @@ pub mod Core {
     use perpetuals::core::components::positions::Positions::{
         FEE_POSITION, InternalTrait as PositionsInternalTrait,
     };
-    use perpetuals::core::errors::{AMOUNT_OVERFLOW, SYNTHETIC_IS_ACTIVE};
+    use perpetuals::core::errors::{AMOUNT_OVERFLOW, INVALID_ZERO_TIMEOUT, SYNTHETIC_IS_ACTIVE};
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
     use perpetuals::core::types::asset::{AssetId, AssetStatus};
@@ -27,7 +28,7 @@ pub mod Core {
     use perpetuals::core::value_risk_calculator::PositionTVTR;
     use starknet::ContractAddress;
     use starknet::event::EventEmitter;
-    use starknet::storage::StorageMapReadAccess;
+    use starknet::storage::{StorageMapReadAccess, StoragePointerWriteAccess};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
@@ -140,6 +141,8 @@ pub mod Core {
         pub external_components: ExternalComponentsComponent::Storage,
         #[substorage(v0)]
         pub vaults: VaultsComponent::Storage,
+        forced_action_timeout: TimeDelta,
+        premium_cost: u64,
     }
 
     #[event]
@@ -196,6 +199,8 @@ pub mod Core {
         cancel_delay: TimeDelta,
         fee_position_owner_public_key: PublicKey,
         insurance_fund_position_owner_public_key: PublicKey,
+        forced_action_timeout: u64,
+        premium_cost: u64,
     ) {
         self.roles.initialize(:governance_admin);
         self.replaceability.initialize(:upgrade_delay);
@@ -214,6 +219,10 @@ pub mod Core {
         self
             .positions
             .initialize(:fee_position_owner_public_key, :insurance_fund_position_owner_public_key);
+
+        assert(forced_action_timeout.is_non_zero(), INVALID_ZERO_TIMEOUT);
+        self.forced_action_timeout.write(TimeDelta { seconds: forced_action_timeout });
+        self.premium_cost.write(premium_cost);
     }
 
     #[abi(embed_v0)]
@@ -684,7 +693,17 @@ pub mod Core {
             amount: u64,
             expiration: Timestamp,
             salt: felt252,
-        ) {}
+        ) {
+            if (self._is_vault(vault_position: position_id)) {
+                panic_with_felt252('VAULT_CANNOT_INITIATE_WITHDRAW');
+            }
+            self
+                .external_components
+                ._get_withdrawal_manager_dispatcher()
+                .forced_withdraw_request(
+                    :signature, :recipient, :position_id, :amount, :expiration, :salt,
+                );
+        }
 
         /// Executes a previously submitted forced withdrawal request for a position.
         ///
@@ -705,7 +724,14 @@ pub mod Core {
             amount: u64,
             expiration: Timestamp,
             salt: felt252,
-        ) {}
+        ) {
+            self.pausable.assert_not_paused();
+            self.assets.validate_assets_integrity();
+            self
+                .external_components
+                ._get_withdrawal_manager_dispatcher()
+                .forced_withdraw(:recipient, :position_id, :amount, :expiration, :salt);
+        }
 
         /// Requests a forced trade - it enables withdrawal of synthetic amount from a position.
         ///
