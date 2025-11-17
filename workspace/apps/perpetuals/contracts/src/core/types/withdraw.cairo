@@ -39,12 +39,33 @@ pub struct WithdrawArgs {
 const WITHDRAW_ARGS_TYPE_HASH: HashType =
     0x250a5fa378e8b771654bd43dcb34844534f9d1e29e16b14760d7936ea7f4b1d;
 
-impl StructHashImpl of StructHash<WithdrawArgs> {
+impl WithdrawArgsStructHashImpl of StructHash<WithdrawArgs> {
     fn hash_struct(self: @WithdrawArgs) -> HashType {
         let hash_state = PoseidonTrait::new();
         hash_state.update_with(WITHDRAW_ARGS_TYPE_HASH).update_with(*self).finalize()
     }
 }
+
+#[derive(Copy, Drop, Hash, Serde, Debug)]
+pub struct ForcedWithdrawArgs {
+    pub withdraw_args_hash: HashType,
+}
+
+/// selector!(
+///   "\"ForcedWithdrawArgs\"(
+///    \"withdraw_args_hash\":\"HashType\",
+///    )
+/// );
+const FORCED_WITHDRAW_ARGS_TYPE_HASH: HashType =
+    0x9178e6792dcaaa6e712c83d5a34ff15f5c6a8158887dfb66d7f0956f557b0e;
+
+impl ForcedWithdrawArgsStructHashImpl of StructHash<ForcedWithdrawArgs> {
+    fn hash_struct(self: @ForcedWithdrawArgs) -> HashType {
+        let hash_state = PoseidonTrait::new();
+        hash_state.update_with(FORCED_WITHDRAW_ARGS_TYPE_HASH).update_with(*self).finalize()
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -57,7 +78,13 @@ mod tests {
         let expected = selector!(
             "\"WithdrawArgs\"(\"recipient\":\"ContractAddress\",\"position_id\":\"PositionId\",\"collateral_id\":\"AssetId\",\"amount\":\"u64\",\"expiration\":\"Timestamp\",\"salt\":\"felt\")\"PositionId\"(\"value\":\"u32\")\"AssetId\"(\"value\":\"felt\")\"Timestamp\"(\"seconds\":\"u64\")",
         );
-        assert!(to_base_16_string(WITHDRAW_ARGS_TYPE_HASH) == to_base_16_string(expected));
+        assert_eq!(to_base_16_string(WITHDRAW_ARGS_TYPE_HASH), to_base_16_string(expected));
+    }
+
+    #[test]
+    fn test_forced_withdraw_type_hash() {
+        let expected = selector!("\"ForcedWithdrawArgs\"(\"withdraw_args_hash\":\"HashType\")");
+        assert_eq!(to_base_16_string(FORCED_WITHDRAW_ARGS_TYPE_HASH), to_base_16_string(expected));
     }
 
     #[test]
@@ -72,11 +99,16 @@ mod tests {
                 .try_into()
                 .unwrap(),
         };
-        let hash = withdraw_args.hash_struct();
-        assert!(
-            to_base_16_string(
-                hash,
-            ) == "0x04c22f625c59651e1219c60d03055f11f5dc23959929de35861548d86c0bc4ec",
+        let withdraw_args_hash = withdraw_args.hash_struct();
+        assert_eq!(
+            to_base_16_string(withdraw_args_hash),
+            "0x04c22f625c59651e1219c60d03055f11f5dc23959929de35861548d86c0bc4ec",
+        );
+
+        let forced_withdraw_args_hash = ForcedWithdrawArgs { withdraw_args_hash }.hash_struct();
+        assert_eq!(
+            to_base_16_string(forced_withdraw_args_hash),
+            "0x0731c220cc5dd5083cd9010e28d1bcf84061b1f86dffaf1406901cad99fa05a3",
         );
     }
 }
