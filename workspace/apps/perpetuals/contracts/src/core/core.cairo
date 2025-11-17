@@ -283,7 +283,7 @@ pub mod Core {
             self
                 .external_components
                 ._get_withdrawal_manager_dispatcher()
-                .withdraw(:operator_nonce, :recipient, :position_id, :amount, :expiration, :salt);
+                .withdraw(:recipient, :position_id, :amount, :expiration, :salt);
         }
 
         fn transfer_request(
