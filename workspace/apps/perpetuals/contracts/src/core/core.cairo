@@ -4,6 +4,7 @@ pub mod Core {
     use core::num::traits::Zero;
     use core::panic_with_felt252;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
+    use openzeppelin::interfaces::erc20::IERC20DispatcherTrait;
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::AssetsComponent::InternalTrait as AssetsInternal;
@@ -17,32 +18,38 @@ pub mod Core {
         FEE_POSITION, InternalTrait as PositionsInternalTrait,
     };
     use perpetuals::core::errors::{
-        AMOUNT_OVERFLOW, INVALID_ZERO_TIMEOUT, TRADE_ASSET_NOT_SYNTHETIC,
+        AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_ZERO_TIMEOUT, TRADE_ASSET_NOT_SYNTHETIC,
+        TRANSFER_FAILED,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
     use perpetuals::core::types::asset::AssetId;
     use perpetuals::core::types::balance::Balance;
-    use perpetuals::core::types::order::{LimitOrder, Order};
+    use perpetuals::core::types::order::{ForcedTrade, LimitOrder, Order};
     use perpetuals::core::types::position::{PositionDiff, PositionId, PositionTrait};
     use perpetuals::core::types::price::PriceMulTrait;
     use perpetuals::core::types::vault::ConvertPositionToVault;
     use perpetuals::core::value_risk_calculator::PositionTVTR;
-    use starknet::ContractAddress;
     use starknet::event::EventEmitter;
-    use starknet::storage::{StorageMapReadAccess, StoragePointerWriteAccess};
+    use starknet::storage::{
+        StorageMapReadAccess, StoragePointerReadAccess, StoragePointerWriteAccess,
+    };
+    use starknet::{ContractAddress, get_block_info, get_caller_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent::InternalReplaceabilityTrait;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
+    use starkware_utils::components::request_approvals::RequestApprovalsComponent::InternalTrait as RequestApprovalsInternal;
     use starkware_utils::components::roles::RolesComponent;
     use starkware_utils::components::roles::RolesComponent::InternalTrait as RolesInternal;
+    use starkware_utils::components::roles::interface::IRoles;
+    use starkware_utils::hash::message_hash::OffchainMessageHash;
     use starkware_utils::signature::stark::{PublicKey, Signature};
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
-    use starkware_utils::time::time::{TimeDelta, Timestamp};
+    use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
     use crate::core::components::assets::interface::IAssets;
     use crate::core::components::deleverage::deleverage_manager::IDeleverageManagerDispatcherTrait;
     use crate::core::components::deposit::events as deposit_events;
@@ -185,6 +192,8 @@ pub mod Core {
         Trade: events::Trade,
         Withdraw: events::Withdraw,
         WithdrawRequest: events::WithdrawRequest,
+        ForcedTradeRequest: events::ForcedTradeRequest,
+        ForcedTrade: events::ForcedTrade,
         #[flat]
         FulfillmentEvent: Fulfillement::Event,
         #[flat]
@@ -385,6 +394,7 @@ pub mod Core {
                         actual_fee_b: trade.actual_fee_b,
                         tvtr_a_before: cached_pos_a_tvtr,
                         tvtr_b_before: cached_pos_b_tvtr,
+                        check_signature: true,
                     );
                 tvtr_cache.insert(position_id_a, NullableTrait::new(updated_a));
                 tvtr_cache.insert(position_id_b, NullableTrait::new(updated_b));
@@ -444,6 +454,7 @@ pub mod Core {
                     :actual_fee_b,
                     tvtr_a_before: Default::default(),
                     tvtr_b_before: Default::default(),
+                    check_signature: true,
                 );
         }
 
@@ -768,7 +779,71 @@ pub mod Core {
             signature_b: Signature,
             order_a: Order,
             order_b: Order,
-        ) {}
+        ) {
+            let position_a = self.positions.get_position_snapshot(position_id: order_a.position_id);
+            let position_b = self.positions.get_position_snapshot(position_id: order_b.position_id);
+
+            // Validate the caller is the position owner account
+            let owner_account = if (position_a.owner_protection_enabled.read()) {
+                position_a.get_owner_account()
+            } else {
+                Option::None
+            };
+            let public_key_a = position_a.get_owner_public_key();
+            let public_key_b = position_b.get_owner_public_key();
+
+            // Validate the forced request signatures.
+            self
+                .request_approvals
+                .register_forced_approval(
+                    :owner_account,
+                    public_key: public_key_a,
+                    signature: signature_a,
+                    args: ForcedTrade { order_a, order_b },
+                );
+
+            validate_signature(
+                public_key: public_key_b,
+                message: ForcedTrade { order_a, order_b },
+                signature: signature_b,
+            );
+
+            // Transfer premium_cost (forced fee) from the caller to the sequencer address.
+            let premium_cost = self.premium_cost.read();
+            let quantum = self.assets.get_collateral_quantum();
+            let token_contract = self.assets.get_collateral_token_contract();
+            assert(
+                token_contract
+                    .transfer_from(
+                        sender: get_caller_address(),
+                        recipient: get_block_info().sequencer_address,
+                        amount: (premium_cost * quantum).into(),
+                    ),
+                TRANSFER_FAILED,
+            );
+
+            self
+                .emit(
+                    events::ForcedTradeRequest {
+                        order_a_position_id: order_a.position_id,
+                        order_a_base_asset_id: order_a.base_asset_id,
+                        order_a_base_amount: order_a.base_amount,
+                        order_a_quote_asset_id: order_a.quote_asset_id,
+                        order_a_quote_amount: order_a.quote_amount,
+                        fee_a_asset_id: order_a.fee_asset_id,
+                        fee_a_amount: order_a.fee_amount,
+                        order_b_position_id: order_b.position_id,
+                        order_b_base_asset_id: order_b.base_asset_id,
+                        order_b_base_amount: order_b.base_amount,
+                        order_b_quote_asset_id: order_b.quote_asset_id,
+                        order_b_quote_amount: order_b.quote_amount,
+                        fee_b_asset_id: order_b.fee_asset_id,
+                        fee_b_amount: order_b.fee_amount,
+                        order_a_hash: order_a.get_message_hash(public_key: public_key_a),
+                        order_b_hash: order_b.get_message_hash(public_key: public_key_b),
+                    },
+                );
+        }
 
         /// Executes a previously submitted forced trade request for a position.
         ///
@@ -782,7 +857,66 @@ pub mod Core {
         /// - Processes the forced trade.
         /// - Marks the forced request as completed and clears the pending entry.
         /// - Emits a `ForcedTrade` event.
-        fn forced_trade(ref self: ContractState, order_a: Order, order_b: Order) {}
+        fn forced_trade(ref self: ContractState, order_a: Order, order_b: Order) {
+            let position_a = self.positions.get_position_snapshot(position_id: order_a.position_id);
+            let position_b = self.positions.get_position_snapshot(position_id: order_b.position_id);
+            let public_key_a = position_a.get_owner_public_key();
+            let public_key_b = position_b.get_owner_public_key();
+
+            // Check forced request.
+            let (request_time, _) = self
+                .request_approvals
+                .consume_forced_approved_request(
+                    args: ForcedTrade { order_a, order_b }, public_key: public_key_a,
+                );
+
+            // Only operator can process the force trade during timelock.
+            if !self.roles.is_operator(get_caller_address()) {
+                let now = Time::now();
+                let forced_action_timelock = self.forced_action_timelock.read();
+                assert(request_time.add(forced_action_timelock) <= now, FORCED_WAIT_REQUIRED);
+            }
+
+            // Execute trade.
+            self
+                ._execute_trade(
+                    signature_a: array![].span(),
+                    signature_b: array![].span(),
+                    :order_a,
+                    :order_b,
+                    actual_amount_base_a: order_a.base_amount,
+                    actual_amount_quote_a: order_a.quote_amount,
+                    actual_fee_a: Zero::zero(),
+                    actual_fee_b: Zero::zero(),
+                    tvtr_a_before: Default::default(),
+                    tvtr_b_before: Default::default(),
+                    check_signature: false,
+                );
+
+            self
+                .emit(
+                    events::ForcedTrade {
+                        order_a_position_id: order_a.position_id,
+                        order_a_base_asset_id: order_a.base_asset_id,
+                        order_a_base_amount: order_a.base_amount,
+                        order_a_quote_asset_id: order_a.quote_asset_id,
+                        order_a_quote_amount: order_a.quote_amount,
+                        fee_a_asset_id: order_a.fee_asset_id,
+                        fee_a_amount: order_a.fee_amount,
+                        order_b_position_id: order_b.position_id,
+                        order_b_base_asset_id: order_b.base_asset_id,
+                        order_b_base_amount: order_b.base_amount,
+                        order_b_quote_asset_id: order_b.quote_asset_id,
+                        order_b_quote_amount: order_b.quote_amount,
+                        fee_b_asset_id: order_b.fee_asset_id,
+                        fee_b_amount: order_b.fee_amount,
+                        actual_amount_base_a: order_a.base_amount,
+                        actual_amount_quote_a: order_a.quote_amount,
+                        order_a_hash: order_a.get_message_hash(public_key: public_key_a),
+                        order_b_hash: order_b.get_message_hash(public_key: public_key_b),
+                    },
+                );
+        }
     }
 
     #[generate_trait]
@@ -799,6 +933,7 @@ pub mod Core {
             actual_fee_b: u64,
             tvtr_a_before: Nullable<PositionTVTR>,
             tvtr_b_before: Nullable<PositionTVTR>,
+            check_signature: bool,
         ) -> (PositionTVTR, PositionTVTR) {
             let synthetic_asset = self.assets.get_asset_config(order_a.base_asset_id);
             assert(synthetic_asset.asset_type == AssetType::SYNTHETIC, TRADE_ASSET_NOT_SYNTHETIC);
@@ -818,16 +953,24 @@ pub mod Core {
             let position_a = self.positions.get_position_snapshot(position_id_a);
             let position_b = self.positions.get_position_snapshot(position_id_b);
             // Signatures validation:
-            let hash_a = validate_signature(
-                public_key: position_a.get_owner_public_key(),
-                message: order_a,
-                signature: signature_a,
-            );
-            let hash_b = validate_signature(
-                public_key: position_b.get_owner_public_key(),
-                message: order_b,
-                signature: signature_b,
-            );
+            let (hash_a, hash_b) = match check_signature {
+                true => (
+                    validate_signature(
+                        public_key: position_a.get_owner_public_key(),
+                        message: order_a,
+                        signature: signature_a,
+                    ),
+                    validate_signature(
+                        public_key: position_b.get_owner_public_key(),
+                        message: order_b,
+                        signature: signature_b,
+                    ),
+                ),
+                false => (
+                    order_a.get_message_hash(public_key: position_a.get_owner_public_key()),
+                    order_b.get_message_hash(public_key: position_b.get_owner_public_key()),
+                ),
+            };
 
             // Validate and update fulfillments.
             self

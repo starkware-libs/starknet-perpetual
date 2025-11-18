@@ -103,3 +103,53 @@ pub struct Deleverage {
     pub quote_asset_id: AssetId,
     pub deleveraged_quote_amount: i64,
 }
+
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct ForcedTradeRequest {
+    #[key]
+    pub order_a_position_id: PositionId,
+    pub order_a_base_asset_id: AssetId,
+    pub order_a_base_amount: i64,
+    pub order_a_quote_asset_id: AssetId,
+    pub order_a_quote_amount: i64,
+    pub fee_a_asset_id: AssetId,
+    pub fee_a_amount: u64,
+    #[key]
+    pub order_b_position_id: PositionId,
+    pub order_b_base_asset_id: AssetId,
+    pub order_b_base_amount: i64,
+    pub order_b_quote_asset_id: AssetId,
+    pub order_b_quote_amount: i64,
+    pub fee_b_asset_id: AssetId,
+    pub fee_b_amount: u64,
+    #[key]
+    pub order_a_hash: felt252,
+    #[key]
+    pub order_b_hash: felt252,
+}
+
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct ForcedTrade {
+    #[key]
+    pub order_a_position_id: PositionId,
+    pub order_a_base_asset_id: AssetId,
+    pub order_a_base_amount: i64,
+    pub order_a_quote_asset_id: AssetId,
+    pub order_a_quote_amount: i64,
+    pub fee_a_asset_id: AssetId,
+    pub fee_a_amount: u64,
+    #[key]
+    pub order_b_position_id: PositionId,
+    pub order_b_base_asset_id: AssetId,
+    pub order_b_base_amount: i64,
+    pub order_b_quote_asset_id: AssetId,
+    pub order_b_quote_amount: i64,
+    pub fee_b_asset_id: AssetId,
+    pub fee_b_amount: u64,
+    pub actual_amount_base_a: i64,
+    pub actual_amount_quote_a: i64,
+    #[key]
+    pub order_a_hash: felt252,
+    #[key]
+    pub order_b_hash: felt252,
+}
