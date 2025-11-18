@@ -64,7 +64,6 @@ pub trait ValidateableOrderTrait<T> {
     }
 }
 
-
 #[derive(Copy, Drop, Hash, Serde)]
 // An order to buy or sell an asset for a collateral asset.
 // The base amount and quote amount have opposite signs.
@@ -201,7 +200,6 @@ impl OrderValidationTraitImpl of ValidateableOrderTrait<Order> {
     }
 }
 
-
 /// selector!(
 ///   "\"Order\"(
 ///    \"position_id\":\"PositionId\",
@@ -227,11 +225,62 @@ impl OrderValidationTraitImpl of ValidateableOrderTrait<Order> {
 
 const ORDER_TYPE_HASH: HashType = 0x36da8d51815527cabfaa9c982f564c80fa7429616739306036f1f9b608dd112;
 
-
-impl StructHashImpl of StructHash<Order> {
+impl OrderStructHashImpl of StructHash<Order> {
     fn hash_struct(self: @Order) -> HashType {
         let hash_state = PoseidonTrait::new();
         hash_state.update_with(ORDER_TYPE_HASH).update_with(*self).finalize()
+    }
+}
+
+#[derive(Copy, Drop, Hash, Serde)]
+pub struct ForcedTrade {
+    pub order_a: Order,
+    pub order_b: Order,
+    pub actual_amount_base_a: i64,
+    pub actual_amount_quote_a: i64,
+    pub expiration: Timestamp,
+    pub salt: felt252,
+}
+
+/// selector!(
+///   "\"ForcedTrade\"(
+///    \"order_a\":\"Order\",
+///    \"order_b\":\"Order\",
+///    \"actual_amount_base_a\":\"i64\",
+///    \"actual_amount_quote_a\":\"i64\",
+///    \"quote_amount\":\"i64\",
+///    \"expiration\":\"Timestamp\",
+///    \"salt\":\"felt\"
+///    )
+///   "\"Order\"(
+///    \"position_id\":\"PositionId\",
+///    \"base_asset_id\":\"AssetId\",
+///    \"base_amount\":\"i64\",
+///    \"quote_asset_id\":\"AssetId\",
+///    \"quote_amount\":\"i64\",
+///    \"fee_asset_id\":\"AssetId\",
+///    \"fee_amount\":\"u64\",
+///    \"expiration\":\"Timestamp\",
+///    \"salt\":\"felt\"
+///    )
+///    \"PositionId\"(
+///    \"value\":\"u32\"
+///    )"
+///    \"AssetId\"(
+///    \"value\":\"felt\"
+///    )"
+///    \"Timestamp\"(
+///    \"seconds\":\"u64\"
+///    )
+/// );
+
+const FORCED_TRADE_TYPE_HASH: HashType =
+    0x11fabd581112b40282b096a5a3a7879472797b0ce6e7755959f42c619c79e0b;
+
+impl ForcedTradeStructHashImpl of StructHash<ForcedTrade> {
+    fn hash_struct(self: @ForcedTrade) -> HashType {
+        let hash_state = PoseidonTrait::new();
+        hash_state.update_with(FORCED_TRADE_TYPE_HASH).update_with(*self).finalize()
     }
 }
 
@@ -239,20 +288,27 @@ impl StructHashImpl of StructHash<Order> {
 #[cfg(test)]
 mod tests {
     use starkware_utils::math::utils::to_base_16_string;
-    use super::{LIMIT_ORDER_TYPE_HASH, ORDER_TYPE_HASH};
+    use super::{FORCED_TRADE_TYPE_HASH, LIMIT_ORDER_TYPE_HASH, ORDER_TYPE_HASH};
 
     #[test]
     fn test_order_type_hash() {
         let expected = selector!(
             "\"Order\"(\"position_id\":\"felt\",\"base_asset_id\":\"AssetId\",\"base_amount\":\"i64\",\"quote_asset_id\":\"AssetId\",\"quote_amount\":\"i64\",\"fee_asset_id\":\"AssetId\",\"fee_amount\":\"u64\",\"expiration\":\"Timestamp\",\"salt\":\"felt\")\"PositionId\"(\"value\":\"u32\")\"AssetId\"(\"value\":\"felt\")\"Timestamp\"(\"seconds\":\"u64\")",
         );
-        assert!(to_base_16_string(ORDER_TYPE_HASH) == to_base_16_string(expected));
+        assert_eq!(to_base_16_string(ORDER_TYPE_HASH), to_base_16_string(expected));
     }
     #[test]
     fn test_limit_order_type_hash() {
         let expected = selector!(
             "\"LimitOrder\"(\"source_position\":\"PositionId\",\"receive_position\":\"PositionId\",\"base_asset_id\":\"AssetId\",\"base_amount\":\"i64\",\"quote_asset_id\":\"AssetId\",\"quote_amount\":\"i64\",\"fee_asset_id\":\"AssetId\",\"fee_amount\":\"u64\",\"expiration\":\"Timestamp\",\"salt\":\"felt\")\"PositionId\"(\"value\":\"u32\")\"AssetId\"(\"value\":\"felt\")\"Timestamp\"(\"seconds\":\"u64\")",
         );
-        assert!(to_base_16_string(LIMIT_ORDER_TYPE_HASH) == to_base_16_string(expected));
+        assert_eq!(to_base_16_string(LIMIT_ORDER_TYPE_HASH), to_base_16_string(expected));
+    }
+    #[test]
+    fn test_forced_trade_type_hash() {
+        let expected = selector!(
+            "\"ForcedTrade\"(\"order_a\":\"Order\",\"order_b\":\"Order\",\"actual_amount_base_a\":\"i64\",\"actual_amount_quote_a\":\"i64\",\"expiration\":\"Timestamp\",\"salt\":\"felt\")\"Order\"(\"position_id\":\"PositionId\",\"base_asset_id\":\"AssetId\",\"base_amount\":\"i64\",\"quote_asset_id\":\"AssetId\",\"quote_amount\":\"i64\",\"fee_asset_id\":\"AssetId\",\"fee_amount\":\"u64\",\"expiration\":\"Timestamp\",\"salt\":\"felt\")\"PositionId\"(\"value\":\"u32\")\"AssetId\"(\"value\":\"felt\")\"Timestamp\"(\"seconds\":\"u64\")",
+        );
+        assert_eq!(to_base_16_string(FORCED_TRADE_TYPE_HASH), to_base_16_string(expected));
     }
 }

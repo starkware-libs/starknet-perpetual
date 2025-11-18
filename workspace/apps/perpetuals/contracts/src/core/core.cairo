@@ -1,8 +1,10 @@
 #[starknet::contract]
 pub mod Core {
     use core::dict::{Felt252Dict, Felt252DictTrait};
+    use core::num::traits::Zero;
     use core::panic_with_felt252;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
+    use openzeppelin::interfaces::erc20::IERC20DispatcherTrait;
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::AssetsComponent::InternalTrait as AssetsInternal;
@@ -15,31 +17,32 @@ pub mod Core {
     use perpetuals::core::components::positions::Positions::{
         FEE_POSITION, InternalTrait as PositionsInternalTrait,
     };
-    use perpetuals::core::errors::{AMOUNT_OVERFLOW, SYNTHETIC_IS_ACTIVE};
+    use perpetuals::core::errors::{AMOUNT_OVERFLOW, SYNTHETIC_IS_ACTIVE, TRANSFER_FAILED};
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
     use perpetuals::core::types::asset::{AssetId, AssetStatus};
     use perpetuals::core::types::balance::Balance;
-    use perpetuals::core::types::order::{LimitOrder, Order};
+    use perpetuals::core::types::order::{ForcedTrade, LimitOrder, Order};
     use perpetuals::core::types::position::{PositionDiff, PositionId, PositionTrait};
     use perpetuals::core::types::price::PriceMulTrait;
     use perpetuals::core::types::vault::ConvertPositionToVault;
     use perpetuals::core::value_risk_calculator::PositionTVTR;
-    use starknet::ContractAddress;
     use starknet::event::EventEmitter;
-    use starknet::storage::StorageMapReadAccess;
+    use starknet::storage::{StorageMapReadAccess, StoragePointerReadAccess};
+    use starknet::{ContractAddress, get_block_info, get_caller_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent::InternalReplaceabilityTrait;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
+    use starkware_utils::components::request_approvals::RequestApprovalsComponent::InternalTrait as RequestApprovalsInternal;
     use starkware_utils::components::roles::RolesComponent;
     use starkware_utils::components::roles::RolesComponent::InternalTrait as RolesInternal;
     use starkware_utils::signature::stark::{PublicKey, Signature};
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
-    use starkware_utils::time::time::{TimeDelta, Timestamp};
+    use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
     use crate::core::components::assets::interface::IAssets;
     use crate::core::components::deleverage::deleverage_manager::IDeleverageManagerDispatcherTrait;
     use crate::core::components::external_components::external_component_manager::ExternalComponents as ExternalComponentsComponent;
@@ -140,6 +143,8 @@ pub mod Core {
         pub external_components: ExternalComponentsComponent::Storage,
         #[substorage(v0)]
         pub vaults: VaultsComponent::Storage,
+        forced_action_timeout: TimeDelta,
+        premium_cost: u64,
     }
 
     #[event]
@@ -171,6 +176,7 @@ pub mod Core {
         Trade: events::Trade,
         Withdraw: events::Withdraw,
         WithdrawRequest: events::WithdrawRequest,
+        ForcedTrade: events::ForcedTrade,
         #[flat]
         FulfillmentEvent: Fulfillement::Event,
         #[flat]
@@ -745,7 +751,70 @@ pub mod Core {
             actual_amount_quote_a: i64,
             expiration: Timestamp,
             salt: felt252,
-        ) {}
+        ) {
+            let position = self.positions.get_position_snapshot(position_id: order_a.position_id);
+
+            // Validate the caller is the position owner account
+            let owner_account = if (position.owner_protection_enabled.read()) {
+                position.get_owner_account()
+            } else {
+                Option::None
+            };
+            let public_key = position.get_owner_public_key();
+
+            // Validate the forced request signature
+            let hash = self
+                .request_approvals
+                .register_forced_approval(
+                    :owner_account,
+                    :public_key,
+                    :signature,
+                    args: ForcedTrade {
+                        order_a,
+                        order_b,
+                        actual_amount_base_a,
+                        actual_amount_quote_a,
+                        expiration,
+                        salt,
+                    },
+                );
+
+            // Transfer premium_cost (forced fee) from the caller to the sequencer address.
+            let premium_cost = self.premium_cost.read();
+            let token_contract = self.assets.get_collateral_token_contract();
+            assert(
+                token_contract
+                    .transfer_from(
+                        sender: get_caller_address(),
+                        recipient: get_block_info().sequencer_address,
+                        amount: premium_cost.into(),
+                    ),
+                TRANSFER_FAILED,
+            );
+
+            self
+                .emit(
+                    events::ForcedTrade {
+                        order_a_position_id: order_a.position_id,
+                        order_a_base_asset_id: order_a.base_asset_id,
+                        order_a_base_amount: order_a.base_amount,
+                        order_a_quote_asset_id: order_a.quote_asset_id,
+                        order_a_quote_amount: order_a.quote_amount,
+                        fee_a_asset_id: order_a.fee_asset_id,
+                        fee_a_amount: order_a.fee_amount,
+                        order_b_position_id: order_b.position_id,
+                        order_b_base_asset_id: order_b.base_asset_id,
+                        order_b_base_amount: order_b.base_amount,
+                        order_b_quote_asset_id: order_b.quote_asset_id,
+                        order_b_quote_amount: order_b.quote_amount,
+                        fee_b_asset_id: order_b.fee_asset_id,
+                        fee_b_amount: order_b.fee_amount,
+                        actual_amount_base_a,
+                        actual_amount_quote_a,
+                        hash,
+                    },
+                );
+        }
 
         /// Executes a previously submitted forced trade request for a position.
         ///
@@ -769,7 +838,47 @@ pub mod Core {
             actual_amount_quote_a: i64,
             expiration: Timestamp,
             salt: felt252,
-        ) {}
+        ) {
+            self.pausable.assert_not_paused();
+            self.assets.validate_assets_integrity();
+
+            let position_a = self.positions.get_position_snapshot(position_id: order_a.position_id);
+
+            // Check forced request.
+            let (request_time, hash) = self
+                .request_approvals
+                .consume_forced_approved_request(
+                    args: ForcedTrade {
+                        order_a,
+                        order_b,
+                        actual_amount_base_a,
+                        actual_amount_quote_a,
+                        expiration,
+                        salt,
+                    },
+                    public_key: position_a.get_owner_public_key(),
+                );
+
+            let now = Time::now();
+            let forced_action_timeout = self.forced_action_timeout.read();
+            assert(request_time.add(forced_action_timeout) <= now, 'TBD');
+
+            // Execute trade.
+            self
+                ._execute_trade(
+                    :signature_a,
+                    :signature_b,
+                    :order_a,
+                    :order_b,
+                    :actual_amount_base_a,
+                    :actual_amount_quote_a,
+                    actual_fee_a: Zero::zero(),
+                    actual_fee_b: Zero::zero(),
+                    tvtr_a_before: Default::default(),
+                    tvtr_b_before: Default::default(),
+                );
+            // TODO(Mohammad): add event.
+        }
     }
 
     #[generate_trait]
