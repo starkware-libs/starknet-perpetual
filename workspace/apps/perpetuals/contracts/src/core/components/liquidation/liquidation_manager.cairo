@@ -42,7 +42,10 @@ pub trait ILiquidationManager<TContractState> {
 
 #[starknet::contract]
 pub(crate) mod LiquidationManager {
-    use core::num::traits::Zero;
+    use crate::core::types::funding::FundingIndex;
+use crate::core::types::price::Price;
+use core::dict::Felt252Dict;
+use core::num::traits::Zero;
     use core::panic_with_felt252;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
@@ -270,6 +273,8 @@ pub(crate) mod LiquidationManager {
                     position: liquidated_position,
                     position_diff: liquidated_position_diff,
                 );
+                let mut price_and_funding_cache: Felt252Dict<Nullable<(Price, FundingIndex)>> =
+                Default::default();
             self
                 .positions
                 .validate_healthy_or_healthier_position(
@@ -277,6 +282,7 @@ pub(crate) mod LiquidationManager {
                     position: liquidator_position,
                     position_diff: liquidator_position_diff,
                     tvtr_before: Default::default(),
+                    ref :price_and_funding_cache,
                 );
 
             // Apply Diffs.
@@ -343,9 +349,11 @@ pub(crate) mod LiquidationManager {
                 ._validate_synthetic_shrinks(
                     :position, asset_id: synthetic_diff_id, amount: synthetic_diff_balance.into(),
                 );
+            let mut price_and_funding_cache: Felt252Dict<Nullable<(Price, FundingIndex)>> =
+                    Default::default();
             let (provisional_delta, unchanged_assets) = self
                 .positions
-                .derive_funding_delta_and_unchanged_assets(:position, :position_diff);
+                .derive_funding_delta_and_unchanged_assets(:position, :position_diff, ref :price_and_funding_cache);
             let synthetic_enriched_position_diff = self
                 .positions
                 .enrich_asset(:position, :position_diff);

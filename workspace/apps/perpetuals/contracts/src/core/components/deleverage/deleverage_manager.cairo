@@ -29,7 +29,10 @@ pub trait IDeleverageManager<TContractState> {
 
 #[starknet::contract]
 pub(crate) mod DeleverageManager {
-    use openzeppelin::access::accesscontrol::AccessControlComponent;
+    use crate::core::types::funding::FundingIndex;
+use crate::core::types::price::Price;
+use core::dict::Felt252Dict;
+use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::AssetsComponent::InternalImpl as AssetsInternal;
@@ -196,6 +199,8 @@ pub(crate) mod DeleverageManager {
                     position: deleveraged_position,
                     position_diff: deleveraged_position_diff,
                 );
+                let mut price_and_funding_cache: Felt252Dict<Nullable<(Price, FundingIndex)>> =
+                    Default::default();
             self
                 .positions
                 .validate_healthy_or_healthier_position(
@@ -203,6 +208,7 @@ pub(crate) mod DeleverageManager {
                     position: deleverager_position,
                     position_diff: deleverager_position_diff,
                     tvtr_before: Default::default(),
+                    ref price_and_funding_cache: price_and_funding_cache
                 );
 
             // Apply diffs
@@ -239,9 +245,11 @@ pub(crate) mod DeleverageManager {
             position: StoragePath<Position>,
             position_diff: PositionDiff,
         ) {
+            let mut price_and_funding_cache: Felt252Dict<Nullable<(Price, FundingIndex)>> =
+                    Default::default();
             let (provisional_delta, unchanged_assets) = self
                 .positions
-                .derive_funding_delta_and_unchanged_assets(:position, :position_diff);
+                .derive_funding_delta_and_unchanged_assets(:position, :position_diff, ref :price_and_funding_cache);
 
             let synthetic_enriched_position_diff = self
                 .positions

@@ -57,7 +57,10 @@ pub trait ITransferManager<TContractState> {
 
 #[starknet::contract]
 pub(crate) mod TransferManager {
-    use core::num::traits::Zero;
+    use crate::core::types::funding::FundingIndex;
+use crate::core::types::price::Price;
+use core::dict::Felt252Dict;
+use core::num::traits::Zero;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
@@ -326,6 +329,8 @@ pub(crate) mod TransferManager {
 
             /// Validations - Fundamentals:
             let sender_position = self.positions.get_position_snapshot(:position_id);
+            let mut price_and_funding_cache: Felt252Dict<Nullable<(Price, FundingIndex)>> =
+                    Default::default();
             self
                 .positions
                 .validate_healthy_or_healthier_position(
@@ -333,6 +338,7 @@ pub(crate) mod TransferManager {
                     position: sender_position,
                     position_diff: position_diff_sender,
                     tvtr_before: Default::default(),
+                    ref : price_and_funding_cache,
                 );
 
             // Execute transfer
