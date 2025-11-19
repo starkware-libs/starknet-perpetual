@@ -84,7 +84,7 @@ pub(crate) mod TransferManager {
     use crate::core::components::external_components::named_component::ITypedComponent;
     use crate::core::components::snip::SNIP12MetadataImpl;
     use crate::core::components::vaults::vaults::{IVaults, Vaults as VaultsComponent};
-    use crate::core::errors::{INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED};
+    use crate::core::errors::Error::{INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT};
     use crate::core::types::asset::synthetic::AssetType;
     use crate::core::types::position::PositionDiff;
     use crate::core::types::transfer::TransferArgs;
@@ -207,7 +207,7 @@ pub(crate) mod TransferManager {
 
             self.positions.get_position_snapshot(position_id: recipient);
             let position = self.positions.get_position_snapshot(:position_id);
-            assert(amount.is_non_zero(), INVALID_ZERO_AMOUNT);
+            assert!(amount.is_non_zero(), "{}", INVALID_ZERO_AMOUNT);
             let owner_account = if (position.owner_protection_enabled.read()) {
                 position.get_owner_account()
             } else {
@@ -262,8 +262,8 @@ pub(crate) mod TransferManager {
             expiration: Timestamp,
             salt: felt252,
         ) {
-            validate_expiration(:expiration, err: SIGNED_TX_EXPIRED);
-            assert(recipient != position_id, INVALID_SAME_POSITIONS);
+            validate_expiration(:expiration, err: 'SIGNED_TX_EXPIRED');
+            assert!(recipient != position_id, "{}", INVALID_SAME_POSITIONS);
             let position = self.positions.get_position_snapshot(:position_id);
             let hash = self
                 .request_approvals
