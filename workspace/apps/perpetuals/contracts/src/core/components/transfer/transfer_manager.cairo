@@ -57,6 +57,7 @@ pub trait ITransferManager<TContractState> {
 
 #[starknet::contract]
 pub(crate) mod TransferManager {
+    use core::dict::Felt252Dict;
     use core::num::traits::Zero;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
@@ -69,6 +70,7 @@ pub(crate) mod TransferManager {
     use perpetuals::core::components::positions::Positions as PositionsComponent;
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
     use perpetuals::core::types::asset::AssetId;
+    use perpetuals::core::types::funding::FundingIndex;
     use perpetuals::core::types::position::{PositionId, PositionTrait};
     use starknet::storage::StoragePointerReadAccess;
     use starkware_utils::components::pausable::PausableComponent;
@@ -326,6 +328,9 @@ pub(crate) mod TransferManager {
 
             /// Validations - Fundamentals:
             let sender_position = self.positions.get_position_snapshot(:position_id);
+            let mut price_cache: Felt252Dict<u64> = Default::default();
+            let mut global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>> =
+                Default::default();
             self
                 .positions
                 .validate_healthy_or_healthier_position(
@@ -333,6 +338,8 @@ pub(crate) mod TransferManager {
                     position: sender_position,
                     position_diff: position_diff_sender,
                     tvtr_before: Default::default(),
+                    ref :price_cache,
+                    ref :global_funding_index_cache,
                 );
 
             // Execute transfer
@@ -344,7 +351,9 @@ pub(crate) mod TransferManager {
             self
                 .positions
                 .validate_asset_balance_is_not_negative(
-                    position: sender_position, asset_id: collateral_id,
+                    position: sender_position,
+                    asset_id: collateral_id,
+                    ref :global_funding_index_cache,
                 );
         }
     }

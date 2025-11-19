@@ -20,6 +20,7 @@ pub mod Core {
     use perpetuals::core::interface::{ICore, Settlement};
     use perpetuals::core::types::asset::{AssetId, AssetStatus};
     use perpetuals::core::types::balance::Balance;
+    use perpetuals::core::types::funding::FundingIndex;
     use perpetuals::core::types::order::{LimitOrder, Order};
     use perpetuals::core::types::position::{PositionDiff, PositionId, PositionTrait};
     use perpetuals::core::types::price::PriceMulTrait;
@@ -340,6 +341,9 @@ pub mod Core {
             self.assets.validate_assets_integrity();
 
             let mut tvtr_cache: Felt252Dict<Nullable<PositionTVTR>> = Default::default();
+            let mut price_cache: Felt252Dict<u64> = Default::default();
+            let mut global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>> =
+                Default::default();
 
             for _trade in trades {
                 let trade = *_trade;
@@ -360,6 +364,8 @@ pub mod Core {
                         actual_fee_b: trade.actual_fee_b,
                         tvtr_a_before: cached_pos_a_tvtr,
                         tvtr_b_before: cached_pos_b_tvtr,
+                        ref :price_cache,
+                        ref :global_funding_index_cache,
                     );
                 tvtr_cache.insert(position_id_a, NullableTrait::new(updated_a));
                 tvtr_cache.insert(position_id_b, NullableTrait::new(updated_b));
@@ -406,6 +412,9 @@ pub mod Core {
             self.pausable.assert_not_paused();
             self.assets.validate_assets_integrity();
             self.operator_nonce.use_checked_nonce(:operator_nonce);
+            let mut price_cache: Felt252Dict<u64> = Default::default();
+            let mut global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>> =
+                Default::default();
 
             self
                 ._execute_trade(
@@ -419,6 +428,8 @@ pub mod Core {
                     :actual_fee_b,
                     tvtr_a_before: Default::default(),
                     tvtr_b_before: Default::default(),
+                    ref :price_cache,
+                    ref :global_funding_index_cache,
                 );
         }
 
@@ -678,6 +689,8 @@ pub mod Core {
             actual_fee_b: u64,
             tvtr_a_before: Nullable<PositionTVTR>,
             tvtr_b_before: Nullable<PositionTVTR>,
+            ref price_cache: Felt252Dict<u64>,
+            ref global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>>,
         ) -> (PositionTVTR, PositionTVTR) {
             let synthetic_asset = self.assets.get_asset_config(order_a.base_asset_id);
             assert(synthetic_asset.asset_type == AssetType::SYNTHETIC, 'TRADE_ASSET_NOT_SYNTHETIC');
@@ -754,6 +767,8 @@ pub mod Core {
                     position: position_a,
                     position_diff: position_diff_a,
                     tvtr_before: tvtr_a_before,
+                    ref :price_cache,
+                    ref :global_funding_index_cache,
                 );
             let tvtr_b_after = self
                 .positions
@@ -762,6 +777,8 @@ pub mod Core {
                     position: position_b,
                     position_diff: position_diff_b,
                     tvtr_before: tvtr_b_before,
+                    ref :price_cache,
+                    ref :global_funding_index_cache,
                 );
 
             // Apply Diffs.

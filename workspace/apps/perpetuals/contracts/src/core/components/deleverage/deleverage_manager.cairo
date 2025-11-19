@@ -29,6 +29,7 @@ pub trait IDeleverageManager<TContractState> {
 
 #[starknet::contract]
 pub(crate) mod DeleverageManager {
+    use core::dict::Felt252Dict;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
@@ -42,6 +43,7 @@ pub(crate) mod DeleverageManager {
     use perpetuals::core::components::positions::Positions as PositionsComponent;
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
     use perpetuals::core::components::snip::SNIP12MetadataImpl;
+    use perpetuals::core::types::funding::FundingIndex;
     use perpetuals::core::types::position::PositionId;
     use starknet::storage::StoragePath;
     use starkware_utils::components::pausable::PausableComponent;
@@ -155,6 +157,9 @@ pub(crate) mod DeleverageManager {
             deleveraged_base_amount: i64,
             deleveraged_quote_amount: i64,
         ) {
+            let mut price_cache: Felt252Dict<u64> = Default::default();
+            let mut global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>> =
+                Default::default();
             let deleveraged_position = self
                 .positions
                 .get_position_snapshot(position_id: deleveraged_position_id);
@@ -195,7 +200,10 @@ pub(crate) mod DeleverageManager {
                     position_id: deleveraged_position_id,
                     position: deleveraged_position,
                     position_diff: deleveraged_position_diff,
+                    ref :price_cache,
+                    ref :global_funding_index_cache,
                 );
+
             self
                 .positions
                 .validate_healthy_or_healthier_position(
@@ -203,6 +211,8 @@ pub(crate) mod DeleverageManager {
                     position: deleverager_position,
                     position_diff: deleverager_position_diff,
                     tvtr_before: Default::default(),
+                    ref :price_cache,
+                    ref :global_funding_index_cache,
                 );
 
             // Apply diffs
@@ -238,20 +248,25 @@ pub(crate) mod DeleverageManager {
             position_id: PositionId,
             position: StoragePath<Position>,
             position_diff: PositionDiff,
+            ref price_cache: Felt252Dict<u64>,
+            ref global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>>,
         ) {
             let (provisional_delta, unchanged_assets) = self
                 .positions
-                .derive_funding_delta_and_unchanged_assets(:position, :position_diff);
+                .derive_funding_delta_and_unchanged_assets(
+                    :position, :position_diff, ref :price_cache, ref :global_funding_index_cache,
+                );
 
             let synthetic_enriched_position_diff = self
                 .positions
-                .enrich_asset(:position, :position_diff);
+                .enrich_asset(:position, :position_diff, ref :price_cache);
             let position_diff_enriched = self
                 .positions
                 .enrich_collateral(
                     :position,
                     position_diff: synthetic_enriched_position_diff,
                     provisional_delta: Option::Some(provisional_delta),
+                    ref :global_funding_index_cache,
                 );
 
             deleveraged_position_validations(
