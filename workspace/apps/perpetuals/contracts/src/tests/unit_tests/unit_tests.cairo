@@ -14,7 +14,6 @@ use perpetuals::core::components::positions::interface::{
     IPositions, IPositionsDispatcher, IPositionsDispatcherTrait,
 };
 use perpetuals::core::components::snip::SNIP12MetadataImpl;
-use perpetuals::core::errors::SIGNED_TX_EXPIRED;
 use perpetuals::core::interface::{ICore, ICoreSafeDispatcher, ICoreSafeDispatcherTrait};
 use perpetuals::core::types::asset::AssetStatus;
 use perpetuals::core::types::funding::{FUNDING_SCALE, FundingIndex, FundingTick};
@@ -218,7 +217,7 @@ fn test_expiration_validation() {
             expiration: withdraw_args.expiration,
             salt: withdraw_args.salt,
         );
-    assert_panic_with_felt_error(:result, expected_error: SIGNED_TX_EXPIRED);
+    assert_panic_with_felt_error(:result, expected_error: 'SIGNED_TX_EXPIRED');
 }
 
 #[test]
@@ -2337,7 +2336,7 @@ fn test_successful_trade() {
 }
 
 #[test]
-#[should_panic(expected: 'INVALID_AMOUNT_SIGN')]
+#[should_panic(expected: "INVALID_AMOUNT_SIGN")]
 fn test_invalid_trade_same_base_signs() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -3049,7 +3048,7 @@ fn test_successful_transfer() {
 }
 
 #[test]
-#[should_panic(expected: 'INVALID_ZERO_AMOUNT')]
+#[should_panic(expected: "INVALID_ZERO_AMOUNT")]
 fn test_invalid_transfer_request_amount_is_zero() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
