@@ -1,24 +1,21 @@
 use core::num::traits::Zero;
 use core::panic_with_felt252;
-use core::panics::panic_with_byte_array;
+use perpetuals::core::components::assets::errors::{SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS};
 use perpetuals::core::components::positions::Positions::FEE_POSITION;
-use perpetuals::core::errors::{
-    CANT_TRADE_WITH_FEE_POSITION, DIFFERENT_BASE_ASSET_IDS, INVALID_QUOTE_FEE_AMOUNT,
-    INVALID_ZERO_AMOUNT,
+use perpetuals::core::errors::Error::{
+    ASSET_ID_NOT_COLLATERAL, CANT_TRADE_WITH_FEE_POSITION, DIFFERENT_BASE_ASSET_IDS,
+    INVALID_ACTUAL_BASE_SIGN, INVALID_ACTUAL_QUOTE_SIGN, INVALID_AMOUNT_SIGN,
+    INVALID_QUOTE_AMOUNT_SIGN, INVALID_QUOTE_FEE_AMOUNT, INVALID_SAME_POSITIONS,
+    INVALID_ZERO_AMOUNT, ORDER_EXPIRED,
 };
+use perpetuals::core::types::asset::synthetic::AssetConfig;
+use perpetuals::core::types::asset::{AssetId, AssetStatus};
+use perpetuals::core::types::order::ValidateableOrderTrait;
 use starkware_utils::hash::message_hash::OffchainMessageHash;
 use starkware_utils::math::abs::Abs;
 use starkware_utils::math::utils::have_same_sign;
 use starkware_utils::signature::stark::{HashType, PublicKey, Signature, validate_stark_signature};
 use starkware_utils::time::time::Time;
-use super::components::assets::errors::{SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS};
-use super::errors::{
-    ASSET_ID_NOT_COLLATERAL, INVALID_ACTUAL_BASE_SIGN, INVALID_ACTUAL_QUOTE_SIGN,
-    INVALID_AMOUNT_SIGN, INVALID_QUOTE_AMOUNT_SIGN, INVALID_SAME_POSITIONS, order_expired_err,
-};
-use super::types::asset::synthetic::AssetConfig;
-use super::types::asset::{AssetId, AssetStatus};
-use super::types::order::ValidateableOrderTrait;
 
 pub fn validate_signature<T, +Drop<T>, +Copy<T>, +OffchainMessageHash<T>>(
     public_key: PublicKey, message: T, signature: Signature,
@@ -39,7 +36,7 @@ pub fn validate_trade<T, impl TValidateableOrder: ValidateableOrderTrait<T>, +Dr
     collateral_id: AssetId,
 ) {
     // Base asset check.
-    assert(order_a.base_asset_id() == order_b.base_asset_id(), DIFFERENT_BASE_ASSET_IDS);
+    assert!(order_a.base_asset_id() == order_b.base_asset_id(), "{}", DIFFERENT_BASE_ASSET_IDS);
 
     match asset {
         None => panic_with_felt252(SYNTHETIC_NOT_EXISTS),
@@ -48,22 +45,28 @@ pub fn validate_trade<T, impl TValidateableOrder: ValidateableOrderTrait<T>, +Dr
         ),
     }
 
-    assert(order_a.position_id() != order_b.position_id(), INVALID_SAME_POSITIONS);
+    assert!(order_a.position_id() != order_b.position_id(), "{}", INVALID_SAME_POSITIONS);
 
     validate_order(order: order_a, collateral_id: collateral_id);
     validate_order(order: order_b, collateral_id: collateral_id);
 
     // Non-zero actual amount check.
-    assert(actual_amount_base_a.is_non_zero(), INVALID_ZERO_AMOUNT);
-    assert(actual_amount_quote_a.is_non_zero(), INVALID_ZERO_AMOUNT);
+    assert!(actual_amount_base_a.is_non_zero(), "{}", INVALID_ZERO_AMOUNT);
+    assert!(actual_amount_quote_a.is_non_zero(), "{}", INVALID_ZERO_AMOUNT);
 
     // Sign Validation for amounts.
-    assert(
-        !have_same_sign(order_a.quote_amount(), order_b.quote_amount()), INVALID_QUOTE_AMOUNT_SIGN,
+    assert!(
+        !have_same_sign(order_a.quote_amount(), order_b.quote_amount()),
+        "{}",
+        INVALID_QUOTE_AMOUNT_SIGN,
     );
-    assert(have_same_sign(order_a.base_amount(), actual_amount_base_a), INVALID_ACTUAL_BASE_SIGN);
-    assert(
-        have_same_sign(order_a.quote_amount(), actual_amount_quote_a), INVALID_ACTUAL_QUOTE_SIGN,
+    assert!(
+        have_same_sign(order_a.base_amount(), actual_amount_base_a), "{}", INVALID_ACTUAL_BASE_SIGN,
+    );
+    assert!(
+        have_same_sign(order_a.quote_amount(), actual_amount_quote_a),
+        "{}",
+        INVALID_ACTUAL_QUOTE_SIGN,
     );
 
     order_a
@@ -85,24 +88,21 @@ pub fn validate_order<T, impl TValidateableOrder: ValidateableOrderTrait<T>, +Dr
     order: T, collateral_id: AssetId,
 ) {
     // Verify that position is not fee position.
-    assert(order.position_id() != FEE_POSITION, CANT_TRADE_WITH_FEE_POSITION);
+    assert!(order.position_id() != FEE_POSITION, "{}", CANT_TRADE_WITH_FEE_POSITION);
     // This is to make sure that the fee is relative to the quote amount.
-    assert(order.quote_amount().abs() > order.fee_amount(), INVALID_QUOTE_FEE_AMOUNT);
+    assert!(order.quote_amount().abs() > order.fee_amount(), "{}", INVALID_QUOTE_FEE_AMOUNT);
     // Non-zero amount check.
-    assert(order.base_amount().is_non_zero(), INVALID_ZERO_AMOUNT);
-    assert(order.quote_amount().is_non_zero(), INVALID_ZERO_AMOUNT);
+    assert!(order.base_amount().is_non_zero(), "{}", INVALID_ZERO_AMOUNT);
+    assert!(order.quote_amount().is_non_zero(), "{}", INVALID_ZERO_AMOUNT);
 
     // Expiration check.
     let now = Time::now();
-    if (now > order.expiration()) {
-        let err = order_expired_err(order.position_id());
-        panic_with_byte_array(err: @err);
-    }
+    assert!(now <= order.expiration(), "{}", ORDER_EXPIRED(order.position_id()));
 
     // Sign Validation for amounts.
-    assert(!have_same_sign(order.quote_amount(), order.base_amount()), INVALID_AMOUNT_SIGN);
+    assert!(!have_same_sign(order.quote_amount(), order.base_amount()), "{}", INVALID_AMOUNT_SIGN);
 
     // Validate asset ids.
-    assert(order.quote_asset_id() == collateral_id, ASSET_ID_NOT_COLLATERAL);
-    assert(order.fee_asset_id() == collateral_id, ASSET_ID_NOT_COLLATERAL);
+    assert!(order.quote_asset_id() == collateral_id, "{}", ASSET_ID_NOT_COLLATERAL);
+    assert!(order.fee_asset_id() == collateral_id, "{}", ASSET_ID_NOT_COLLATERAL);
 }

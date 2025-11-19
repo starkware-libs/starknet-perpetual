@@ -18,18 +18,23 @@ pub mod Positions {
     };
     use perpetuals::core::components::positions::events;
     use perpetuals::core::components::positions::interface::IPositions;
+    use perpetuals::core::components::snip::SNIP12MetadataImpl;
+    use perpetuals::core::errors::Error::{
+        INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE, INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT,
+    };
     use perpetuals::core::types::asset::AssetId;
-    use perpetuals::core::types::asset::synthetic::AssetBalanceInfo;
-    use perpetuals::core::types::balance::Balance;
+    use perpetuals::core::types::asset::synthetic::{AssetBalanceDiffEnriched, AssetBalanceInfo};
+    use perpetuals::core::types::balance::{Balance, BalanceDiff};
     use perpetuals::core::types::funding::calculate_funding;
     use perpetuals::core::types::position::{
-        AssetBalance, POSITION_VERSION, Position, PositionData, PositionDiff, PositionId,
-        PositionMutableTrait, PositionTrait,
+        AssetBalance, AssetEnrichedPositionDiff, POSITION_VERSION, Position, PositionData,
+        PositionDiff, PositionDiffEnriched, PositionId, PositionMutableTrait, PositionTrait,
     };
     use perpetuals::core::types::set_owner_account::SetOwnerAccountArgs;
     use perpetuals::core::types::set_public_key::SetPublicKeyArgs;
     use perpetuals::core::value_risk_calculator::{
-        PositionState, PositionTVTR, calculate_position_tvtr, evaluate_position,
+        PositionState, PositionTVTR, assert_healthy_or_healthier, calculate_position_tvtr,
+        calculate_position_tvtr_before, calculate_position_tvtr_change, evaluate_position,
     };
     use starknet::storage::{
         Map, Mutable, StoragePath, StoragePathEntry, StoragePointerReadAccess,
@@ -49,16 +54,6 @@ pub mod Positions {
     };
     use starkware_utils::storage::utils::AddToStorage;
     use starkware_utils::time::time::{Timestamp, validate_expiration};
-    use crate::core::components::snip::SNIP12MetadataImpl;
-    use crate::core::errors::{
-        INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE, INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT,
-    };
-    use crate::core::types::asset::synthetic::AssetBalanceDiffEnriched;
-    use crate::core::types::balance::BalanceDiff;
-    use crate::core::types::position::{AssetEnrichedPositionDiff, PositionDiffEnriched};
-    use crate::core::value_risk_calculator::{
-        assert_healthy_or_healthier, calculate_position_tvtr_before, calculate_position_tvtr_change,
-    };
 
     pub const FEE_POSITION: PositionId = PositionId { value: 0 };
     pub const INSURANCE_FUND_POSITION: PositionId = PositionId { value: 1 };
@@ -654,8 +649,8 @@ pub mod Positions {
                 .get_synthetic_balance(:position, synthetic_id: asset_id)
                 .into();
 
-            assert(!have_same_sign(amount, position_base_balance), INVALID_AMOUNT_SIGN);
-            assert(amount.abs() <= position_base_balance.abs(), INVALID_BASE_CHANGE);
+            assert!(!have_same_sign(amount, position_base_balance), "{}", INVALID_AMOUNT_SIGN);
+            assert!(amount.abs() <= position_base_balance.abs(), "{}", INVALID_BASE_CHANGE);
         }
 
         fn _validate_imposed_reduction_trade(
@@ -669,14 +664,14 @@ pub mod Positions {
             quote_amount_a: i64,
         ) {
             // Validate positions.
-            assert(position_id_a != position_id_b, INVALID_SAME_POSITIONS);
+            assert!(position_id_a != position_id_b, "{}", INVALID_SAME_POSITIONS);
 
             // Non-zero amount check.
-            assert(base_amount_a.is_non_zero(), INVALID_ZERO_AMOUNT);
-            assert(quote_amount_a.is_non_zero(), INVALID_ZERO_AMOUNT);
+            assert!(base_amount_a.is_non_zero(), "{}", INVALID_ZERO_AMOUNT);
+            assert!(quote_amount_a.is_non_zero(), "{}", INVALID_ZERO_AMOUNT);
 
             // Sign Validation for amounts.
-            assert(!have_same_sign(base_amount_a, quote_amount_a), INVALID_AMOUNT_SIGN);
+            assert!(!have_same_sign(base_amount_a, quote_amount_a), "{}", INVALID_AMOUNT_SIGN);
 
             // Ensure that TR does not increase and that the base amount retains the same sign.
             self
