@@ -24,7 +24,7 @@ pub mod Positions {
     use perpetuals::core::types::funding::calculate_funding;
     use perpetuals::core::types::position::{
         AssetBalance, POSITION_VERSION, Position, PositionData, PositionDiff, PositionId,
-        PositionMutableTrait, PositionTrait,
+        PositionMutableTrait, PositionTrait, OptionAssetBalanceReadAccessTrait,
     };
     use perpetuals::core::types::set_owner_account::SetOwnerAccountArgs;
     use perpetuals::core::types::set_public_key::SetPublicKeyArgs;
@@ -35,6 +35,11 @@ pub mod Positions {
         Map, Mutable, StoragePath, StoragePathEntry, StoragePointerReadAccess,
         StoragePointerWriteAccess,
     };
+
+    use starkware_utils::storage::iterable_map::{
+        IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapTrait,
+        IterableMapWriteAccessImpl,
+    };
     use starknet::{ContractAddress, get_caller_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
@@ -44,9 +49,6 @@ pub mod Positions {
     use starkware_utils::math::abs::Abs;
     use starkware_utils::math::utils::have_same_sign;
     use starkware_utils::signature::stark::{PublicKey, Signature};
-    use starkware_utils::storage::iterable_map::{
-        IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
-    };
     use starkware_utils::storage::utils::AddToStorage;
     use starkware_utils::time::time::{Timestamp, validate_expiration};
     use crate::core::components::snip::SNIP12MetadataImpl;
@@ -514,10 +516,10 @@ pub mod Positions {
             position: StoragePath<Position>,
             synthetic_id: AssetId,
         ) -> Balance {
-            if let Option::Some(synthetic) = position.asset_balances.read(synthetic_id) {
-                synthetic.balance
-            } else {
-                0_i64.into()
+            let entry = position.asset_balances.pointer(synthetic_id);
+            match OptionAssetBalanceReadAccessTrait::get_balance(:entry) {
+                Option::None => 0_i64.into(),
+                Option::Some(balance) => balance,
             }
         }
 
