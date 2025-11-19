@@ -63,12 +63,17 @@ pub(crate) mod WithdrawalManager {
     use perpetuals::core::components::assets::AssetsComponent::InternalImpl as AssetsInternal;
     use perpetuals::core::components::assets::interface::IAssets;
     use perpetuals::core::components::deposit::Deposit::InternalImpl as DepositInternal;
+    use perpetuals::core::components::external_components::interface::EXTERNAL_COMPONENT_WITHDRAWALS;
+    use perpetuals::core::components::external_components::named_component::ITypedComponent;
     use perpetuals::core::components::fulfillment::fulfillment::Fulfillement as FulfillmentComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalImpl as OperatorNonceInternal;
     use perpetuals::core::components::positions::Positions as PositionsComponent;
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
-    use perpetuals::core::types::position::{PositionId, PositionTrait};
+    use perpetuals::core::components::snip::SNIP12MetadataImpl;
+    use perpetuals::core::errors::Error::{INVALID_ZERO_AMOUNT, TRANSFER_FAILED};
+    use perpetuals::core::types::position::{PositionDiff, PositionId, PositionTrait};
+    use perpetuals::core::types::withdraw::WithdrawArgs;
     use starknet::ContractAddress;
     use starknet::storage::StoragePointerReadAccess;
     use starkware_utils::components::pausable::PausableComponent;
@@ -80,12 +85,6 @@ pub(crate) mod WithdrawalManager {
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
     use starkware_utils::time::time::validate_expiration;
-    use crate::core::components::external_components::interface::EXTERNAL_COMPONENT_WITHDRAWALS;
-    use crate::core::components::external_components::named_component::ITypedComponent;
-    use crate::core::components::snip::SNIP12MetadataImpl;
-    use crate::core::errors::{INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED, TRANSFER_FAILED};
-    use crate::core::types::position::PositionDiff;
-    use crate::core::types::withdraw::WithdrawArgs;
     use super::{IWithdrawalManager, Signature, Timestamp, Withdraw, WithdrawRequest};
 
     impl SnipImpl = SNIP12MetadataImpl;
@@ -170,7 +169,7 @@ pub(crate) mod WithdrawalManager {
         ) {
             let position = self.positions.get_position_snapshot(:position_id);
             let collateral_id = self.assets.get_collateral_id();
-            assert(amount.is_non_zero(), INVALID_ZERO_AMOUNT);
+            assert!(amount.is_non_zero(), "{}", INVALID_ZERO_AMOUNT);
             let owner_account = if (position.owner_protection_enabled.read()) {
                 position.get_owner_account()
             } else {
@@ -208,7 +207,7 @@ pub(crate) mod WithdrawalManager {
             expiration: super::Timestamp,
             salt: felt252,
         ) {
-            validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
+            validate_expiration(expiration: expiration, err: 'SIGNED_TX_EXPIRED');
             let collateral_id = self.assets.get_collateral_id();
             let position = self.positions.get_position_snapshot(:position_id);
             let hash = self
@@ -235,8 +234,9 @@ pub(crate) mod WithdrawalManager {
             let quantum = self.assets.get_collateral_quantum();
             let withdraw_unquantized_amount = quantum * amount;
             let token_contract = self.assets.get_collateral_token_contract();
-            assert(
+            assert!(
                 token_contract.transfer(:recipient, amount: withdraw_unquantized_amount.into()),
+                "{}",
                 TRANSFER_FAILED,
             );
 

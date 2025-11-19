@@ -1,6 +1,5 @@
 use core::num::traits::{Pow, Zero};
-use core::panics::panic_with_byte_array;
-use perpetuals::core::errors::invalid_funding_rate_err;
+use perpetuals::core::errors::Error::INVALID_FUNDING_RATE;
 use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::balance::{Balance, BalanceTrait};
 use perpetuals::core::types::price::{Price, PriceMulTrait};
@@ -123,10 +122,11 @@ pub fn validate_funding_rate(
     time_diff: u64,
     synthetic_price: Price,
 ) {
-    if (index_diff.into() > synthetic_price.mul(rhs: max_funding_rate) * time_diff.into()) {
-        let err = invalid_funding_rate_err(:synthetic_id);
-        panic_with_byte_array(err: @err);
-    }
+    assert!(
+        index_diff.into() <= synthetic_price.mul(rhs: max_funding_rate) * time_diff.into(),
+        "{}",
+        INVALID_FUNDING_RATE(synthetic_id),
+    );
 }
 
 
