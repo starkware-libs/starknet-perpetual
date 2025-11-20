@@ -43,12 +43,11 @@ pub trait ILiquidationManager<TContractState> {
 #[starknet::contract]
 pub(crate) mod LiquidationManager {
     use core::num::traits::Zero;
-    use core::panic_with_felt252;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::AssetsComponent::InternalImpl as AssetsInternal;
-    use perpetuals::core::components::assets::errors::SYNTHETIC_NOT_EXISTS;
+    use perpetuals::core::components::assets::errors::Error::SYNTHETIC_NOT_EXISTS;
     use perpetuals::core::components::assets::interface::IAssets;
     use perpetuals::core::components::external_components::interface::EXTERNAL_COMPONENT_LIQUIDATIONS;
     use perpetuals::core::components::external_components::named_component::ITypedComponent;
@@ -70,6 +69,7 @@ pub(crate) mod LiquidationManager {
     use starkware_utils::components::pausable::PausableComponent::InternalImpl as PausableInternal;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
     use starkware_utils::components::roles::RolesComponent;
+    use starkware_utils::errors::OptionAuxTrait;
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
@@ -334,13 +334,9 @@ pub(crate) mod LiquidationManager {
             position: StoragePath<Position>,
             position_diff: PositionDiff,
         ) {
-            let (synthetic_diff_id, synthetic_diff_balance) = if let Option::Some((id, balance)) =
-                position_diff
-                .asset_diff {
-                (id, balance)
-            } else {
-                panic_with_felt252(SYNTHETIC_NOT_EXISTS)
-            };
+            let (synthetic_diff_id, synthetic_diff_balance) = position_diff
+                .asset_diff
+                .expect_with_err(SYNTHETIC_NOT_EXISTS);
             self
                 .positions
                 ._validate_synthetic_shrinks(
