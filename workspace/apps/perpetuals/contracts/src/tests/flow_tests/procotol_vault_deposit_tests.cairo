@@ -8,7 +8,7 @@ use starkware_utils_testing::test_utils::{TokenTrait, cheat_caller_address_once}
 use crate::core::components::assets::interface::IAssetsDispatcherTrait;
 
 #[test]
-#[should_panic(expected: 'INVALID_VAULT_RF_TIERS')]
+#[should_panic(expected: "INVALID_VAULT_RF_TIERS")]
 fn test_registering_vault_shares_with_more_than_one_risk_tier_fails() {
     let mut state: FlowTestBase = FlowTestBaseTrait::new();
     let vault_user = state.new_user_with_position();

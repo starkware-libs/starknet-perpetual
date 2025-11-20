@@ -2114,7 +2114,7 @@ fn test_status_change_by_trade() {
 }
 
 #[test]
-#[should_panic(expected: 'SYNTHETIC_EXPIRED_PRICE')]
+#[should_panic(expected: "SYNTHETIC_EXPIRED_PRICE")]
 fn test_late_funding() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {
