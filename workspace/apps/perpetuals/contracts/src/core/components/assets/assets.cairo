@@ -3,26 +3,27 @@ pub mod AssetsComponent {
     use RolesComponent::InternalTrait as RolesInternalTrait;
     use core::cmp::min;
     use core::num::traits::{Pow, Zero};
-    use core::panic_with_felt252;
-    use core::panics::panic_with_byte_array;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::interfaces::erc20::{
         IERC20Dispatcher, IERC20MetadataDispatcher, IERC20MetadataDispatcherTrait,
     };
     use openzeppelin::introspection::src5::SRC5Component;
-    use perpetuals::core::components::assets::errors::{
+    use perpetuals::core::components::assets::errors::Error::{
         ALREADY_INITIALIZED, ASSET_NAME_TOO_LONG, ASSET_NOT_EXISTS, ASSET_REGISTERED_AS_COLLATERAL,
         COLLATERAL_NOT_REGISTERED, FUNDING_EXPIRED, FUNDING_TICKS_NOT_SORTED, INACTIVE_ASSET,
         INVALID_FUNDING_TICK_LEN, INVALID_MEDIAN, INVALID_PRICE_TIMESTAMP, INVALID_RF_VALUE,
-        INVALID_SAME_QUORUM, INVALID_TIMESTAMP, INVALID_ZERO_ASSET_ID, INVALID_ZERO_ASSET_NAME,
-        INVALID_ZERO_ORACLE_NAME, INVALID_ZERO_PUBLIC_KEY, INVALID_ZERO_QUANTUM,
-        INVALID_ZERO_QUORUM, INVALID_ZERO_RESOLUTION_FACTOR, INVALID_ZERO_RF_FIRST_BOUNDRY,
-        INVALID_ZERO_RF_TIERS_LEN, INVALID_ZERO_RF_TIER_SIZE, INVALID_ZERO_TOKEN_ADDRESS,
-        NOT_SYNTHETIC, ORACLE_ALREADY_EXISTS, ORACLE_NAME_TOO_LONG, ORACLE_NOT_EXISTS,
-        QUORUM_NOT_REACHED, SIGNED_PRICES_UNSORTED, SYNTHETIC_ALREADY_EXISTS,
-        SYNTHETIC_EXPIRED_PRICE, SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS,
-        UNSORTED_RISK_FACTOR_TIERS, ZERO_MAX_FUNDING_INTERVAL, ZERO_MAX_FUNDING_RATE,
-        ZERO_MAX_ORACLE_PRICE, ZERO_MAX_PRICE_INTERVAL, oracle_public_key_not_registered,
+        INVALID_SAME_QUORUM, INVALID_SHARE_QUANTUM, INVALID_SHARE_RESOLUTION, INVALID_SPOT_RF_TIERS,
+        INVALID_TIMESTAMP, INVALID_UNDERLYING, INVALID_VAULT_RF_TIERS, INVALID_ZERO_ASSET_ID,
+        INVALID_ZERO_ASSET_NAME, INVALID_ZERO_ORACLE_NAME, INVALID_ZERO_PUBLIC_KEY,
+        INVALID_ZERO_QUANTUM, INVALID_ZERO_QUORUM, INVALID_ZERO_RESOLUTION_FACTOR,
+        INVALID_ZERO_RF_FIRST_BOUNDRY, INVALID_ZERO_RF_TIERS_LEN, INVALID_ZERO_RF_TIER_SIZE,
+        INVALID_ZERO_TOKEN_ADDRESS, MISSING_ERC20_ADDRESS, MISSING_ERC20_ADDRESS_FOR_SPOT,
+        MISSING_ERC20_ADDRESS_FOR_VAULT, NOT_SYNTHETIC, ORACLE_ALREADY_EXISTS, ORACLE_NAME_TOO_LONG,
+        ORACLE_NOT_EXISTS, ORACLE_PUBLIC_KEY_NOT_REGISTERED, QUORUM_NOT_REACHED,
+        SIGNED_PRICES_UNSORTED, SYNTHETIC_ALREADY_EXISTS, SYNTHETIC_EXPIRED_PRICE,
+        SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS, UNSORTED_RISK_FACTOR_TIERS,
+        ZERO_MAX_FUNDING_INTERVAL, ZERO_MAX_FUNDING_RATE, ZERO_MAX_ORACLE_PRICE,
+        ZERO_MAX_PRICE_INTERVAL,
     };
     use perpetuals::core::components::assets::events;
     use perpetuals::core::components::assets::interface::IAssets;
@@ -47,6 +48,7 @@ pub mod AssetsComponent {
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
     use starkware_utils::components::roles::RolesComponent;
     use starkware_utils::constants::{MINUTE, TWO_POW_128, TWO_POW_32, TWO_POW_40};
+    use starkware_utils::errors::OptionAuxTrait;
     use starkware_utils::math::abs::Abs;
     use starkware_utils::signature::stark::{PublicKey, validate_stark_signature};
     use starkware_utils::storage::iterable_map::{
@@ -131,26 +133,23 @@ pub mod AssetsComponent {
             get_dep_component!(@self, Roles).only_app_governor();
 
             let asset_config = self._get_asset_config(synthetic_id: asset_id);
-            assert(asset_config.status != AssetStatus::INACTIVE, INACTIVE_ASSET);
+            assert!(asset_config.status != AssetStatus::INACTIVE, "{}", INACTIVE_ASSET);
 
             // Validate the oracle does not exist.
             let asset_oracle_entry = self.asset_oracle.entry(asset_id).entry(oracle_public_key);
             let asset_oracle_data = asset_oracle_entry.read();
-            assert(asset_oracle_data.is_zero(), ORACLE_ALREADY_EXISTS);
+            assert!(asset_oracle_data.is_zero(), "{}", ORACLE_ALREADY_EXISTS);
 
-            assert(oracle_public_key.is_non_zero(), INVALID_ZERO_PUBLIC_KEY);
-            assert(asset_name.is_non_zero(), INVALID_ZERO_ASSET_NAME);
-            assert(oracle_name.is_non_zero(), INVALID_ZERO_ORACLE_NAME);
+            assert!(oracle_public_key.is_non_zero(), "{}", INVALID_ZERO_PUBLIC_KEY);
+            assert!(asset_name.is_non_zero(), "{}", INVALID_ZERO_ASSET_NAME);
+            assert!(oracle_name.is_non_zero(), "{}", INVALID_ZERO_ORACLE_NAME);
 
             // Validate the size of the oracle name.
-            if let Option::Some(oracle_name) = oracle_name.try_into() {
-                assert(oracle_name < TWO_POW_40, ORACLE_NAME_TOO_LONG);
-            } else {
-                panic_with_felt252(ORACLE_NAME_TOO_LONG);
-            }
+            let oracle_name_u64 = oracle_name.try_into().expect_with_err(ORACLE_NAME_TOO_LONG);
+            assert!(oracle_name_u64 < TWO_POW_40, "{}", ORACLE_NAME_TOO_LONG);
 
             // Validate the size of the asset name.
-            assert(asset_name.into() < TWO_POW_128, ASSET_NAME_TOO_LONG);
+            assert!(asset_name.into() < TWO_POW_128, "{}", ASSET_NAME_TOO_LONG);
 
             // Add the oracle to the asset.
             let shifted_asset_name = TWO_POW_40.into() * asset_name;
@@ -228,20 +227,21 @@ pub mod AssetsComponent {
         ) {
             get_dep_component!(@self, Roles).only_app_governor();
 
-            assert(quantum == 1, 'INVALID_SHARE_QUANTUM');
+            assert!(quantum == 1, "{}", INVALID_SHARE_QUANTUM);
             let erc20Contract = IERC20MetadataDispatcher {
                 contract_address: erc20_contract_address,
             };
             let underlying_decimals = erc20Contract.decimals();
             let underlying_resolution = 10_u128.pow(underlying_decimals.into());
-            assert(underlying_resolution == SN_PERPS_SCALE, 'INVALID_UNDERLYING');
+            assert!(underlying_resolution == SN_PERPS_SCALE, "{}", INVALID_UNDERLYING);
             let calculated_resolution: u64 = (10_u256.pow(underlying_decimals.into())
                 / quantum.into())
                 .try_into()
                 .unwrap();
-            assert(
+            assert!(
                 calculated_resolution == SN_PERPS_SCALE.try_into().unwrap(),
-                'INVALID_SHARE_RESOLUTION',
+                "{}",
+                INVALID_SHARE_RESOLUTION,
             );
             self
                 ._add_asset(
@@ -278,12 +278,14 @@ pub mod AssetsComponent {
             let mut nonce = get_dep_component_mut!(ref self, OperatorNonce);
             nonce.use_checked_nonce(:operator_nonce);
 
-            assert(asset_id.is_non_zero(), INVALID_ZERO_ASSET_ID);
-            assert(risk_factor_tiers.len().is_non_zero(), INVALID_ZERO_RF_TIERS_LEN);
-            assert(risk_factor_first_tier_boundary.is_non_zero(), INVALID_ZERO_RF_FIRST_BOUNDRY);
-            assert(risk_factor_tier_size.is_non_zero(), INVALID_ZERO_RF_TIER_SIZE);
+            assert!(asset_id.is_non_zero(), "{}", INVALID_ZERO_ASSET_ID);
+            assert!(risk_factor_tiers.len().is_non_zero(), "{}", INVALID_ZERO_RF_TIERS_LEN);
+            assert!(
+                risk_factor_first_tier_boundary.is_non_zero(), "{}", INVALID_ZERO_RF_FIRST_BOUNDRY,
+            );
+            assert!(risk_factor_tier_size.is_non_zero(), "{}", INVALID_ZERO_RF_TIER_SIZE);
             if let Option::Some(collateral_id) = self.collateral_id.read() {
-                assert(collateral_id != asset_id, ASSET_REGISTERED_AS_COLLATERAL);
+                assert!(collateral_id != asset_id, "{}", ASSET_REGISTERED_AS_COLLATERAL);
             }
 
             let mut old_synthetic_config = self._get_asset_config(asset_id);
@@ -294,13 +296,15 @@ pub mod AssetsComponent {
                     .get_synthetic_risk_factor_for_value(
                         synthetic_id: asset_id, synthetic_value: bound - 1,
                     );
-                assert(old_factor.value >= *risk_factor_tiers.at(i), INVALID_RF_VALUE);
+                assert!(old_factor.value >= *risk_factor_tiers.at(i), "{}", INVALID_RF_VALUE);
                 old_factor = self
                     .get_synthetic_risk_factor_for_value(
                         synthetic_id: asset_id, synthetic_value: bound,
                     );
                 if i + 1 < risk_factor_tiers.len() {
-                    assert(old_factor.value >= *risk_factor_tiers.at(i + 1), INVALID_RF_VALUE);
+                    assert!(
+                        old_factor.value >= *risk_factor_tiers.at(i + 1), "{}", INVALID_RF_VALUE,
+                    );
                 }
 
                 bound += risk_factor_tier_size;
@@ -319,7 +323,7 @@ pub mod AssetsComponent {
                 }
             }
             for risk_factor in risk_factor_tiers {
-                assert(prev_risk_factor < *risk_factor, UNSORTED_RISK_FACTOR_TIERS);
+                assert!(prev_risk_factor < *risk_factor, "{}", UNSORTED_RISK_FACTOR_TIERS);
                 self
                     .risk_factor_tiers
                     .entry(asset_id) // New function checks that `risk_factor` is lower than 100.
@@ -357,8 +361,8 @@ pub mod AssetsComponent {
         fn deactivate_synthetic(ref self: ComponentState<TContractState>, synthetic_id: AssetId) {
             get_dep_component!(@self, Roles).only_app_governor();
             let mut config = self._get_asset_config(:synthetic_id);
-            assert(config.status == AssetStatus::ACTIVE, SYNTHETIC_NOT_ACTIVE);
-            assert(config.asset_type == AssetType::SYNTHETIC, NOT_SYNTHETIC);
+            assert!(config.status == AssetStatus::ACTIVE, "{}", SYNTHETIC_NOT_ACTIVE);
+            assert!(config.asset_type == AssetType::SYNTHETIC, "{}", NOT_SYNTHETIC);
             config.status = AssetStatus::INACTIVE;
             self.asset_config.entry(synthetic_id).write(Option::Some(config));
             self.num_of_active_synthetic_assets.sub_and_write(1);
@@ -397,10 +401,11 @@ pub mod AssetsComponent {
             let mut operator_nonce_component = get_dep_component_mut!(ref self, OperatorNonce);
             operator_nonce_component.use_checked_nonce(:operator_nonce);
 
-            assert(timestamp.into() < MAX_TIME, INVALID_TIMESTAMP);
+            assert!(timestamp.into() < MAX_TIME, "{}", INVALID_TIMESTAMP);
 
-            assert(
+            assert!(
                 funding_ticks.len() == self.get_num_of_active_synthetic_assets(),
+                "{}",
                 INVALID_FUNDING_TICK_LEN,
             );
             self.validate_price_interval_integrity(current_time: Time::now());
@@ -411,9 +416,10 @@ pub mod AssetsComponent {
             let max_funding_rate = self.max_funding_rate.read();
             for funding_tick in funding_ticks {
                 let synthetic_id = *funding_tick.asset_id;
-                assert(synthetic_id > prev_synthetic_id, FUNDING_TICKS_NOT_SORTED);
-                assert(
+                assert!(synthetic_id > prev_synthetic_id, "{}", FUNDING_TICKS_NOT_SORTED);
+                assert!(
                     self._get_asset_config(:synthetic_id).status == AssetStatus::ACTIVE,
+                    "{}",
                     SYNTHETIC_NOT_ACTIVE,
                 );
                 self
@@ -490,7 +496,7 @@ pub mod AssetsComponent {
             self.num_of_active_synthetic_assets.read()
         }
         fn get_collateral_id(self: @ComponentState<TContractState>) -> AssetId {
-            self.collateral_id.read().expect(COLLATERAL_NOT_REGISTERED)
+            self.collateral_id.read().expect_with_err(COLLATERAL_NOT_REGISTERED)
         }
         fn get_asset_config(
             self: @ComponentState<TContractState>, synthetic_id: AssetId,
@@ -531,7 +537,7 @@ pub mod AssetsComponent {
 
             // Validate the oracle exists.
             let asset_oracle_entry = self.asset_oracle.entry(asset_id).entry(oracle_public_key);
-            assert(asset_oracle_entry.read().is_non_zero(), ORACLE_NOT_EXISTS);
+            assert!(asset_oracle_entry.read().is_non_zero(), "{}", ORACLE_NOT_EXISTS);
             asset_oracle_entry.write(Zero::zero());
             self.emit(events::OracleRemoved { asset_id, oracle_public_key });
         }
@@ -552,10 +558,10 @@ pub mod AssetsComponent {
         ) {
             get_dep_component!(@self, Roles).only_app_governor();
             let mut asset_config = self._get_asset_config(:synthetic_id);
-            assert(asset_config.status != AssetStatus::INACTIVE, INACTIVE_ASSET);
-            assert(quorum.is_non_zero(), INVALID_ZERO_QUORUM);
+            assert!(asset_config.status != AssetStatus::INACTIVE, "{}", INACTIVE_ASSET);
+            assert!(quorum.is_non_zero(), "{}", INVALID_ZERO_QUORUM);
             let old_quorum = asset_config.quorum;
-            assert(old_quorum != quorum, INVALID_SAME_QUORUM);
+            assert!(old_quorum != quorum, "{}", INVALID_SAME_QUORUM);
             asset_config.quorum = quorum;
             self.asset_config.write(synthetic_id, Option::Some(asset_config));
             self
@@ -589,14 +595,14 @@ pub mod AssetsComponent {
             max_oracle_price_validity: TimeDelta,
         ) {
             // Checks that the component has not been initialized yet.
-            assert(self.collateral_id.read().is_none(), ALREADY_INITIALIZED);
-            assert(collateral_id.is_non_zero(), INVALID_ZERO_ASSET_ID);
-            assert(collateral_token_address.is_non_zero(), INVALID_ZERO_TOKEN_ADDRESS);
-            assert(collateral_quantum.is_non_zero(), INVALID_ZERO_QUANTUM);
-            assert(max_price_interval.is_non_zero(), ZERO_MAX_PRICE_INTERVAL);
-            assert(max_funding_interval.is_non_zero(), ZERO_MAX_FUNDING_INTERVAL);
-            assert(max_funding_rate.is_non_zero(), ZERO_MAX_FUNDING_RATE);
-            assert(max_oracle_price_validity.is_non_zero(), ZERO_MAX_ORACLE_PRICE);
+            assert!(self.collateral_id.read().is_none(), "{}", ALREADY_INITIALIZED);
+            assert!(collateral_id.is_non_zero(), "{}", INVALID_ZERO_ASSET_ID);
+            assert!(collateral_token_address.is_non_zero(), "{}", INVALID_ZERO_TOKEN_ADDRESS);
+            assert!(collateral_quantum.is_non_zero(), "{}", INVALID_ZERO_QUANTUM);
+            assert!(max_price_interval.is_non_zero(), "{}", ZERO_MAX_PRICE_INTERVAL);
+            assert!(max_funding_interval.is_non_zero(), "{}", ZERO_MAX_FUNDING_INTERVAL);
+            assert!(max_funding_rate.is_non_zero(), "{}", ZERO_MAX_FUNDING_RATE);
+            assert!(max_oracle_price_validity.is_non_zero(), "{}", ZERO_MAX_ORACLE_PRICE);
             self.collateral_id.write(Option::Some(collateral_id));
             self
                 .collateral_token_contract
@@ -612,10 +618,7 @@ pub mod AssetsComponent {
 
         fn get_asset_price(self: @ComponentState<TContractState>, asset_id: AssetId) -> Price {
             let entry = self.timely_data.pointer(asset_id);
-            match SyntheticTrait::get_price(entry) {
-                Option::None => panic_with_felt252(NOT_SYNTHETIC),
-                Option::Some(price) => price,
-            }
+            SyntheticTrait::get_price(entry).expect_with_err(NOT_SYNTHETIC)
         }
 
         /// Returns the stored price directly without checking whether it exists.
@@ -666,9 +669,7 @@ pub mod AssetsComponent {
             self: @ComponentState<TContractState>, synthetic_id: AssetId, synthetic_value: u128,
         ) -> RiskFactor {
             let entry = self.asset_config.entry(synthetic_id).as_ptr();
-            if (!SyntheticTrait::is_some_config(entry)) {
-                panic_with_felt252(NOT_SYNTHETIC)
-            }
+            assert!(SyntheticTrait::is_some_config(entry), "{}", NOT_SYNTHETIC);
             let risk_factor_first_tier_boundary =
                 SyntheticTrait::at_risk_factor_first_tier_boundary(
                 entry,
@@ -699,10 +700,7 @@ pub mod AssetsComponent {
         ) -> FundingIndex {
             let entry = self.timely_data.pointer(synthetic_id);
 
-            match SyntheticTrait::get_funding_index(entry) {
-                Option::None => panic_with_felt252(ASSET_NOT_EXISTS),
-                Option::Some(funding_index) => funding_index,
-            }
+            SyntheticTrait::get_funding_index(entry).expect_with_err(ASSET_NOT_EXISTS)
         }
 
         /// Returns the stored funding index directly without checking whether it exists.
@@ -715,11 +713,8 @@ pub mod AssetsComponent {
 
 
         fn validate_asset_active(self: @ComponentState<TContractState>, synthetic_id: AssetId) {
-            if let Option::Some(config) = self.asset_config.read(synthetic_id) {
-                assert(config.status == AssetStatus::ACTIVE, SYNTHETIC_NOT_ACTIVE);
-            } else {
-                panic_with_felt252(ASSET_NOT_EXISTS);
-            }
+            let config = self.asset_config.read(synthetic_id).expect_with_err(ASSET_NOT_EXISTS);
+            assert!(config.status == AssetStatus::ACTIVE, "{}", SYNTHETIC_NOT_ACTIVE);
         }
 
         /// Validates assets integrity prerequisites:
@@ -728,8 +723,9 @@ pub mod AssetsComponent {
         fn validate_assets_integrity(ref self: ComponentState<TContractState>) {
             let current_time = Time::now();
             // Funding validation.
-            assert(
+            assert!(
                 current_time.sub(self.last_funding_tick.read()) <= self.max_funding_interval.read(),
+                "{}",
                 FUNDING_EXPIRED,
             );
             self.validate_price_interval_integrity(:current_time);
@@ -762,13 +758,13 @@ pub mod AssetsComponent {
         fn _get_asset_config(
             self: @ComponentState<TContractState>, synthetic_id: AssetId,
         ) -> AssetConfig {
-            self.asset_config.read(synthetic_id).expect(SYNTHETIC_NOT_EXISTS)
+            self.asset_config.read(synthetic_id).expect_with_err(SYNTHETIC_NOT_EXISTS)
         }
 
         fn _get_timely_data(
             self: @ComponentState<TContractState>, synthetic_id: AssetId,
         ) -> TimelyData {
-            self.timely_data.read(synthetic_id).expect(SYNTHETIC_NOT_EXISTS)
+            self.timely_data.read(synthetic_id).expect_with_err(SYNTHETIC_NOT_EXISTS)
         }
 
         fn _process_funding_tick(
@@ -813,9 +809,9 @@ pub mod AssetsComponent {
             signed_prices: Span<SignedPrice>,
         ) {
             let asset_config = self._get_asset_config(synthetic_id: asset_id);
-            assert(asset_config.status != AssetStatus::INACTIVE, INACTIVE_ASSET);
+            assert!(asset_config.status != AssetStatus::INACTIVE, "{}", INACTIVE_ASSET);
             let signed_prices_len = signed_prices.len();
-            assert(signed_prices_len >= asset_config.quorum.into(), QUORUM_NOT_REACHED);
+            assert!(signed_prices_len >= asset_config.quorum.into(), "{}", QUORUM_NOT_REACHED);
 
             let mut lower_amount: usize = 0;
             let mut higher_amount: usize = 0;
@@ -840,9 +836,10 @@ pub mod AssetsComponent {
                     equal_amount += 1;
                 }
 
-                assert(
+                assert!(
                     from <= (*signed_price).timestamp.into()
                         && (*signed_price).timestamp.into() <= to,
+                    "{}",
                     INVALID_PRICE_TIMESTAMP,
                 );
 
@@ -851,13 +848,13 @@ pub mod AssetsComponent {
                 if let Option::Some(previous_public_key) = previous_public_key_opt {
                     let prev: u256 = previous_public_key.into();
                     let current: u256 = (*signed_price.signer_public_key).into();
-                    assert(prev < current, SIGNED_PRICES_UNSORTED);
+                    assert!(prev < current, "{}", SIGNED_PRICES_UNSORTED);
                 }
-                previous_public_key_opt = Option::Some((*signed_price.signer_public_key));
+                previous_public_key_opt = Option::Some(*signed_price.signer_public_key);
             }
 
-            assert(2 * (lower_amount + equal_amount) >= signed_prices_len, INVALID_MEDIAN);
-            assert(2 * (higher_amount + equal_amount) >= signed_prices_len, INVALID_MEDIAN);
+            assert!(2 * (lower_amount + equal_amount) >= signed_prices_len, "{}", INVALID_MEDIAN);
+            assert!(2 * (higher_amount + equal_amount) >= signed_prices_len, "{}", INVALID_MEDIAN);
         }
 
         fn _set_price(
@@ -894,11 +891,11 @@ pub mod AssetsComponent {
                 .entry(asset_id)
                 .read(signed_price.signer_public_key);
 
-            if packed_asset_oracle.is_zero() {
-                panic_with_byte_array(
-                    @oracle_public_key_not_registered(asset_id, signed_price.signer_public_key),
-                );
-            }
+            assert!(
+                !packed_asset_oracle.is_zero(),
+                "{}",
+                ORACLE_PUBLIC_KEY_NOT_REGISTERED((asset_id, signed_price.signer_public_key)),
+            );
             let packed_price_timestamp: felt252 = signed_price.oracle_price.into()
                 * TWO_POW_32.into()
                 + signed_price.timestamp.into();
@@ -918,8 +915,9 @@ pub mod AssetsComponent {
             for (synthetic_id, timely_data) in self.timely_data {
                 // Validate only active asset
                 if self._get_asset_config(:synthetic_id).status == AssetStatus::ACTIVE {
-                    assert(
+                    assert!(
                         max_price_interval >= current_time.sub(timely_data.last_price_update),
+                        "{}",
                         SYNTHETIC_EXPIRED_PRICE,
                     );
                 }
@@ -942,17 +940,19 @@ pub mod AssetsComponent {
             get_dep_component!(@self, Roles).only_app_governor();
 
             let asset_entry = self.asset_config.entry(asset_id);
-            assert(asset_entry.read().is_none(), SYNTHETIC_ALREADY_EXISTS);
+            assert!(asset_entry.read().is_none(), "{}", SYNTHETIC_ALREADY_EXISTS);
             if let Option::Some(collateral_id) = self.collateral_id.read() {
-                assert(collateral_id != asset_id, ASSET_REGISTERED_AS_COLLATERAL);
+                assert!(collateral_id != asset_id, "{}", ASSET_REGISTERED_AS_COLLATERAL);
             }
 
-            assert(asset_id.is_non_zero(), INVALID_ZERO_ASSET_ID);
-            assert(risk_factor_tiers.len().is_non_zero(), INVALID_ZERO_RF_TIERS_LEN);
-            assert(risk_factor_first_tier_boundary.is_non_zero(), INVALID_ZERO_RF_FIRST_BOUNDRY);
-            assert(risk_factor_tier_size.is_non_zero(), INVALID_ZERO_RF_TIER_SIZE);
-            assert(quorum.is_non_zero(), INVALID_ZERO_QUORUM);
-            assert(resolution_factor.is_non_zero(), INVALID_ZERO_RESOLUTION_FACTOR);
+            assert!(asset_id.is_non_zero(), "{}", INVALID_ZERO_ASSET_ID);
+            assert!(risk_factor_tiers.len().is_non_zero(), "{}", INVALID_ZERO_RF_TIERS_LEN);
+            assert!(
+                risk_factor_first_tier_boundary.is_non_zero(), "{}", INVALID_ZERO_RF_FIRST_BOUNDRY,
+            );
+            assert!(risk_factor_tier_size.is_non_zero(), "{}", INVALID_ZERO_RF_TIER_SIZE);
+            assert!(quorum.is_non_zero(), "{}", INVALID_ZERO_QUORUM);
+            assert!(resolution_factor.is_non_zero(), "{}", INVALID_ZERO_RESOLUTION_FACTOR);
 
             let (asset_config, asset_added_event): (AssetConfig, Event) = match asset_type {
                 AssetType::SYNTHETIC => {
@@ -977,7 +977,7 @@ pub mod AssetsComponent {
                     )
                 },
                 AssetType::VAULT_SHARE_COLLATERAL => {
-                    assert(risk_factor_tiers.len() == 1, 'INVALID_VAULT_RF_TIERS');
+                    assert!(risk_factor_tiers.len() == 1, "{}", INVALID_VAULT_RF_TIERS);
 
                     (
                         SyntheticTrait::vault_share(
@@ -987,7 +987,7 @@ pub mod AssetsComponent {
                             quorum,
                             resolution_factor,
                             quantum,
-                            erc20_address.expect('MISSING_ERC20_ADDRESS_FOR_VAULT'),
+                            erc20_address.expect_with_err(MISSING_ERC20_ADDRESS_FOR_VAULT),
                         ),
                         Event::SpotAssetAdded(
                             events::SpotAssetAdded {
@@ -997,13 +997,14 @@ pub mod AssetsComponent {
                                 risk_factor_tier_size,
                                 resolution_factor,
                                 quorum,
-                                contract_address: erc20_address.expect('MISSING_ERC20_ADDRESS'),
+                                contract_address: erc20_address
+                                    .expect_with_err(MISSING_ERC20_ADDRESS),
                             },
                         ),
                     )
                 },
                 AssetType::SPOT_COLLATERAL => {
-                    assert(risk_factor_tiers.len() == 1, 'INVALID_SPOT_RF_TIERS');
+                    assert!(risk_factor_tiers.len() == 1, "{}", INVALID_SPOT_RF_TIERS);
                     (
                         SyntheticTrait::spot(
                             AssetStatus::PENDING,
@@ -1012,7 +1013,7 @@ pub mod AssetsComponent {
                             quorum,
                             resolution_factor,
                             quantum,
-                            erc20_address.expect('MISSING_ERC20_ADDRESS_FOR_SPOT'),
+                            erc20_address.expect_with_err(MISSING_ERC20_ADDRESS_FOR_SPOT),
                         ),
                         Event::SpotAssetAdded(
                             events::SpotAssetAdded {
@@ -1022,7 +1023,8 @@ pub mod AssetsComponent {
                                 risk_factor_tier_size,
                                 resolution_factor,
                                 quorum,
-                                contract_address: erc20_address.expect('MISSING_ERC20_ADDRESS'),
+                                contract_address: erc20_address
+                                    .expect_with_err(MISSING_ERC20_ADDRESS),
                             },
                         ),
                     )
@@ -1035,7 +1037,7 @@ pub mod AssetsComponent {
 
             let mut prev_risk_factor = 0_u16;
             for risk_factor in risk_factor_tiers {
-                assert(prev_risk_factor < *risk_factor, UNSORTED_RISK_FACTOR_TIERS);
+                assert!(prev_risk_factor < *risk_factor, "{}", UNSORTED_RISK_FACTOR_TIERS);
                 self
                     .risk_factor_tiers
                     .entry(asset_id) // New function checks that `risk_factor` is lower than 1000.
