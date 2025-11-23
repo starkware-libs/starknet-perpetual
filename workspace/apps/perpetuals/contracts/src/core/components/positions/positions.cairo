@@ -10,11 +10,10 @@ pub mod Positions {
     use perpetuals::core::components::assets::interface::IAssets;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalTrait as NonceInternal;
-    use perpetuals::core::components::positions::errors::{
-        ALREADY_INITIALIZED, CALLER_IS_NOT_OWNER_ACCOUNT, INVALID_ZERO_OWNER_ACCOUNT,
-        INVALID_ZERO_PUBLIC_KEY, NO_OWNER_ACCOUNT, POSITION_ALREADY_EXISTS, POSITION_DOESNT_EXIST,
-        POSITION_HAS_OWNER_ACCOUNT, SAME_PUBLIC_KEY, SET_POSITION_OWNER_EXPIRED,
-        SET_PUBLIC_KEY_EXPIRED,
+    use perpetuals::core::components::positions::errors::Error::{
+        ALREADY_INITIALIZED, ASSET_BALANCE_NEGATIVE, CALLER_IS_NOT_OWNER_ACCOUNT,
+        INVALID_ZERO_OWNER_ACCOUNT, INVALID_ZERO_PUBLIC_KEY, POSITION_ALREADY_EXISTS,
+        POSITION_DOESNT_EXIST, POSITION_HAS_OWNER_ACCOUNT, SAME_PUBLIC_KEY,
     };
     use perpetuals::core::components::positions::events;
     use perpetuals::core::components::positions::interface::IPositions;
@@ -178,8 +177,8 @@ pub mod Positions {
             let mut operator_nonce_component = get_dep_component_mut!(ref self, OperatorNonce);
             operator_nonce_component.use_checked_nonce(:operator_nonce);
             let mut position = self.positions.entry(position_id);
-            assert(position.version.read().is_zero(), POSITION_ALREADY_EXISTS);
-            assert(owner_public_key.is_non_zero(), INVALID_ZERO_PUBLIC_KEY);
+            assert!(position.version.read().is_zero(), "{}", POSITION_ALREADY_EXISTS);
+            assert!(owner_public_key.is_non_zero(), "{}", INVALID_ZERO_PUBLIC_KEY);
             position.version.write(POSITION_VERSION);
             position.owner_public_key.write(owner_public_key);
             position.owner_protection_enabled.write(owner_protection_enabled);
@@ -224,8 +223,8 @@ pub mod Positions {
             expiration: Timestamp,
         ) {
             let position = self.get_position_snapshot(:position_id);
-            assert(position.get_owner_account().is_none(), POSITION_HAS_OWNER_ACCOUNT);
-            assert(new_owner_account.is_non_zero(), INVALID_ZERO_OWNER_ACCOUNT);
+            assert!(position.get_owner_account().is_none(), "{}", POSITION_HAS_OWNER_ACCOUNT);
+            assert!(new_owner_account.is_non_zero(), "{}", INVALID_ZERO_OWNER_ACCOUNT);
             let public_key = position.get_owner_public_key();
             let mut request_approvals = get_dep_component_mut!(ref self, RequestApprovals);
             let hash = request_approvals
@@ -269,7 +268,7 @@ pub mod Positions {
             get_dep_component!(@self, Pausable).assert_not_paused();
             let mut operator_nonce_component = get_dep_component_mut!(ref self, OperatorNonce);
             operator_nonce_component.use_checked_nonce(:operator_nonce);
-            validate_expiration(:expiration, err: SET_POSITION_OWNER_EXPIRED);
+            validate_expiration(:expiration, err: 'SET_POSITION_OWNER_EXPIRED');
             let position = self.get_position_mut(:position_id);
             let public_key = position.get_owner_public_key();
             let mut request_approvals = get_dep_component_mut!(ref self, RequestApprovals);
@@ -309,12 +308,12 @@ pub mod Positions {
         ) {
             let position = self.get_position_snapshot(:position_id);
             let old_public_key = position.get_owner_public_key();
-            assert(new_public_key != old_public_key, SAME_PUBLIC_KEY);
+            assert!(new_public_key != old_public_key, "{}", SAME_PUBLIC_KEY);
             let owner_account = position.get_owner_account();
             if let Option::Some(owner_account) = owner_account {
-                assert(owner_account == get_caller_address(), CALLER_IS_NOT_OWNER_ACCOUNT);
+                assert!(owner_account == get_caller_address(), "{}", CALLER_IS_NOT_OWNER_ACCOUNT);
             } else {
-                panic_with_felt252(NO_OWNER_ACCOUNT);
+                panic_with_felt252('NO_OWNER_ACCOUNT');
             }
             let mut request_approvals = get_dep_component_mut!(ref self, RequestApprovals);
             let hash = request_approvals
@@ -356,7 +355,7 @@ pub mod Positions {
             get_dep_component!(@self, Pausable).assert_not_paused();
             let mut operator_nonce_component = get_dep_component_mut!(ref self, OperatorNonce);
             operator_nonce_component.use_checked_nonce(:operator_nonce);
-            validate_expiration(:expiration, err: SET_PUBLIC_KEY_EXPIRED);
+            validate_expiration(:expiration, err: 'SET_PUBLIC_KEY_EXPIRED');
             let position = self.get_position_mut(:position_id);
             let old_public_key = position.get_owner_public_key();
             let mut request_approvals = get_dep_component_mut!(ref self, RequestApprovals);
@@ -400,11 +399,15 @@ pub mod Positions {
         ) {
             // Checks that the component has not been initialized yet.
             let fee_position = self.positions.entry(FEE_POSITION);
-            assert(fee_position.version.read().is_zero(), ALREADY_INITIALIZED);
+            assert!(fee_position.version.read().is_zero(), "{}", ALREADY_INITIALIZED);
 
             // Checks that the input public keys are non-zero.
-            assert(fee_position_owner_public_key.is_non_zero(), INVALID_ZERO_PUBLIC_KEY);
-            assert(insurance_fund_position_owner_public_key.is_non_zero(), INVALID_ZERO_PUBLIC_KEY);
+            assert!(fee_position_owner_public_key.is_non_zero(), "{}", INVALID_ZERO_PUBLIC_KEY);
+            assert!(
+                insurance_fund_position_owner_public_key.is_non_zero(),
+                "{}",
+                INVALID_ZERO_PUBLIC_KEY,
+            );
 
             // Create fee positions.
             fee_position.version.write(POSITION_VERSION);
@@ -490,7 +493,7 @@ pub mod Positions {
             self: @ComponentState<TContractState>, position_id: PositionId,
         ) -> StoragePath<Position> {
             let position = self.positions.entry(position_id);
-            assert(position.version.read().is_non_zero(), POSITION_DOESNT_EXIST);
+            assert!(position.version.read().is_non_zero(), "{}", POSITION_DOESNT_EXIST);
             position
         }
 
@@ -500,7 +503,7 @@ pub mod Positions {
             ref self: ComponentState<TContractState>, position_id: PositionId,
         ) -> StoragePath<Mutable<Position>> {
             let mut position = self.positions.entry(position_id);
-            assert(position.version.read().is_non_zero(), POSITION_DOESNT_EXIST);
+            assert!(position.version.read().is_non_zero(), "{}", POSITION_DOESNT_EXIST);
             position
         }
 
@@ -606,7 +609,7 @@ pub mod Positions {
                 self.get_synthetic_balance(:position, synthetic_id: asset_id)
             };
 
-            assert(balance >= 0_i64.into(), 'ASSET_BALANCE_NEGATIVE');
+            assert!(balance >= 0_i64.into(), "{}", ASSET_BALANCE_NEGATIVE);
         }
 
         fn validate_healthy_or_healthier_position(

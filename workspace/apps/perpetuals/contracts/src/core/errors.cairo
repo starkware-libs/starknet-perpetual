@@ -19,6 +19,7 @@ pub enum Error {
     INVALID_SAME_POSITIONS,
     INVALID_ZERO_AMOUNT,
     SYNTHETIC_IS_ACTIVE,
+    TRADE_ASSET_NOT_SYNTHETIC,
     TRANSFER_FAILED,
     SAME_BASE_QUOTE_ASSET_IDS,
     // Error functions with parameters
@@ -51,6 +52,7 @@ impl DescribableError of Describable<Error> {
             Error::INVALID_SAME_POSITIONS => "INVALID_SAME_POSITIONS",
             Error::INVALID_ZERO_AMOUNT => "INVALID_ZERO_AMOUNT",
             Error::SYNTHETIC_IS_ACTIVE => "SYNTHETIC_IS_ACTIVE",
+            Error::TRADE_ASSET_NOT_SYNTHETIC => "TRADE_ASSET_NOT_SYNTHETIC",
             Error::TRANSFER_FAILED => "TRANSFER_FAILED",
             Error::SAME_BASE_QUOTE_ASSET_IDS => "SAME_BASE_QUOTE_ASSET_IDS",
             // Error functions with parameters

@@ -40,7 +40,7 @@ fn test_process_deposit_only_operator() {
 }
 
 #[test]
-#[should_panic(expected: 'POSITION_DOESNT_EXIST')]
+#[should_panic(expected: "POSITION_DOESNT_EXIST")]
 fn test_withdraw_request_position_doesnt_exist() {
     let (_, contract_address) = setup();
     let dispatcher = ICoreDispatcher { contract_address };
@@ -72,7 +72,7 @@ fn test_withdraw_only_operator() {
 }
 
 #[test]
-#[should_panic(expected: 'POSITION_DOESNT_EXIST')]
+#[should_panic(expected: "POSITION_DOESNT_EXIST")]
 fn test_transfer_request_position_doesnt_exist() {
     let (cfg, contract_address) = setup();
     let dispatcher = ICoreDispatcher { contract_address };
@@ -273,7 +273,7 @@ fn test_set_owner_account_only_operator() {
 }
 
 #[test]
-#[should_panic(expected: ('POSITION_DOESNT_EXIST',))]
+#[should_panic(expected: "POSITION_DOESNT_EXIST")]
 fn test_set_public_key_request_position_doesnt_exist() {
     let (_, contract_address) = setup();
     let dispatcher = IPositionsDispatcher { contract_address };

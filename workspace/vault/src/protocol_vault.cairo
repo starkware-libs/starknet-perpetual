@@ -13,10 +13,7 @@ pub mod ProtocolVault {
     use starknet::ContractAddress;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use starkware_utils::math::abs::Abs;
-    use vault::errors::{
-        INVALID_ZERO_ADDRESS, INVALID_ZERO_POSITION_ID, NEGATIVE_TOTAL_VALUE,
-        ONLY_PERPS_CAN_DEPOSIT, ONLY_PERPS_CAN_OWN, ONLY_PERPS_CAN_RECEIVE, ONLY_PERPS_CAN_WITHDRAW,
-    };
+    use vault::errors::Error;
     use vault::interface::IProtocolVault;
     component!(path: ERC4626Component, storage: erc4626, event: ERC4626Event);
     component!(path: ERC20Component, storage: erc20, event: ERC20Event);
@@ -68,15 +65,15 @@ pub mod ProtocolVault {
         owning_position_id: u32,
         recipient: ContractAddress,
     ) -> u256 {
-        assert(perps_contract.is_non_zero(), INVALID_ZERO_ADDRESS);
-        assert(owning_position_id.is_non_zero(), INVALID_ZERO_POSITION_ID);
+        assert!(perps_contract.is_non_zero(), "{}", Error::INVALID_ZERO_ADDRESS);
+        assert!(owning_position_id.is_non_zero(), "{}", Error::INVALID_ZERO_POSITION_ID);
         self.perps_contract.write(perps_contract);
         self.owning_position_id.write(owning_position_id);
         self.erc20.initializer(name, symbol);
         self.erc4626.initializer(pnl_collateral_contract);
         let total_assets = self.erc4626.get_total_assets();
-        assert(total_assets > 0_u256, 'INITIAL_ASSETS_MUST_BE_POSITIVE');
-        assert(recipient != perps_contract, 'RECIPIENT_CANNOT_BE_PERPS');
+        assert!(total_assets > 0_u256, "{}", Error::INITIAL_ASSETS_MUST_BE_POSITIVE);
+        assert!(recipient != perps_contract, "{}", Error::RECIPIENT_CANNOT_BE_PERPS);
         self.erc20.mint(recipient, total_assets);
         return total_assets;
     }
@@ -139,7 +136,7 @@ pub mod ProtocolVault {
             let asset_dispatcher = IPositionsDispatcher { contract_address: asset_storage };
             let position_tvtr = asset_dispatcher
                 .get_position_tv_tr(self.get_contract().get_owning_position_id().into());
-            assert(position_tvtr.total_value >= 0, NEGATIVE_TOTAL_VALUE);
+            assert!(position_tvtr.total_value >= 0, "{}", Error::NEGATIVE_TOTAL_VALUE);
             return position_tvtr.total_value.abs().into();
         }
     }
@@ -155,8 +152,8 @@ pub mod ProtocolVault {
             fee: Option<Fee>,
         ) {
             let perps_contract = self.get_contract().get_perps_contract();
-            assert(perps_contract == caller, ONLY_PERPS_CAN_DEPOSIT);
-            assert(perps_contract == receiver, ONLY_PERPS_CAN_RECEIVE);
+            assert!(perps_contract == caller, "{}", Error::ONLY_PERPS_CAN_DEPOSIT);
+            assert!(perps_contract == receiver, "{}", Error::ONLY_PERPS_CAN_RECEIVE);
         }
 
         /// Hooks into `InternalImpl::_deposit`.
@@ -192,9 +189,9 @@ pub mod ProtocolVault {
             fee: Option<Fee>,
         ) {
             let perps_contract = self.get_contract().get_perps_contract();
-            assert(perps_contract == caller, ONLY_PERPS_CAN_WITHDRAW);
-            assert(perps_contract == receiver, ONLY_PERPS_CAN_RECEIVE);
-            assert(perps_contract == owner, ONLY_PERPS_CAN_OWN);
+            assert!(perps_contract == caller, "{}", Error::ONLY_PERPS_CAN_WITHDRAW);
+            assert!(perps_contract == receiver, "{}", Error::ONLY_PERPS_CAN_RECEIVE);
+            assert!(perps_contract == owner, "{}", Error::ONLY_PERPS_CAN_OWN);
 
             // before withdraw we need to pull the underlying asset from the perps contract
             self.transfer_assets_in(from: perps_contract, :assets);
