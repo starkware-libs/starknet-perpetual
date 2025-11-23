@@ -15,7 +15,9 @@ pub mod Core {
     use perpetuals::core::components::positions::Positions::{
         FEE_POSITION, InternalTrait as PositionsInternalTrait,
     };
-    use perpetuals::core::errors::Error::{AMOUNT_OVERFLOW, SYNTHETIC_IS_ACTIVE};
+    use perpetuals::core::errors::Error::{
+        AMOUNT_OVERFLOW, SYNTHETIC_IS_ACTIVE, TRADE_ASSET_NOT_SYNTHETIC,
+    };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
     use perpetuals::core::types::asset::{AssetId, AssetStatus};
@@ -682,7 +684,9 @@ pub mod Core {
             tvtr_b_before: Nullable<PositionTVTR>,
         ) -> (PositionTVTR, PositionTVTR) {
             let synthetic_asset = self.assets.get_asset_config(order_a.base_asset_id);
-            assert(synthetic_asset.asset_type == AssetType::SYNTHETIC, 'TRADE_ASSET_NOT_SYNTHETIC');
+            assert!(
+                synthetic_asset.asset_type == AssetType::SYNTHETIC, "{}", TRADE_ASSET_NOT_SYNTHETIC,
+            );
             validate_trade(
                 :order_a,
                 :order_b,

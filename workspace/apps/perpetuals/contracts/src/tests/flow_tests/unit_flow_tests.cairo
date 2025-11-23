@@ -1068,7 +1068,7 @@ fn test_withdraw_with_owner_fails_if_not_caller() {
 }
 
 #[test]
-#[should_panic(expected: 'ASSET_BALANCE_NEGATIVE')]
+#[should_panic(expected: "ASSET_BALANCE_NEGATIVE")]
 fn test_transfer_withdraw_with_negative_collateral() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {

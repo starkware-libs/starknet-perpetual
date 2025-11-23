@@ -647,7 +647,7 @@ fn test_set_owner_account_request_invalid_caller() {
 }
 
 #[test]
-#[should_panic(expected: 'POSITION_HAS_OWNER_ACCOUNT')]
+#[should_panic(expected: "POSITION_HAS_OWNER_ACCOUNT")]
 fn test_set_owner_account_request_position_has_owner() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -740,7 +740,7 @@ fn test_successful_set_owner_account() {
 }
 
 #[test]
-#[should_panic(expected: 'POSITION_HAS_OWNER_ACCOUNT')]
+#[should_panic(expected: "POSITION_HAS_OWNER_ACCOUNT")]
 fn test_set_existed_owner_account() {
     // Setup state, token:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -1743,15 +1743,14 @@ fn test_successful_deposit() {
         (CONTRACT_INIT_BALANCE + user_deposit_amount).try_into().unwrap(),
     );
     let status = state.deposits.get_deposit_status(:deposit_hash);
-    if let DepositStatus::PENDING(timestamp) = status {
-        assert!(timestamp == expected_time);
-    } else {
-        panic!("Deposit not found");
+    match status {
+        DepositStatus::PENDING(timestamp) => { assert!(timestamp == expected_time); },
+        _ => panic!("Deposit not found"),
     }
 }
 
 #[test]
-#[should_panic(expected: 'DEPOSIT_ALREADY_REGISTERED')]
+#[should_panic(expected: "DEPOSIT_ALREADY_REGISTERED")]
 fn test_deposit_already_registered() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -2008,7 +2007,7 @@ fn test_successful_reject_deposit() {
 }
 
 #[test]
-#[should_panic(expected: 'DEPOSIT_NOT_REGISTERED')]
+#[should_panic(expected: "DEPOSIT_NOT_REGISTERED")]
 fn test_cancel_non_registered_deposit() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -2028,7 +2027,7 @@ fn test_cancel_non_registered_deposit() {
 }
 
 #[test]
-#[should_panic(expected: 'DEPOSIT_NOT_REGISTERED')]
+#[should_panic(expected: "DEPOSIT_NOT_REGISTERED")]
 fn test_cancel_deposit_different_hash() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -2065,7 +2064,7 @@ fn test_cancel_deposit_different_hash() {
 }
 
 #[test]
-#[should_panic(expected: 'DEPOSIT_ALREADY_PROCESSED')]
+#[should_panic(expected: "DEPOSIT_ALREADY_PROCESSED")]
 fn test_cancel_already_done_deposit() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -2119,7 +2118,7 @@ fn test_cancel_already_done_deposit() {
 }
 
 #[test]
-#[should_panic(expected: 'DEPOSIT_ALREADY_CANCELED')]
+#[should_panic(expected: "DEPOSIT_ALREADY_CANCELED")]
 fn test_double_cancel_deposit() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -2168,7 +2167,7 @@ fn test_double_cancel_deposit() {
 }
 
 #[test]
-#[should_panic(expected: 'DEPOSIT_NOT_CANCELABLE')]
+#[should_panic(expected: "DEPOSIT_NOT_CANCELABLE")]
 fn test_cancel_deposit_before_cancellation_delay_passed() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -2833,7 +2832,7 @@ fn test_set_public_key_no_request() {
 }
 
 #[test]
-#[should_panic(expected: 'CALLER_IS_NOT_OWNER_ACCOUNT')]
+#[should_panic(expected: "CALLER_IS_NOT_OWNER_ACCOUNT")]
 fn test_invalid_set_public_key_request_wrong_owner() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -2870,7 +2869,7 @@ fn test_invalid_set_public_key_request_wrong_owner() {
 }
 
 #[test]
-#[should_panic(expected: 'POSITION_DOESNT_EXIST')]
+#[should_panic(expected: "POSITION_DOESNT_EXIST")]
 fn test_set_public_key_request_position_not_exist() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();

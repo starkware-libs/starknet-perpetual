@@ -840,7 +840,7 @@ fn test_liquidate_vault_shares_fails_when_worsening_tv_tr() {
 }
 
 #[test]
-#[should_panic(expected: 'ONLY_PERPS_CAN_WITHDRAW')]
+#[should_panic(expected: "ONLY_PERPS_CAN_WITHDRAW")]
 fn test_withdraw_cannot_be_called_except_by_perps_contract() {
     let mut state: FlowTestBase = FlowTestBaseTrait::new();
     let vault_user = state.new_user_with_position();
@@ -861,7 +861,7 @@ fn test_withdraw_cannot_be_called_except_by_perps_contract() {
 }
 
 #[test]
-#[should_panic(expected: 'ONLY_PERPS_CAN_WITHDRAW')]
+#[should_panic(expected: "ONLY_PERPS_CAN_WITHDRAW")]
 fn test_redeem_cannot_be_called_except_by_perps_contract() {
     let mut state: FlowTestBase = FlowTestBaseTrait::new();
     let vault_user = state.new_user_with_position();

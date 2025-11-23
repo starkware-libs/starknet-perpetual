@@ -4,7 +4,7 @@ pub(crate) mod Deposit {
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
-    use perpetuals::core::components::deposit::errors;
+    use perpetuals::core::components::deposit::errors::Error;
     use perpetuals::core::components::deposit::interface::{DepositStatus, IDeposit};
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalTrait as NonceInternal;
@@ -72,7 +72,7 @@ pub(crate) mod Deposit {
             quantized_amount: u64,
             salt: felt252,
         ) {
-            assert(quantized_amount.is_non_zero(), errors::ZERO_AMOUNT);
+            assert!(quantized_amount.is_non_zero(), "{}", Error::ZERO_AMOUNT);
             let caller_address = get_caller_address();
             let external_components = get_dep_component!(@self, ExternalComponents);
             external_components
@@ -232,8 +232,8 @@ pub(crate) mod Deposit {
         impl Vaults: VaultsComponent::HasComponent<TContractState>,
     > of InternalTrait<TContractState> {
         fn initialize(ref self: ComponentState<TContractState>, cancel_delay: TimeDelta) {
-            assert(self.cancel_delay.read().is_zero(), errors::ALREADY_INITIALIZED);
-            assert(cancel_delay.is_non_zero(), errors::INVALID_CANCEL_DELAY);
+            assert!(self.cancel_delay.read().is_zero(), "{}", Error::ALREADY_INITIALIZED);
+            assert!(cancel_delay.is_non_zero(), "{}", Error::INVALID_CANCEL_DELAY);
             self.cancel_delay.write(cancel_delay);
         }
     }
