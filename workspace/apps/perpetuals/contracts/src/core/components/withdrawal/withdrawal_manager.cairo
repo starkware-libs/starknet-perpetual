@@ -306,7 +306,7 @@ pub(crate) mod WithdrawalManager {
             // Validate position exists.
             let position = self.positions.get_position_snapshot(:position_id);
             let collateral_id = self.assets.get_collateral_id();
-            assert!(amount.is_non_zero(), "{}", INVALID_ZERO_AMOUNT);
+            assert(amount.is_non_zero(), INVALID_ZERO_AMOUNT);
 
             let owner_account = if (position.owner_protection_enabled.read()) {
                 position.get_owner_account()
@@ -342,14 +342,13 @@ pub(crate) mod WithdrawalManager {
             let quantum = self.assets.get_collateral_quantum();
             let token_contract = self.assets.get_collateral_token_contract();
 
-            assert!(
+            assert(
                 token_contract
                     .transfer_from(
                         sender: get_caller_address(),
                         recipient: get_block_info().sequencer_address,
                         amount: (premium_cost * quantum).into(),
                     ),
-                "{}",
                 TRANSFER_FAILED,
             );
 

@@ -46,7 +46,6 @@ use crate::core::components::external_components::interface::{
     EXTERNAL_COMPONENT_TRANSFERS, EXTERNAL_COMPONENT_VAULT, EXTERNAL_COMPONENT_WITHDRAWALS,
     IExternalComponents, IExternalComponentsDispatcher, IExternalComponentsDispatcherTrait,
 };
-use super::constants::{FORCED_ACTION_TIMEOUT, PREMIUM_COST};
 
 /// The `User` struct represents a user corresponding to a position in the state of the Core
 /// contract.
