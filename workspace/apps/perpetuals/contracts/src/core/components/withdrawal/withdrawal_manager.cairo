@@ -121,7 +121,7 @@ pub(crate) mod WithdrawalManager {
     use perpetuals::core::types::position::{Position, PositionDiff, PositionId, PositionTrait};
     use perpetuals::core::types::withdraw::{ForcedWithdrawArgs, WithdrawArgs};
     use starknet::storage::{StoragePath, StoragePointerReadAccess};
-    use starknet::{ContractAddress, get_block_info, get_caller_address, get_contract_address};
+    use starknet::{ContractAddress, get_block_info, get_caller_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalImpl as PausableInternal;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;

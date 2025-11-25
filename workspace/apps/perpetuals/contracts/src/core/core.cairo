@@ -729,8 +729,6 @@ pub mod Core {
             expiration: Timestamp,
             salt: felt252,
         ) {
-            self.pausable.assert_not_paused();
-            self.assets.validate_assets_integrity();
             self
                 .external_components
                 ._get_withdrawal_manager_dispatcher()
