@@ -2,6 +2,9 @@ use perpetuals::core::components::assets::events as assets_events;
 use perpetuals::core::components::deposit::events as deposit_events;
 use perpetuals::core::components::positions::events as positions_events;
 use perpetuals::core::components::snip::SNIP12MetadataImpl;
+use perpetuals::core::components::withdrawal::withdrawal_manager::{
+    ForcedWithdraw, ForcedWithdrawRequest,
+};
 use perpetuals::core::events;
 use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::funding::FundingIndex;
@@ -155,6 +158,60 @@ pub fn assert_withdraw_event_with_expected(
         :expected_event,
         expected_event_selector: @selector!("Withdraw"),
         expected_event_name: "Withdraw",
+    );
+}
+
+pub fn assert_forced_withdraw_request_event_with_expected(
+    spied_event: @(ContractAddress, Event),
+    position_id: PositionId,
+    recipient: ContractAddress,
+    collateral_id: AssetId,
+    amount: u64,
+    expiration: Timestamp,
+    forced_withdraw_request_hash: felt252,
+    salt: felt252,
+) {
+    let expected_event = ForcedWithdrawRequest {
+        position_id,
+        recipient,
+        collateral_id,
+        amount,
+        expiration,
+        forced_withdraw_request_hash,
+        salt,
+    };
+    assert_expected_event_emitted(
+        :spied_event,
+        :expected_event,
+        expected_event_selector: @selector!("ForcedWithdrawRequest"),
+        expected_event_name: "ForcedWithdrawRequest",
+    );
+}
+
+pub fn assert_forced_withdraw_event_with_expected(
+    spied_event: @(ContractAddress, Event),
+    position_id: PositionId,
+    recipient: ContractAddress,
+    collateral_id: AssetId,
+    amount: u64,
+    expiration: Timestamp,
+    forced_withdraw_request_hash: felt252,
+    salt: felt252,
+) {
+    let expected_event = ForcedWithdraw {
+        position_id,
+        recipient,
+        collateral_id,
+        amount,
+        expiration,
+        forced_withdraw_request_hash,
+        salt,
+    };
+    assert_expected_event_emitted(
+        :spied_event,
+        :expected_event,
+        expected_event_selector: @selector!("ForcedWithdraw"),
+        expected_event_name: "ForcedWithdraw",
     );
 }
 
