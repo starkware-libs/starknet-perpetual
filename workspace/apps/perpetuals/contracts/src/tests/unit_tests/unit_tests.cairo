@@ -16,7 +16,9 @@ use perpetuals::core::components::positions::interface::{
 };
 use perpetuals::core::components::snip::SNIP12MetadataImpl;
 use perpetuals::core::errors::SIGNED_TX_EXPIRED;
-use perpetuals::core::interface::{ICore, ICoreSafeDispatcher, ICoreSafeDispatcherTrait};
+use perpetuals::core::interface::{
+    ICore, ICoreDispatcher, ICoreDispatcherTrait, ICoreSafeDispatcher, ICoreSafeDispatcherTrait,
+};
 use perpetuals::core::types::asset::AssetStatus;
 use perpetuals::core::types::funding::{FUNDING_SCALE, FundingIndex, FundingTick};
 use perpetuals::core::types::order::Order;
@@ -28,14 +30,15 @@ use perpetuals::core::types::risk_factor::RiskFactorTrait;
 use perpetuals::core::types::set_owner_account::SetOwnerAccountArgs;
 use perpetuals::core::types::set_public_key::SetPublicKeyArgs;
 use perpetuals::core::types::transfer::TransferArgs;
-use perpetuals::core::types::withdraw::WithdrawArgs;
+use perpetuals::core::types::withdraw::{ForcedWithdrawArgs, WithdrawArgs};
 use perpetuals::tests::constants::*;
 use perpetuals::tests::event_test_utils::{
     assert_add_oracle_event_with_expected, assert_add_synthetic_event_with_expected,
     assert_asset_activated_event_with_expected, assert_change_synthetic_event_with_expected,
     assert_deactivate_synthetic_asset_event_with_expected, assert_deleverage_event_with_expected,
     assert_deposit_canceled_event_with_expected, assert_deposit_event_with_expected,
-    assert_deposit_processed_event_with_expected, assert_funding_tick_event_with_expected,
+    assert_deposit_processed_event_with_expected, assert_forced_withdraw_event_with_expected,
+    assert_forced_withdraw_request_event_with_expected, assert_funding_tick_event_with_expected,
     assert_liquidate_event_with_expected, assert_new_position_event_with_expected,
     assert_price_tick_event_with_expected, assert_remove_oracle_event_with_expected,
     assert_set_owner_account_event_with_expected, assert_set_public_key_event_with_expected,
@@ -51,6 +54,7 @@ use perpetuals::tests::test_utils::{
 };
 use snforge_std::cheatcodes::events::{EventSpyTrait, EventsFilterTrait};
 use snforge_std::{start_cheat_block_timestamp_global, test_address};
+use starknet::get_block_info;
 use starknet::storage::{StoragePathEntry, StoragePointerReadAccess};
 use starkware_utils::components::replaceability::interface::IReplaceable;
 use starkware_utils::components::request_approvals::interface::{IRequestApprovals, RequestStatus};
@@ -59,7 +63,7 @@ use starkware_utils::constants::{HOUR, MAX_U128};
 use starkware_utils::hash::message_hash::OffchainMessageHash;
 use starkware_utils::math::abs::Abs;
 use starkware_utils::storage::iterable_map::*;
-use starkware_utils::time::time::{Time, Timestamp};
+use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
 use starkware_utils_testing::test_utils::{
     Deployable, TokenTrait, assert_panic_with_felt_error, cheat_caller_address_once,
 };
@@ -2430,6 +2434,791 @@ fn test_successful_withdraw_request_with_public_key() {
     // Check:
     let status = state.request_approvals.get_request_status(request_hash: msg_hash);
     assert!(status == RequestStatus::PENDING);
+}
+
+// Forced withdraw tests.
+
+#[test]
+fn test_successful_forced_withdraw_request() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+    let dispatcher = ICoreDispatcher { contract_address };
+    let position_dispatcher = IPositionsDispatcher { contract_address };
+
+    let user: User = Default::default();
+    let recipient = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
+
+    // Create a position.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    position_dispatcher
+        .new_position(
+            operator_nonce: 0,
+            position_id: user.position_id,
+            owner_public_key: user.get_public_key(),
+            owner_account: Zero::zero(),
+            owner_protection_enabled: true,
+        );
+
+    // Fund user with premium cost
+    let premium_cost = PREMIUM_COST;
+    let premium_amount: u128 = premium_cost.into() * cfg.collateral_cfg.quantum.into();
+    token_state.fund(recipient: user.address, amount: USER_INIT_BALANCE.try_into().unwrap());
+    token_state.approve(owner: user.address, spender: contract_address, amount: premium_amount);
+
+    // Check user balance before forced withdraw request
+    validate_balance(token_state, user.address, USER_INIT_BALANCE.try_into().unwrap());
+
+    // Get sequencer address and check its balance before
+    let sequencer_address = get_block_info().sequencer_address;
+    let sequencer_balance_before = token_state.balance_of(sequencer_address);
+
+    // Setup parameters:
+    start_cheat_block_timestamp_global(
+        block_timestamp: Time::now().add(delta: Time::days(1)).into(),
+    );
+    let expiration = Time::now().add(delta: Time::days(1));
+
+    let withdraw_args = WithdrawArgs {
+        position_id: user.position_id,
+        salt: user.salt_counter,
+        expiration,
+        collateral_id: cfg.collateral_cfg.collateral_id,
+        amount: WITHDRAW_AMOUNT,
+        recipient: recipient.address,
+    };
+    let withdraw_args_hash = withdraw_args.get_message_hash(public_key: user.get_public_key());
+    let forced_withdraw_args = ForcedWithdrawArgs { withdraw_args_hash };
+    let forced_msg_hash = forced_withdraw_args.get_message_hash(public_key: user.get_public_key());
+    let signature = user.sign_message(message: forced_msg_hash);
+
+    let mut spy = snforge_std::spy_events();
+    // Test:
+
+    cheat_caller_address_once(:contract_address, caller_address: user.address);
+    dispatcher
+        .forced_withdraw_request(
+            :signature,
+            recipient: withdraw_args.recipient,
+            position_id: withdraw_args.position_id,
+            amount: withdraw_args.amount,
+            expiration: withdraw_args.expiration,
+            salt: withdraw_args.salt,
+        );
+
+    // Catch the event.
+    let spied_event = spy.get_events().emitted_by(contract_address).events[0];
+    assert_forced_withdraw_request_event_with_expected(
+        :spied_event,
+        position_id: withdraw_args.position_id,
+        recipient: withdraw_args.recipient,
+        collateral_id: cfg.collateral_cfg.collateral_id,
+        amount: withdraw_args.amount,
+        expiration: withdraw_args.expiration,
+        forced_withdraw_request_hash: forced_msg_hash,
+        salt: withdraw_args.salt,
+    );
+
+    // Check that premium cost was transferred from user
+    validate_balance(
+        token_state, user.address, (USER_INIT_BALANCE - premium_amount).try_into().unwrap(),
+    );
+
+    // Check that premium cost was transferred to sequencer address
+    let sequencer_balance_after = token_state.balance_of(sequencer_address);
+    assert_eq!(sequencer_balance_after, sequencer_balance_before + premium_amount);
+}
+
+#[test]
+fn test_successful_forced_withdraw_operator_executes() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+    let dispatcher = ICoreDispatcher { contract_address };
+    let position_dispatcher = IPositionsDispatcher { contract_address };
+    let deposit_dispatcher = IDepositDispatcher { contract_address };
+
+    let user: User = Default::default();
+    let recipient = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
+
+    // Create a position.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    position_dispatcher
+        .new_position(
+            operator_nonce: 0,
+            position_id: user.position_id,
+            owner_public_key: user.get_public_key(),
+            owner_account: Zero::zero(),
+            owner_protection_enabled: true,
+        );
+
+    // Deposit collateral for user
+    let deposit_amount = 1000_u64;
+    token_state.fund(recipient: user.address, amount: USER_INIT_BALANCE.try_into().unwrap());
+    token_state
+        .approve(
+            owner: user.address,
+            spender: contract_address,
+            amount: deposit_amount.into() * cfg.collateral_cfg.quantum.into(),
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: user.address);
+    deposit_dispatcher
+        .deposit_asset(
+            asset_id: cfg.collateral_cfg.collateral_id,
+            position_id: user.position_id,
+            quantized_amount: deposit_amount,
+            salt: user.salt_counter,
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    deposit_dispatcher
+        .process_deposit(
+            operator_nonce: 1,
+            depositor: user.address,
+            asset_id: cfg.collateral_cfg.collateral_id,
+            position_id: user.position_id,
+            quantized_amount: deposit_amount,
+            salt: user.salt_counter,
+        );
+
+    // Check user balance before forced withdraw request
+    validate_balance(
+        token_state,
+        user.address,
+        (USER_INIT_BALANCE - (deposit_amount * cfg.collateral_cfg.quantum).into())
+            .try_into()
+            .unwrap(),
+    );
+
+    // Fund user with premium cost
+    let premium_cost = PREMIUM_COST;
+    let premium_amount = premium_cost.into() * cfg.collateral_cfg.quantum.into();
+    token_state.approve(owner: user.address, spender: contract_address, amount: premium_amount);
+
+    // Get sequencer address and check its balance before
+    let sequencer_address = get_block_info().sequencer_address;
+    let sequencer_balance_before = token_state.balance_of(sequencer_address);
+
+    // Setup parameters:
+    let request_time = Time::now();
+    start_cheat_block_timestamp_global(block_timestamp: request_time.into());
+    // Set expiration far enough in the future to remain valid after forced action timeout
+    let forced_action_timelock = FORCED_ACTION_TIMELOCK;
+    let expiration = request_time
+        .add(delta: TimeDelta { seconds: forced_action_timelock })
+        .add(delta: Time::days(1));
+
+    let withdraw_args = WithdrawArgs {
+        position_id: user.position_id,
+        salt: user.salt_counter + 1,
+        expiration,
+        collateral_id: cfg.collateral_cfg.collateral_id,
+        amount: WITHDRAW_AMOUNT,
+        recipient: recipient.address,
+    };
+    let withdraw_args_hash = withdraw_args.get_message_hash(public_key: user.get_public_key());
+    let forced_withdraw_args = ForcedWithdrawArgs { withdraw_args_hash };
+    let forced_msg_hash = forced_withdraw_args.get_message_hash(public_key: user.get_public_key());
+    let signature = user.sign_message(message: forced_msg_hash);
+
+    // Request forced withdraw
+    cheat_caller_address_once(:contract_address, caller_address: user.address);
+    dispatcher
+        .forced_withdraw_request(
+            :signature,
+            recipient: withdraw_args.recipient,
+            position_id: withdraw_args.position_id,
+            amount: withdraw_args.amount,
+            expiration: withdraw_args.expiration,
+            salt: withdraw_args.salt,
+        );
+
+    // Check that premium cost was transferred from user
+    validate_balance(
+        token_state,
+        user.address,
+        (USER_INIT_BALANCE - (deposit_amount * cfg.collateral_cfg.quantum).into() - premium_amount)
+            .try_into()
+            .unwrap(),
+    );
+
+    // Check that premium cost was transferred to sequencer address
+    let sequencer_balance_after_request = token_state.balance_of(sequencer_address);
+    assert_eq!(sequencer_balance_after_request, sequencer_balance_before + premium_amount);
+
+    // Wait for forced action timeout
+    let execute_time = request_time.add(delta: TimeDelta { seconds: 2 });
+    start_cheat_block_timestamp_global(block_timestamp: execute_time.into());
+
+    // Check position balance before forced withdraw
+    let position_data_before = position_dispatcher.get_position_assets(user.position_id);
+    let collateral_balance_before = position_data_before.collateral_balance;
+
+    // Test: Operator process the withdrawal.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    dispatcher
+        .withdraw(
+            operator_nonce: 2,
+            recipient: withdraw_args.recipient,
+            position_id: withdraw_args.position_id,
+            amount: withdraw_args.amount,
+            expiration: withdraw_args.expiration,
+            salt: withdraw_args.salt,
+        );
+
+    // Check after forced withdraw:
+    let position_data_after = position_dispatcher.get_position_assets(user.position_id);
+    let collateral_balance_after = position_data_after.collateral_balance;
+    assert_eq!(collateral_balance_after, collateral_balance_before - withdraw_args.amount.into());
+    validate_balance(
+        token_state, recipient.address, (WITHDRAW_AMOUNT * COLLATERAL_QUANTUM).try_into().unwrap(),
+    );
+}
+
+#[test]
+fn test_successful_forced_withdraw_user_executes() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+    let dispatcher = ICoreDispatcher { contract_address };
+    let position_dispatcher = IPositionsDispatcher { contract_address };
+    let deposit_dispatcher = IDepositDispatcher { contract_address };
+
+    let user: User = Default::default();
+    let recipient = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
+
+    // Create a position.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    position_dispatcher
+        .new_position(
+            operator_nonce: 0,
+            position_id: user.position_id,
+            owner_public_key: user.get_public_key(),
+            owner_account: Zero::zero(),
+            owner_protection_enabled: true,
+        );
+
+    // Deposit collateral for user
+    let deposit_amount = 1000_u64;
+    token_state.fund(recipient: user.address, amount: USER_INIT_BALANCE.try_into().unwrap());
+    token_state
+        .approve(
+            owner: user.address,
+            spender: contract_address,
+            amount: deposit_amount.into() * cfg.collateral_cfg.quantum.into(),
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: user.address);
+    deposit_dispatcher
+        .deposit_asset(
+            asset_id: cfg.collateral_cfg.collateral_id,
+            position_id: user.position_id,
+            quantized_amount: deposit_amount,
+            salt: user.salt_counter,
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    deposit_dispatcher
+        .process_deposit(
+            operator_nonce: 1,
+            depositor: user.address,
+            asset_id: cfg.collateral_cfg.collateral_id,
+            position_id: user.position_id,
+            quantized_amount: deposit_amount,
+            salt: user.salt_counter,
+        );
+
+    // Check user balance before forced withdraw request
+    validate_balance(
+        token_state,
+        user.address,
+        (USER_INIT_BALANCE - (deposit_amount * cfg.collateral_cfg.quantum).into())
+            .try_into()
+            .unwrap(),
+    );
+
+    // Fund user with premium cost
+    let premium_cost = PREMIUM_COST;
+    let premium_amount = premium_cost.into() * cfg.collateral_cfg.quantum.into();
+    token_state.approve(owner: user.address, spender: contract_address, amount: premium_amount);
+
+    // Get sequencer address and check its balance before
+    let sequencer_address = get_block_info().sequencer_address;
+    let sequencer_balance_before = token_state.balance_of(sequencer_address);
+
+    // Setup parameters:
+    let request_time = Time::now();
+    start_cheat_block_timestamp_global(block_timestamp: request_time.into());
+    // Set expiration far enough in the future to remain valid after forced action timeout
+    let forced_action_timelock = FORCED_ACTION_TIMELOCK;
+    let expiration = request_time
+        .add(delta: TimeDelta { seconds: forced_action_timelock })
+        .add(delta: Time::days(1));
+
+    let withdraw_args = WithdrawArgs {
+        position_id: user.position_id,
+        salt: user.salt_counter + 1,
+        expiration,
+        collateral_id: cfg.collateral_cfg.collateral_id,
+        amount: WITHDRAW_AMOUNT,
+        recipient: recipient.address,
+    };
+    let withdraw_args_hash = withdraw_args.get_message_hash(public_key: user.get_public_key());
+    let forced_withdraw_args = ForcedWithdrawArgs { withdraw_args_hash };
+    let forced_msg_hash = forced_withdraw_args.get_message_hash(public_key: user.get_public_key());
+    let signature = user.sign_message(message: forced_msg_hash);
+
+    // Request forced withdraw
+    cheat_caller_address_once(:contract_address, caller_address: user.address);
+    dispatcher
+        .forced_withdraw_request(
+            :signature,
+            recipient: withdraw_args.recipient,
+            position_id: withdraw_args.position_id,
+            amount: withdraw_args.amount,
+            expiration: withdraw_args.expiration,
+            salt: withdraw_args.salt,
+        );
+
+    // Check that premium cost was transferred from user
+    validate_balance(
+        token_state,
+        user.address,
+        (USER_INIT_BALANCE - (deposit_amount * cfg.collateral_cfg.quantum).into() - premium_amount)
+            .try_into()
+            .unwrap(),
+    );
+
+    // Check that premium cost was transferred to sequencer address
+    let sequencer_balance_after_request = token_state.balance_of(sequencer_address);
+    assert_eq!(sequencer_balance_after_request, sequencer_balance_before + premium_amount);
+
+    // Wait for forced action timeout
+    let forced_action_timelock = FORCED_ACTION_TIMELOCK;
+    let execute_time = request_time.add(delta: TimeDelta { seconds: forced_action_timelock });
+    start_cheat_block_timestamp_global(block_timestamp: execute_time.into());
+
+    // Check position balance before forced withdraw
+    let position_data_before = position_dispatcher.get_position_assets(user.position_id);
+    let collateral_balance_before = position_data_before.collateral_balance;
+
+    let mut spy = snforge_std::spy_events();
+    // Test: User executes forced withdraw after timeout
+    cheat_caller_address_once(:contract_address, caller_address: user.address);
+    dispatcher
+        .forced_withdraw(
+            recipient: withdraw_args.recipient,
+            position_id: withdraw_args.position_id,
+            amount: withdraw_args.amount,
+            expiration: withdraw_args.expiration,
+            salt: withdraw_args.salt,
+        );
+
+    // Catch the event.
+    let spied_event = spy.get_events().emitted_by(contract_address).events[0];
+    assert_forced_withdraw_event_with_expected(
+        :spied_event,
+        position_id: withdraw_args.position_id,
+        recipient: withdraw_args.recipient,
+        collateral_id: cfg.collateral_cfg.collateral_id,
+        amount: withdraw_args.amount,
+        expiration: withdraw_args.expiration,
+        forced_withdraw_request_hash: forced_msg_hash,
+        salt: withdraw_args.salt,
+    );
+
+    // Check after forced withdraw:
+    let position_data_after = position_dispatcher.get_position_assets(user.position_id);
+    let collateral_balance_after = position_data_after.collateral_balance;
+    assert_eq!(collateral_balance_after, collateral_balance_before - withdraw_args.amount.into());
+    validate_balance(
+        token_state, recipient.address, (WITHDRAW_AMOUNT * COLLATERAL_QUANTUM).try_into().unwrap(),
+    );
+}
+
+#[test]
+#[should_panic(expected: 'FORCED_WAIT_REQUIRED')]
+fn test_forced_withdraw_before_timeout() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+    let dispatcher = ICoreDispatcher { contract_address };
+    let position_dispatcher = IPositionsDispatcher { contract_address };
+
+    let user: User = Default::default();
+    let recipient = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
+
+    // Create a position.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    position_dispatcher
+        .new_position(
+            operator_nonce: 0,
+            position_id: user.position_id,
+            owner_public_key: user.get_public_key(),
+            owner_account: Zero::zero(),
+            owner_protection_enabled: true,
+        );
+
+    // Fund user with premium cost
+    let premium_cost = PREMIUM_COST;
+    let premium_amount = premium_cost.into() * cfg.collateral_cfg.quantum.into();
+    token_state.fund(recipient: user.address, amount: USER_INIT_BALANCE.try_into().unwrap());
+    token_state.approve(owner: user.address, spender: contract_address, amount: premium_amount);
+
+    // Check user balance before forced withdraw request
+    validate_balance(token_state, user.address, USER_INIT_BALANCE.try_into().unwrap());
+
+    // Get sequencer address and check its balance before
+    let sequencer_address = get_block_info().sequencer_address;
+    let sequencer_balance_before = token_state.balance_of(sequencer_address);
+
+    // Setup parameters:
+    let request_time = Time::now();
+    start_cheat_block_timestamp_global(block_timestamp: request_time.into());
+    // Set expiration far enough in the future to remain valid after forced action timeout
+    let forced_action_timelock = FORCED_ACTION_TIMELOCK;
+    let expiration = request_time
+        .add(delta: TimeDelta { seconds: forced_action_timelock })
+        .add(delta: Time::days(1));
+
+    let withdraw_args = WithdrawArgs {
+        position_id: user.position_id,
+        salt: user.salt_counter,
+        expiration,
+        collateral_id: cfg.collateral_cfg.collateral_id,
+        amount: WITHDRAW_AMOUNT,
+        recipient: recipient.address,
+    };
+    let withdraw_args_hash = withdraw_args.get_message_hash(public_key: user.get_public_key());
+    let forced_withdraw_args = ForcedWithdrawArgs { withdraw_args_hash };
+    let forced_msg_hash = forced_withdraw_args.get_message_hash(public_key: user.get_public_key());
+    let signature = user.sign_message(message: forced_msg_hash);
+
+    // Request forced withdraw
+    cheat_caller_address_once(:contract_address, caller_address: user.address);
+    dispatcher
+        .forced_withdraw_request(
+            :signature,
+            recipient: withdraw_args.recipient,
+            position_id: withdraw_args.position_id,
+            amount: withdraw_args.amount,
+            expiration: withdraw_args.expiration,
+            salt: withdraw_args.salt,
+        );
+
+    // Check that premium cost was transferred from user
+    validate_balance(
+        token_state, user.address, (USER_INIT_BALANCE - premium_amount).try_into().unwrap(),
+    );
+
+    // Check that premium cost was transferred to sequencer address
+    let sequencer_balance_after = token_state.balance_of(sequencer_address);
+    assert_eq!(sequencer_balance_after, sequencer_balance_before + premium_amount);
+
+    // Try to execute before timeout (just before timeout)
+    let forced_action_timelock = FORCED_ACTION_TIMELOCK;
+    let execute_time = request_time.add(delta: TimeDelta { seconds: forced_action_timelock - 1 });
+    start_cheat_block_timestamp_global(block_timestamp: execute_time.into());
+
+    // Test:
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    dispatcher
+        .forced_withdraw(
+            recipient: withdraw_args.recipient,
+            position_id: withdraw_args.position_id,
+            amount: withdraw_args.amount,
+            expiration: withdraw_args.expiration,
+            salt: withdraw_args.salt,
+        );
+}
+
+#[test]
+#[should_panic(expected: 'REQUEST_ALREADY_PROCESSED')]
+fn test_forced_withdraw_after_operator_processed_withdraw() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+    let dispatcher = ICoreDispatcher { contract_address };
+    let position_dispatcher = IPositionsDispatcher { contract_address };
+    let deposit_dispatcher = IDepositDispatcher { contract_address };
+
+    let user: User = Default::default();
+    let recipient = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
+
+    // Create a position.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    position_dispatcher
+        .new_position(
+            operator_nonce: 0,
+            position_id: user.position_id,
+            owner_public_key: user.get_public_key(),
+            owner_account: Zero::zero(),
+            owner_protection_enabled: true,
+        );
+
+    // Deposit collateral for user
+    let deposit_amount = 1000_u64;
+    token_state.fund(recipient: user.address, amount: USER_INIT_BALANCE.try_into().unwrap());
+    token_state
+        .approve(
+            owner: user.address,
+            spender: contract_address,
+            amount: deposit_amount.into() * cfg.collateral_cfg.quantum.into(),
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: user.address);
+    deposit_dispatcher
+        .deposit_asset(
+            asset_id: cfg.collateral_cfg.collateral_id,
+            position_id: user.position_id,
+            quantized_amount: deposit_amount,
+            salt: user.salt_counter,
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    deposit_dispatcher
+        .process_deposit(
+            operator_nonce: 1,
+            depositor: user.address,
+            asset_id: cfg.collateral_cfg.collateral_id,
+            position_id: user.position_id,
+            quantized_amount: deposit_amount,
+            salt: user.salt_counter,
+        );
+
+    // Fund user with premium cost
+    let premium_cost = PREMIUM_COST;
+    let premium_amount = premium_cost.into() * cfg.collateral_cfg.quantum.into();
+    token_state.approve(owner: user.address, spender: contract_address, amount: premium_amount);
+
+    // Setup parameters:
+    let request_time = Time::now();
+    start_cheat_block_timestamp_global(block_timestamp: request_time.into());
+    let expiration = request_time
+        .add(delta: TimeDelta { seconds: FORCED_ACTION_TIMELOCK })
+        .add(delta: Time::days(1));
+
+    let withdraw_args = WithdrawArgs {
+        position_id: user.position_id,
+        salt: user.salt_counter + 1,
+        expiration,
+        collateral_id: cfg.collateral_cfg.collateral_id,
+        amount: WITHDRAW_AMOUNT,
+        recipient: recipient.address,
+    };
+    let withdraw_args_hash = withdraw_args.get_message_hash(public_key: user.get_public_key());
+    let forced_withdraw_args = ForcedWithdrawArgs { withdraw_args_hash };
+    let forced_msg_hash = forced_withdraw_args.get_message_hash(public_key: user.get_public_key());
+    let signature = user.sign_message(message: forced_msg_hash);
+
+    // Request forced withdraw
+    cheat_caller_address_once(:contract_address, caller_address: user.address);
+    dispatcher
+        .forced_withdraw_request(
+            :signature,
+            recipient: withdraw_args.recipient,
+            position_id: withdraw_args.position_id,
+            amount: withdraw_args.amount,
+            expiration: withdraw_args.expiration,
+            salt: withdraw_args.salt,
+        );
+
+    // Operator successfully processes the withdraw.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    dispatcher
+        .withdraw(
+            operator_nonce: 2,
+            recipient: withdraw_args.recipient,
+            position_id: withdraw_args.position_id,
+            amount: withdraw_args.amount,
+            expiration: withdraw_args.expiration,
+            salt: withdraw_args.salt,
+        );
+
+    // User tries to force withdraw after operator already processed the withdraw request.
+    let user_execute_time = request_time.add(delta: TimeDelta { seconds: FORCED_ACTION_TIMELOCK });
+    start_cheat_block_timestamp_global(block_timestamp: user_execute_time.into());
+    cheat_caller_address_once(:contract_address, caller_address: user.address);
+    dispatcher
+        .forced_withdraw(
+            recipient: withdraw_args.recipient,
+            position_id: withdraw_args.position_id,
+            amount: withdraw_args.amount,
+            expiration: withdraw_args.expiration,
+            salt: withdraw_args.salt,
+        );
+}
+
+#[test]
+#[should_panic(expected: 'REQUEST_ALREADY_PROCESSED')]
+fn test_withdraw_after_user_forced_withdraw_executed() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+    let dispatcher = ICoreDispatcher { contract_address };
+    let position_dispatcher = IPositionsDispatcher { contract_address };
+    let deposit_dispatcher = IDepositDispatcher { contract_address };
+
+    let user: User = Default::default();
+    let recipient = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
+
+    // Create a position.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    position_dispatcher
+        .new_position(
+            operator_nonce: 0,
+            position_id: user.position_id,
+            owner_public_key: user.get_public_key(),
+            owner_account: Zero::zero(),
+            owner_protection_enabled: true,
+        );
+
+    // Deposit collateral for user
+    let deposit_amount = 1000_u64;
+    token_state.fund(recipient: user.address, amount: USER_INIT_BALANCE.try_into().unwrap());
+    token_state
+        .approve(
+            owner: user.address,
+            spender: contract_address,
+            amount: deposit_amount.into() * cfg.collateral_cfg.quantum.into(),
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: user.address);
+    deposit_dispatcher
+        .deposit_asset(
+            asset_id: cfg.collateral_cfg.collateral_id,
+            position_id: user.position_id,
+            quantized_amount: deposit_amount,
+            salt: user.salt_counter,
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    deposit_dispatcher
+        .process_deposit(
+            operator_nonce: 1,
+            depositor: user.address,
+            asset_id: cfg.collateral_cfg.collateral_id,
+            position_id: user.position_id,
+            quantized_amount: deposit_amount,
+            salt: user.salt_counter,
+        );
+
+    // Fund user with premium cost
+    let premium_cost = PREMIUM_COST;
+    let premium_amount = premium_cost.into() * cfg.collateral_cfg.quantum.into();
+    token_state.approve(owner: user.address, spender: contract_address, amount: premium_amount);
+
+    // Setup parameters:
+    let request_time = Time::now();
+    start_cheat_block_timestamp_global(block_timestamp: request_time.into());
+    let forced_action_timelock = FORCED_ACTION_TIMELOCK;
+    let expiration = request_time
+        .add(delta: TimeDelta { seconds: forced_action_timelock })
+        .add(delta: Time::days(1));
+
+    let withdraw_args = WithdrawArgs {
+        position_id: user.position_id,
+        salt: user.salt_counter + 1,
+        expiration,
+        collateral_id: cfg.collateral_cfg.collateral_id,
+        amount: WITHDRAW_AMOUNT,
+        recipient: recipient.address,
+    };
+    let withdraw_args_hash = withdraw_args.get_message_hash(public_key: user.get_public_key());
+    let forced_withdraw_args = ForcedWithdrawArgs { withdraw_args_hash };
+    let forced_msg_hash = forced_withdraw_args.get_message_hash(public_key: user.get_public_key());
+    let signature = user.sign_message(message: forced_msg_hash);
+
+    // Request forced withdraw
+    cheat_caller_address_once(:contract_address, caller_address: user.address);
+    dispatcher
+        .forced_withdraw_request(
+            :signature,
+            recipient: withdraw_args.recipient,
+            position_id: withdraw_args.position_id,
+            amount: withdraw_args.amount,
+            expiration: withdraw_args.expiration,
+            salt: withdraw_args.salt,
+        );
+
+    // Wait for forced action timeout and let user execute forced withdraw successfully.
+    let execute_time = request_time.add(delta: TimeDelta { seconds: forced_action_timelock });
+    start_cheat_block_timestamp_global(block_timestamp: execute_time.into());
+    cheat_caller_address_once(:contract_address, caller_address: user.address);
+    dispatcher
+        .forced_withdraw(
+            recipient: withdraw_args.recipient,
+            position_id: withdraw_args.position_id,
+            amount: withdraw_args.amount,
+            expiration: withdraw_args.expiration,
+            salt: withdraw_args.salt,
+        );
+
+    // Sending funding tick, as funding was expired.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    IAssetsDispatcher { contract_address }
+        .funding_tick(operator_nonce: 2, funding_ticks: array![].span(), timestamp: Time::now());
+
+    // Operator tries to process withdraw after user already executed forced withdraw.
+    let operator_execute_time = execute_time.add(delta: TimeDelta { seconds: 1 });
+    start_cheat_block_timestamp_global(block_timestamp: operator_execute_time.into());
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    dispatcher
+        .withdraw(
+            operator_nonce: 3,
+            recipient: withdraw_args.recipient,
+            position_id: withdraw_args.position_id,
+            amount: withdraw_args.amount,
+            expiration: withdraw_args.expiration,
+            salt: withdraw_args.salt,
+        );
+}
+
+#[test]
+#[should_panic(expected: 'INVALID_ZERO_AMOUNT')]
+fn test_forced_withdraw_request_zero_amount() {
+    // Setup state, token and user:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let user = Default::default();
+    init_position(cfg: @cfg, ref :state, :user);
+    let recipient = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
+
+    // Setup parameters:
+    let expiration = Time::now().add(delta: Time::days(1));
+
+    let withdraw_args = WithdrawArgs {
+        position_id: user.position_id,
+        salt: user.salt_counter,
+        expiration,
+        collateral_id: cfg.collateral_cfg.collateral_id,
+        amount: 0,
+        recipient: recipient.address,
+    };
+    let withdraw_args_hash = withdraw_args.get_message_hash(public_key: user.get_public_key());
+    let forced_withdraw_args = ForcedWithdrawArgs { withdraw_args_hash };
+    let forced_msg_hash = forced_withdraw_args.get_message_hash(public_key: user.get_public_key());
+    let signature = user.sign_message(message: forced_msg_hash);
+
+    // Test:
+    cheat_caller_address_once(contract_address: test_address(), caller_address: user.address);
+    state
+        .forced_withdraw_request(
+            :signature,
+            recipient: withdraw_args.recipient,
+            position_id: withdraw_args.position_id,
+            amount: withdraw_args.amount,
+            expiration: withdraw_args.expiration,
+            salt: withdraw_args.salt,
+        );
 }
 
 // Deleverage tests.
