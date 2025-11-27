@@ -132,3 +132,16 @@ async def test_asset_management(test_utils: PerpetualsTestUtils):
     # Verify the number of active synthetic assets increased
     num_assets_after = await test_utils.get_num_of_active_synthetic_assets()
     assert num_assets_after == num_assets_before + 1
+
+    # Test funding_tick
+    # Get timely data to verify funding index exists
+    timely_data = await test_utils.get_asset_timely_data(asset_id)
+    initial_funding_index = timely_data["funding_index"]["value"]
+
+    # Execute funding tick with a diff for the new asset
+    await test_utils.funding_tick({asset_id: 1024})
+
+    # Verify funding index was updated
+    timely_data_after = await test_utils.get_asset_timely_data(asset_id)
+    final_funding_index = timely_data_after["funding_index"]["value"]
+    assert final_funding_index - initial_funding_index == 1024
