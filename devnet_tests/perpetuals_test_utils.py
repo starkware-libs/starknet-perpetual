@@ -3,7 +3,7 @@ import random
 from poseidon_py.poseidon_hash import poseidon_hash_many
 from starknet_py.cairo.felt import encode_shortstring
 from starknet_py.contract import Contract
-from starknet_py.hash.utils import message_signature
+from starknet_py.hash.utils import message_signature, pedersen_hash
 from starknet_py.net.account.account import Account
 from starknet_py.net.models.chains import StarknetChainId
 from starknet_py.proxy.contract_abi_resolver import ContractAbiResolver, ProxyConfig
@@ -18,6 +18,8 @@ STARKNET_CHAIN_ID = StarknetChainId.MAINNET
 REVISION = 1
 
 MAX_UINT32 = 2**32 - 1  # Maximum value for a 32-bit unsigned integer
+TWO_POW_40 = 2**40  # 2^40
+TWO_POW_32 = 2**32  # 2^32
 
 
 def formatted_position_id(value: int) -> dict:
@@ -63,6 +65,21 @@ class PerpetualsTestUtils:
 
     def get_account_position_id(self, account: Account) -> int:
         return self.account_positions[account]
+
+    def create_signed_price(
+        self, account: Account, oracle_price: int, timestamp: int, asset_name: int, oracle_name: int
+    ):
+        asset_oracle_payload = TWO_POW_40 * asset_name + oracle_name
+        price_timestamp_payload = oracle_price * TWO_POW_32 + timestamp
+        msg_hash = pedersen_hash(asset_oracle_payload, price_timestamp_payload)
+
+        signature = message_signature(msg_hash, self.account_key_pairs[account][1])
+        return {
+            "signature": signature,
+            "signer_public_key": self.get_account_public_key(account),
+            "timestamp": timestamp,
+            "oracle_price": oracle_price,
+        }
 
     async def new_account(self) -> Account:
         if self.accounts_number >= len(self.starknet_test_utils.starknet.accounts):
@@ -296,3 +313,51 @@ class PerpetualsTestUtils:
             await invocation.wait_for_acceptance(check_interval=0.1)
 
         await _process_withdraw(account, amount, expiration, salt)
+
+    async def price_tick(self, asset_id: int, oracle_price: int, signed_prices: list[dict]):
+        invocation = await self.operator_contract.functions["price_tick"].invoke_v3(
+            await self.get_operator_nonce(),
+            formatted_asset_id(asset_id),
+            oracle_price,
+            signed_prices,
+            auto_estimate=True,
+        )
+        await invocation.wait_for_acceptance(check_interval=0.1)
+
+    async def add_synthetic_asset(
+        self,
+        risk_factor_tiers: list[int],
+        risk_factor_first_tier_boundary: int,
+        risk_factor_tier_size: int,
+        quorum: int,
+        resolution_factor: int,
+    ):
+        asset_id = random.randint(1, MAX_UINT32)
+        try:
+            invocation = await self.app_governor_contract.functions[
+                "add_synthetic_asset"
+            ].invoke_v3(
+                formatted_asset_id(asset_id),
+                risk_factor_tiers,
+                risk_factor_first_tier_boundary,
+                risk_factor_tier_size,
+                quorum,
+                resolution_factor,
+                auto_estimate=True,
+            )
+            await invocation.wait_for_acceptance(check_interval=0.1)
+            return asset_id
+        except Exception as e:
+            raise Exception(f"Failed to add synthetic asset {asset_id}: {e}")
+
+    async def add_oracle_to_asset(
+        self, asset_id: int, oracle_public_key: int, oracle_name: int, asset_name: int
+    ):
+        invocation = await self.app_governor_contract.functions["add_oracle_to_asset"].invoke_v3(
+            formatted_asset_id(asset_id),
+            oracle_public_key,
+            oracle_name,
+            asset_name,
+            auto_estimate=True,
+        )
+        await invocation.wait_for_acceptance(check_interval=0.1)

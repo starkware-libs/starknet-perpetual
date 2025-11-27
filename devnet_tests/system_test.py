@@ -1,5 +1,9 @@
 import pytest
+from starknet_py.cairo.felt import encode_shortstring
+from starknet_py.contract import Contract
+from test_utils.starknet_test_utils import StarknetTestUtils
 from devnet_tests.perpetuals_test_utils import PerpetualsTestUtils
+from conftest import NOW
 
 
 @pytest.mark.asyncio
@@ -81,3 +85,50 @@ async def test_deposit_withdraw(test_utils: PerpetualsTestUtils):
     # Verify position total value decreased by withdraw amount
     tv_after_withdraw = await test_utils.get_position_total_value(position_id)
     assert tv_after_withdraw == 5
+
+
+@pytest.mark.asyncio
+async def test_asset_management(test_utils: PerpetualsTestUtils):
+    """Test asset management functions."""
+
+    num_assets_before = await test_utils.get_num_of_active_synthetic_assets()
+
+    # Test add_synthetic_asset
+    risk_factor_tiers = [100, 200, 400]
+    risk_factor_first_tier_boundary = 100
+    risk_factor_tier_size = 100
+    quorum = 1
+    resolution_factor = 100
+    asset_id = await test_utils.add_synthetic_asset(
+        risk_factor_tiers,
+        risk_factor_first_tier_boundary,
+        risk_factor_tier_size,
+        quorum,
+        resolution_factor,
+    )
+    assert asset_id > 0
+
+    # Test add_oracle_to_asset
+    oracle_account = await test_utils.new_account()
+    await test_utils.add_oracle_to_asset(
+        asset_id,
+        test_utils.get_account_public_key(oracle_account),
+        encode_shortstring("ORCL"),
+        encode_shortstring("ASSET_NAME"),
+    )
+
+    # Test price_tick
+    oracle_price = 100000000
+    timestamp = NOW + 90
+    signed_price = test_utils.create_signed_price(
+        oracle_account,
+        oracle_price,
+        timestamp,
+        encode_shortstring("ASSET_NAME"),
+        encode_shortstring("ORCL"),
+    )
+    await test_utils.price_tick(asset_id, oracle_price, [signed_price])
+
+    # Verify the number of active synthetic assets increased
+    num_assets_after = await test_utils.get_num_of_active_synthetic_assets()
+    assert num_assets_after == num_assets_before + 1
