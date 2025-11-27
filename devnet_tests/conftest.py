@@ -29,6 +29,9 @@ OPERATOR_DUMMY_KEY = 1
 DEPLOYER_DUMMY_KEY = 2
 APP_GOVERNOR_DUMMY_KEY = 3
 
+# Random block number for the forked network
+FORK_BLOCK = 3861835
+
 
 @pytest.fixture(scope="session")
 def operator_address() -> int:
@@ -68,7 +71,7 @@ def starknet_forked(
 ) -> Iterator[StarknetTestUtils]:
     with starknet_test_utils_factory(
         fork_network="https://rpc.starknet.lava.build/",
-        fork_block=3861835,
+        fork_block=FORK_BLOCK,
         starknet_chain_id=StarknetChainId.MAINNET,
         request_body_size_limit=20_000_000,
     ) as val:
@@ -76,17 +79,19 @@ def starknet_forked(
 
 
 @pytest.fixture(scope="function")
+def accounts_to_impersonate(operator_address: int, deployer_address: int, app_governor_address: int) -> list[int]:
+    return [operator_address, deployer_address, app_governor_address]
+
+@pytest.fixture(scope="function")
 def starknet_forked_with_impersonated_accounts(
     starknet_forked: StarknetTestUtils,
-    operator_address: int,
-    deployer_address: int,
-    app_governor_address: int,
+    accounts_to_impersonate: list[int],
 ) -> StarknetTestUtils:
     """
     Impersonate the operator account in the forked Starknet instance.
     """
     client = starknet_forked.starknet.get_client()
-    for address in [operator_address, deployer_address, app_governor_address]:
+    for address in accounts_to_impersonate:
         client.impersonate_account_sync(address)
 
     return starknet_forked
