@@ -146,3 +146,40 @@ async def test_asset_management(
     timely_data_after = await test_utils.get_asset_timely_data(asset_id)
     final_funding_index = timely_data_after["funding_index"]["value"]
     assert final_funding_index - initial_funding_index == 1024
+
+
+@pytest.mark.asyncio
+async def test_trade(
+    upgrade_perpetuals_core_contract: Contract,
+    starknet_forked_with_impersonated_accounts: StarknetTestUtils,
+):
+    test_utils = PerpetualsTestUtils(
+        starknet_forked_with_impersonated_accounts, upgrade_perpetuals_core_contract
+    )
+
+    # Create two accounts and positions
+    account_a = await test_utils.new_account()
+    position_id_a = await test_utils.new_position(account_a)
+    await test_utils.deposit(account_a, 10_000_000)
+
+    account_b = await test_utils.new_account()
+    position_id_b = await test_utils.new_position(account_b)
+    await test_utils.deposit(account_b, 10_000_000)
+
+    # Get initial position values
+    tv_a_before = await test_utils.get_position_total_value(position_id_a)
+    tv_b_before = await test_utils.get_position_total_value(position_id_b)
+
+    # Test create_order
+    base_asset_id = 0x47524153532d310000000000000000
+    order_a = await test_utils.create_order(position_id_a, base_asset_id, 37, -5303580, 0, 0x69411c56)
+    order_b = await test_utils.create_order(position_id_b, base_asset_id, -37, 5303580, 0, 0x69411c56)
+
+    # Execute trade
+    await test_utils.trade(account_a, account_b, order_a, order_b, 37, -5303580, 0, 0)
+
+    # Verify position values changed
+    tv_a_after = await test_utils.get_position_total_value(position_id_a)
+    tv_b_after = await test_utils.get_position_total_value(position_id_b)
+    assert tv_a_after != tv_a_before
+    assert tv_b_after != tv_b_before

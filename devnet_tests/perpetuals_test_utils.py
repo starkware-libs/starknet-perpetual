@@ -13,6 +13,7 @@ from test_utils.starknet_test_utils import StarknetTestUtils
 from typing import Dict, Tuple, Optional
 
 # Required for hash computations.
+ORDER_ARGS_HASH = 0x36DA8D51815527CABFAA9C982F564C80FA7429616739306036F1F9B608DD112
 WITHDEAW_ARGS_HASH = 0x250A5FA378E8B771654BD43DCB34844534F9D1E29E16B14760D7936EA7F4B1D
 STARKNET_DOMAIN_HASH = 0x1FF2F602E42168014D405A94F75E8A93D640751D71D16311266E140D8B0A210
 PERPETUALS_NAME = "Perpetuals"
@@ -162,6 +163,29 @@ class PerpetualsTestUtils:
             "signer_public_key": self.get_account_public_key(account),
             "timestamp": timestamp,
             "oracle_price": oracle_price,
+        }
+
+    async def create_order(
+        self,
+        position_id: int,
+        base_asset_id: int,
+        base_amount: int,
+        quote_amount: int,
+        fee_amount: int,
+        expiration: int,
+    ):
+        salt = random.randint(0, MAX_UINT32)
+        collateral_asset_id = await self.get_collateral_asset_id()
+        return {
+            "position_id": formatted_position_id(position_id),
+            "base_asset_id": formatted_asset_id(base_asset_id),
+            "base_amount": base_amount,
+            "quote_asset_id": formatted_asset_id(collateral_asset_id),
+            "quote_amount": quote_amount,
+            "fee_asset_id": formatted_asset_id(collateral_asset_id),
+            "fee_amount": fee_amount,
+            "expiration": formatted_timestamp(expiration),
+            "salt": salt,
         }
 
     async def new_account(self) -> Account:
@@ -479,5 +503,86 @@ class PerpetualsTestUtils:
         # Execute funding tick
         invocation = await self.operator_contract.functions["funding_tick"].invoke_v3(
             await self.get_operator_nonce(), new_funding_indices, auto_estimate=True
+        )
+        await invocation.wait_for_acceptance(check_interval=0.1)
+
+    async def trade(
+        self,
+        account_a: Account,
+        account_b: Account,
+        order_a: dict,
+        order_b: dict,
+        actual_amount_base_a: int,
+        actual_amount_quote_a: int,
+        actual_fee_a: int,
+        actual_fee_b: int,
+    ):
+        order_a_hash = poseidon_hash_many(
+            [
+                ORDER_ARGS_HASH,
+                order_a["position_id"]["value"],
+                order_a["base_asset_id"]["value"],
+                order_a["base_amount"],
+                order_a["quote_asset_id"]["value"],
+                order_a["quote_amount"],
+                order_a["fee_asset_id"]["value"],
+                order_a["fee_amount"],
+                order_a["expiration"]["seconds"],
+                order_a["salt"],
+            ]
+        )
+        order_b_hash = poseidon_hash_many(
+            [
+                ORDER_ARGS_HASH,
+                order_b["position_id"]["value"],
+                order_b["base_asset_id"]["value"],
+                order_b["base_amount"],
+                order_b["quote_asset_id"]["value"],
+                order_b["quote_amount"],
+                order_b["fee_asset_id"]["value"],
+                order_b["fee_amount"],
+                order_b["expiration"]["seconds"],
+                order_b["salt"],
+            ]
+        )
+        starknet_domain_hash = poseidon_hash_many(
+            [
+                STARKNET_DOMAIN_HASH,
+                encode_shortstring(PERPETUALS_NAME),
+                encode_shortstring(PERPETUALS_VERSION),
+                STARKNET_CHAIN_ID,
+                REVISION,
+            ]
+        )
+
+        message_a = [
+            encode_shortstring("StarkNet Message"),
+            starknet_domain_hash,
+            self.get_account_public_key(account_a),
+            order_a_hash,
+        ]
+        message_b = [
+            encode_shortstring("StarkNet Message"),
+            starknet_domain_hash,
+            self.get_account_public_key(account_b),
+            order_b_hash,
+        ]
+
+        message_hash_a = poseidon_hash_many(message_a)
+        message_hash_b = poseidon_hash_many(message_b)
+        signature_a = message_signature(message_hash_a, self.account_key_pairs[account_a][1])
+        signature_b = message_signature(message_hash_b, self.account_key_pairs[account_b][1])
+
+        invocation = await self.operator_contract.functions["trade"].invoke_v3(
+            await self.get_operator_nonce(),
+            signature_a,
+            signature_b,
+            order_a,
+            order_b,
+            actual_amount_base_a,
+            actual_amount_quote_a,
+            actual_fee_a,
+            actual_fee_b,
+            auto_estimate=True,
         )
         await invocation.wait_for_acceptance(check_interval=0.1)
