@@ -191,7 +191,7 @@ async def upgrade_perpetuals_core_contract(
     deployer_account: Account,
     operator_account: Account,
     app_governor_account: Account,
-) -> Contract:
+) -> dict[str, Contract]:
     abi, cairo_version = await ContractAbiResolver(
         address=contract_address,
         client=deployer_account.client,
