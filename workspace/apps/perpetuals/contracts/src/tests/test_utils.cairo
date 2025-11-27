@@ -189,6 +189,7 @@ impl PerpetualsInitConfigDefault of Default<PerpetualsInitConfig> {
         let vault_share_cfg = TokenConfig {
             name: VAULT_SHARE_COLLATERAL_1_NAME(),
             symbol: VAULT_SHARE_COLLATERAL_1_SYMBOL(),
+            decimals: VAULT_DECIMALS,
             initial_supply: 10_u256.pow(24),
             owner: COLLATERAL_OWNER(),
         };
@@ -218,6 +219,7 @@ impl PerpetualsInitConfigDefault of Default<PerpetualsInitConfig> {
                 token_cfg: TokenConfig {
                     name: COLLATERAL_NAME(),
                     symbol: COLLATERAL_SYMBOL(),
+                    decimals: COLLATERAL_DECIMALS,
                     initial_supply: INITIAL_SUPPLY,
                     owner: COLLATERAL_OWNER(),
                 },
@@ -598,6 +600,7 @@ pub fn create_token_state() -> TokenState {
     let token_config = TokenConfig {
         name: COLLATERAL_NAME(),
         symbol: COLLATERAL_SYMBOL(),
+        decimals: COLLATERAL_DECIMALS,
         initial_supply: INITIAL_SUPPLY,
         owner: COLLATERAL_OWNER(),
     };
@@ -608,6 +611,7 @@ pub fn create_vault_share_1_token_state() -> TokenState {
     let token_config = TokenConfig {
         name: VAULT_SHARE_COLLATERAL_1_NAME(),
         symbol: VAULT_SHARE_COLLATERAL_1_SYMBOL(),
+        decimals: VAULT_DECIMALS,
         initial_supply: INITIAL_SUPPLY,
         owner: COLLATERAL_OWNER(),
     };
