@@ -4,20 +4,20 @@ import pytest_asyncio
 from test_utils.starknet_test_utils import StarknetTestUtils
 from starknet_py.net.models.chains import StarknetChainId
 from test_utils.starknet_test_utils import KeyPair
-
 from starknet_py.net.account.account import Account
 from starknet_py.net.models.address import Address
-from starknet_py.net.client_models import Call
 from starknet_py.contract import Contract
 from test_utils.starknet_test_utils import load_contract
 from scripts.script_utils import get_project_root
 from pathlib import Path
 import os
+from starknet_py.proxy.contract_abi_resolver import ContractAbiResolver, ProxyConfig
 from starknet_py.net.client_models import ResourceBoundsMapping, ResourceBounds
 from starknet_test_util import AccountNonceManager
 
 
 perpetuals_Core = "perpetuals_Core"
+vault_contract = "vault_ProtocolVault"
 
 resource_bounds = ResourceBoundsMapping(
     l1_gas=ResourceBounds(max_amount=10**15, max_price_per_unit=10**12),
@@ -27,6 +27,7 @@ resource_bounds = ResourceBoundsMapping(
 
 OPERATOR_DUMMY_KEY = 1
 DEPLOYER_DUMMY_KEY = 2
+APP_GOVERNOR_DUMMY_KEY = 3
 
 
 @pytest.fixture(scope="session")
@@ -50,32 +51,43 @@ def deployer_address() -> int:
     """
     Return the constant address of the 'deployer' contract as an int.
     """
-    return 0x0522E5BA327BFBD85138B29BDE060A5340A460706B00AE2E10E6D2A16FBF8C57
+    return 0x0562BBB386BB3EF6FFB94878EC77C0779487F277DEA89568F1CD7CDF958EDDE7
 
 
-@pytest.fixture
+@pytest.fixture(scope="session")
+def app_governor_address() -> int:
+    """
+    Return the constant address of the 'app governor' contract as an int.
+    """
+    return 0x3CCFFE0137EA21294C1CC28F6C29DD495F5B9F1101EC86AE53EF51178AEFA2
+
+
+@pytest.fixture(scope="function")
 def starknet_forked(
     starknet_test_utils_factory: Callable[..., Iterator[StarknetTestUtils]]
 ) -> Iterator[StarknetTestUtils]:
     with starknet_test_utils_factory(
         fork_network="https://rpc.starknet.lava.build/",
-        fork_block=1844544,
+        fork_block=3861835,
         starknet_chain_id=StarknetChainId.MAINNET,
         request_body_size_limit=20_000_000,
     ) as val:
         yield val
 
 
-@pytest.fixture
+@pytest.fixture(scope="function")
 def starknet_forked_with_impersonated_accounts(
-    starknet_forked: StarknetTestUtils, operator_address: int, deployer_address: int
+    starknet_forked: StarknetTestUtils,
+    operator_address: int,
+    deployer_address: int,
+    app_governor_address: int,
 ) -> StarknetTestUtils:
     """
     Impersonate the operator account in the forked Starknet instance.
     """
     client = starknet_forked.starknet.get_client()
-    for address in [operator_address, deployer_address]:
-        client.impersonate_account(address)
+    for address in [operator_address, deployer_address, app_governor_address]:
+        client.impersonate_account_sync(address)
 
     return starknet_forked
 
@@ -119,6 +131,25 @@ def deployer_account(
 
 
 @pytest.fixture
+def app_governor_account(
+    starknet_forked_with_impersonated_accounts: StarknetTestUtils,
+    app_governor_address: int,
+) -> Account:
+    """
+    Return an Account instance for the impersonated app governor account.
+    """
+    client = starknet_forked_with_impersonated_accounts.starknet.get_client()
+    app_governor_account = Account(
+        client=client,
+        address=Address(app_governor_address),
+        # Use a dummy private key since the account is impersonated.
+        key_pair=KeyPair.from_private_key(APP_GOVERNOR_DUMMY_KEY),
+        chain=StarknetChainId.MAINNET,
+    )
+    return app_governor_account
+
+
+@pytest.fixture
 def setup_account() -> AccountNonceManager:
     """
     Return an AccountNonceManager for managing nonces of impersonated accounts.
@@ -151,3 +182,67 @@ async def declare_perpetuals_core_contract(
     )
     await declare_result.wait_for_acceptance(check_interval=0.1)
     return declare_result.class_hash
+
+
+@pytest_asyncio.fixture(scope="function")
+async def upgrade_perpetuals_core_contract(
+    declare_perpetuals_core_contract: int,
+    contract_address: int,
+    deployer_account: Account,
+    operator_account: Account,
+    app_governor_account: Account,
+) -> Contract:
+    abi, cairo_version = await ContractAbiResolver(
+        address=contract_address,
+        client=deployer_account.client,
+        proxy_config=ProxyConfig(),
+    ).resolve()
+
+    deployer_contract = Contract(
+        address=contract_address,
+        abi=abi,
+        provider=deployer_account,
+        cairo_version=cairo_version,
+    )
+
+    invocation = await deployer_contract.functions["add_new_implementation"].invoke_v3(
+        {
+            "impl_hash": declare_perpetuals_core_contract,
+            "eic_data": None,
+            "final": False,
+        },
+        auto_estimate=True,
+    )
+    await invocation.wait_for_acceptance(check_interval=0.1)
+
+    invocation = await deployer_contract.functions["replace_to"].invoke_v3(
+        {
+            "impl_hash": declare_perpetuals_core_contract,
+            "eic_data": None,
+            "final": False,
+        },
+        auto_estimate=True,
+    )
+    await invocation.wait_for_acceptance(check_interval=0.1)
+
+    abi, cairo_version = await ContractAbiResolver(
+        address=contract_address,
+        client=operator_account.client,
+        proxy_config=ProxyConfig(),
+    ).resolve()
+
+    operator_contract = Contract(
+        address=contract_address,
+        abi=abi,
+        provider=operator_account,
+        cairo_version=cairo_version,
+    )
+
+    app_governor_contract = Contract(
+        address=contract_address,
+        abi=abi,
+        provider=app_governor_account,
+        cairo_version=cairo_version,
+    )
+
+    return {"operator_contract": operator_contract, "app_governor_contract": app_governor_contract}
