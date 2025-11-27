@@ -1,7 +1,5 @@
 import pytest
 from starknet_py.cairo.felt import encode_shortstring
-from starknet_py.contract import Contract
-from test_utils.starknet_test_utils import StarknetTestUtils
 from devnet_tests.perpetuals_test_utils import PerpetualsTestUtils
 from conftest import NOW
 
@@ -145,3 +143,53 @@ async def test_asset_management(test_utils: PerpetualsTestUtils):
     timely_data_after = await test_utils.get_asset_timely_data(asset_id)
     final_funding_index = timely_data_after["funding_index"]["value"]
     assert final_funding_index - initial_funding_index == 1024
+
+
+@pytest.mark.asyncio
+async def test_trade(test_utils: PerpetualsTestUtils):
+    deposit_amount = 10_000_000
+    # Create two accounts and positions
+    account_a = await test_utils.new_account()
+    position_id_a = await test_utils.new_position(account_a)
+    await test_utils.deposit(account_a, deposit_amount)
+
+    account_b = await test_utils.new_account()
+    position_id_b = await test_utils.new_position(account_b)
+    await test_utils.deposit(account_b, deposit_amount)
+
+    # Get initial position values
+    tv_a_before = await test_utils.get_position_total_value(position_id_a)
+    tv_b_before = await test_utils.get_position_total_value(position_id_b)
+
+    # Test create_order
+    base_asset_id = 0x47524153532D310000000000000000
+    base_amount_a = 37
+    quote_amount_a = -5303580
+    fee_amount = 0
+    expiration = NOW + 1000000000
+    order_a = await test_utils.create_order(
+        position_id_a, base_asset_id, base_amount_a, quote_amount_a, fee_amount, expiration
+    )
+    order_b = await test_utils.create_order(
+        position_id_b, base_asset_id, -base_amount_a, -quote_amount_a, fee_amount, expiration
+    )
+
+    # Execute trade
+    actual_fee_a = 0
+    actual_fee_b = 0
+    await test_utils.trade(
+        account_a,
+        account_b,
+        order_a,
+        order_b,
+        base_amount_a,
+        quote_amount_a,
+        actual_fee_a,
+        actual_fee_b,
+    )
+
+    # Verify position values changed
+    tv_a_after = await test_utils.get_position_total_value(position_id_a)
+    tv_b_after = await test_utils.get_position_total_value(position_id_b)
+    assert tv_a_after != tv_a_before
+    assert tv_b_after != tv_b_before
