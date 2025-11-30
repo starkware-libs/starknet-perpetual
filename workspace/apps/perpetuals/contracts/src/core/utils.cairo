@@ -1,7 +1,6 @@
 use core::num::traits::Zero;
-use perpetuals::core::components::assets::errors::Error::{
-    SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS,
-};
+use core::panic_with_felt252;
+use perpetuals::core::components::assets::errors::{SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS};
 use perpetuals::core::components::positions::Positions::FEE_POSITION;
 use perpetuals::core::errors::Error::{
     ASSET_ID_NOT_COLLATERAL, CANT_TRADE_WITH_FEE_POSITION, DIFFERENT_BASE_ASSET_IDS,
@@ -12,7 +11,6 @@ use perpetuals::core::errors::Error::{
 use perpetuals::core::types::asset::synthetic::AssetConfig;
 use perpetuals::core::types::asset::{AssetId, AssetStatus};
 use perpetuals::core::types::order::ValidateableOrderTrait;
-use starkware_utils::errors::OptionAuxTrait;
 use starkware_utils::hash::message_hash::OffchainMessageHash;
 use starkware_utils::math::abs::Abs;
 use starkware_utils::math::utils::have_same_sign;
@@ -40,8 +38,12 @@ pub fn validate_trade<T, impl TValidateableOrder: ValidateableOrderTrait<T>, +Dr
     // Base asset check.
     assert!(order_a.base_asset_id() == order_b.base_asset_id(), "{}", DIFFERENT_BASE_ASSET_IDS);
 
-    let synthetic_asset = asset.expect_with_err(SYNTHETIC_NOT_EXISTS);
-    assert!(synthetic_asset.status == AssetStatus::ACTIVE, "{}", SYNTHETIC_NOT_ACTIVE);
+    match asset {
+        None => panic_with_felt252(SYNTHETIC_NOT_EXISTS),
+        Some(synthetic_asset) => assert(
+            synthetic_asset.status == AssetStatus::ACTIVE, SYNTHETIC_NOT_ACTIVE,
+        ),
+    }
 
     assert!(order_a.position_id() != order_b.position_id(), "{}", INVALID_SAME_POSITIONS);
 

@@ -6,7 +6,7 @@ pub mod Core {
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::AssetsComponent::InternalTrait as AssetsInternal;
-    use perpetuals::core::components::assets::errors::Error::{ASSET_NOT_EXISTS, NOT_SYNTHETIC};
+    use perpetuals::core::components::assets::errors::{ASSET_NOT_EXISTS, NOT_SYNTHETIC};
     use perpetuals::core::components::deposit::Deposit;
     use perpetuals::core::components::deposit::Deposit::InternalTrait as DepositInternal;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
@@ -530,13 +530,12 @@ pub mod Core {
             let position_b = self.positions.get_position_snapshot(position_id: position_id_b);
 
             // Validate base asset is inactive synthetic.
-            let config = self
-                .assets
-                .asset_config
-                .read(base_asset_id)
-                .expect_with_err(ASSET_NOT_EXISTS);
-            assert!(config.asset_type == AssetType::SYNTHETIC, "{}", NOT_SYNTHETIC);
-            assert!(config.status == AssetStatus::INACTIVE, "{}", SYNTHETIC_IS_ACTIVE);
+            if let Option::Some(config) = self.assets.asset_config.read(base_asset_id) {
+                assert(config.asset_type == AssetType::SYNTHETIC, NOT_SYNTHETIC);
+                assert!(config.status == AssetStatus::INACTIVE, "{}", SYNTHETIC_IS_ACTIVE);
+            } else {
+                panic_with_felt252(ASSET_NOT_EXISTS);
+            }
             let base_balance: Balance = base_amount_a.into();
             let quote_amount_a: i64 = -1
                 * self

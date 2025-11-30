@@ -858,7 +858,7 @@ fn test_successful_add_synthetic_asset() {
 }
 
 #[test]
-#[should_panic(expected: "SYNTHETIC_ALREADY_EXISTS")]
+#[should_panic(expected: 'SYNTHETIC_ALREADY_EXISTS')]
 fn test_add_synthetic_asset_existed_asset() {
     // Setup state, token:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -967,7 +967,7 @@ fn test_rf_update_valid_same_short_array() {
 
 #[test]
 #[feature("safe_dispatcher")]
-#[should_panic(expected: "INVALID_RF_VALUE")]
+#[should_panic(expected: 'INVALID_RF_VALUE')]
 fn test_rf_update_invalid_same_short_array() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -1011,7 +1011,7 @@ fn test_rf_update_invalid_same_short_array() {
 
 #[test]
 #[feature("safe_dispatcher")]
-#[should_panic(expected: "INVALID_RF_VALUE")]
+#[should_panic(expected: 'INVALID_RF_VALUE')]
 fn test_rf_update_invalid_super_short_array() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -1141,7 +1141,8 @@ fn test_rf_update_valid_same_super_short_array_increase() {
 }
 
 #[test]
-#[should_panic(expected: "INVALID_RF_VALUE")]
+#[feature("safe_dispatcher")]
+#[should_panic(expected: 'INVALID_RF_VALUE')]
 fn test_rf_update_invalid_same_short_array_increase() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -1236,7 +1237,7 @@ fn test_rf_update_valid_lower_array() {
 
 #[test]
 #[feature("safe_dispatcher")]
-#[should_panic(expected: "INVALID_RF_VALUE")]
+#[should_panic(expected: 'INVALID_RF_VALUE')]
 fn test_rf_update_invalid_higher_last_element_array() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -1280,7 +1281,7 @@ fn test_rf_update_invalid_higher_last_element_array() {
 
 #[test]
 #[feature("safe_dispatcher")]
-#[should_panic(expected: "INVALID_RF_VALUE")]
+#[should_panic(expected: 'INVALID_RF_VALUE')]
 fn test_rf_update_invalid_median_last_element_array() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -1368,7 +1369,8 @@ fn test_rf_update_valid_more_frequent_array() {
 
 
 #[test]
-#[should_panic(expected: "INVALID_RF_VALUE")]
+#[feature("safe_dispatcher")]
+#[should_panic(expected: 'INVALID_RF_VALUE')]
 fn test_rf_update_invalid_more_frequent_array() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -1468,7 +1470,7 @@ fn test_rf_update_valid_less_frequent_array() {
 
 #[test]
 #[feature("safe_dispatcher")]
-#[should_panic(expected: "INVALID_RF_VALUE")]
+#[should_panic(expected: 'INVALID_RF_VALUE')]
 fn test_rf_update_invalid_less_frequent_array() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -1580,7 +1582,8 @@ fn test_rf_update_valid_different_step_size() {
 
 
 #[test]
-#[should_panic(expected: "INVALID_RF_VALUE")]
+#[feature("safe_dispatcher")]
+#[should_panic(expected: 'INVALID_RF_VALUE')]
 fn test_rf_update_invalid_different_step_size() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -1663,7 +1666,7 @@ fn test_successful_deactivate_synthetic_asset() {
 }
 
 #[test]
-#[should_panic(expected: "SYNTHETIC_NOT_EXISTS")]
+#[should_panic(expected: 'SYNTHETIC_NOT_EXISTS')]
 fn test_deactivate_nonexistent_synthetic_asset() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -3091,7 +3094,7 @@ fn test_invalid_transfer_request_amount_is_zero() {
 // `validate_synthetic_price` tests.
 
 #[test]
-#[should_panic(expected: "SYNTHETIC_EXPIRED_PRICE")]
+#[should_panic(expected: 'SYNTHETIC_EXPIRED_PRICE')]
 fn test_validate_asset_prices_expired() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -3413,7 +3416,7 @@ fn test_invalid_funding_rate() {
 }
 
 #[test]
-#[should_panic(expected: "INVALID_FUNDING_TICK_LEN")]
+#[should_panic(expected: 'INVALID_FUNDING_TICK_LEN')]
 fn test_invalid_funding_len() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
@@ -3627,7 +3630,7 @@ fn test_price_tick_even() {
 }
 
 #[test]
-#[should_panic(expected: "QUORUM_NOT_REACHED")]
+#[should_panic(expected: 'QUORUM_NOT_REACHED')]
 fn test_price_tick_no_quorum() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
@@ -3644,7 +3647,7 @@ fn test_price_tick_no_quorum() {
 }
 
 #[test]
-#[should_panic(expected: "SIGNED_PRICES_UNSORTED")]
+#[should_panic(expected: 'SIGNED_PRICES_UNSORTED')]
 fn test_price_tick_unsorted() {
     start_cheat_block_timestamp_global(block_timestamp: Time::now().add(Time::weeks(1)).into());
     let cfg: PerpetualsInitConfig = Default::default();
@@ -3696,7 +3699,7 @@ fn test_price_tick_unsorted() {
 }
 
 #[test]
-#[should_panic(expected: "INVALID_PRICE_TIMESTAMP")]
+#[should_panic(expected: 'INVALID_PRICE_TIMESTAMP')]
 fn test_price_tick_old_oracle() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
@@ -3875,7 +3878,7 @@ fn test_successful_add_and_remove_oracle() {
 }
 
 #[test]
-#[should_panic(expected: "ORACLE_NAME_TOO_LONG")]
+#[should_panic(expected: 'ORACLE_NAME_TOO_LONG')]
 fn test_add_oracle_name_too_long() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
@@ -3898,7 +3901,7 @@ fn test_add_oracle_name_too_long() {
 }
 
 #[test]
-#[should_panic(expected: "ASSET_NAME_TOO_LONG")]
+#[should_panic(expected: 'ASSET_NAME_TOO_LONG')]
 fn test_add_oracle_asset_name_too_long() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
@@ -3921,7 +3924,7 @@ fn test_add_oracle_asset_name_too_long() {
 }
 
 #[test]
-#[should_panic(expected: "ORACLE_ALREADY_EXISTS")]
+#[should_panic(expected: 'ORACLE_ALREADY_EXISTS')]
 fn test_add_existed_oracle() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
@@ -3957,7 +3960,7 @@ fn test_add_existed_oracle() {
 }
 
 #[test]
-#[should_panic(expected: "ORACLE_NOT_EXISTS")]
+#[should_panic(expected: 'ORACLE_NOT_EXISTS')]
 fn test_successful_remove_nonexistent_oracle() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
@@ -4003,7 +4006,7 @@ fn test_successful_remove_nonexistent_oracle() {
 // }
 
 #[test]
-#[should_panic(expected: "INVALID_SHARE_QUANTUM")]
+#[should_panic(expected: 'INVALID_SHARE_QUANTUM')]
 fn test_unsuccessful_add_vault_share_asset_zero_quantum() {
     // Setup state, token:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -4201,7 +4204,7 @@ fn test_successful_vault_token_deposit() {
 
 
 #[test]
-#[should_panic(expected: "SYNTHETIC_NOT_EXISTS")]
+#[should_panic(expected: 'SYNTHETIC_NOT_EXISTS')]
 fn test_unsuccessful_vault_token_deposit_unregistered_asset() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
