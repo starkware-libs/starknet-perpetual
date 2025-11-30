@@ -221,7 +221,8 @@ fn test_protocol_vault_initialisation_logic() {
 
 
 #[test]
-#[should_panic(expected: "POSITION_DOESNT_EXIST")]
+#[feature("safe_dispatcher")]
+#[should_panic(expected: 'POSITION_DOESNT_EXIST')]
 fn test_protocol_vault_fails_when_position_does_not_exist() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -238,7 +239,8 @@ fn test_protocol_vault_fails_when_position_does_not_exist() {
 }
 
 #[test]
-#[should_panic(expected: "INITIAL_ASSETS_MUST_BE_POSITIVE")]
+#[feature("safe_dispatcher")]
+#[should_panic(expected: 'INITIAL_ASSETS_MUST_BE_POSITIVE')]
 fn test_protocol_vault_fails_when_position_has_zero_tv() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();

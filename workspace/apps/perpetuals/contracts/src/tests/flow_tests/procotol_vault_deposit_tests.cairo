@@ -223,7 +223,7 @@ fn test_deposit_into_protocol_vault_recieve_to_different_position() {
 }
 
 #[test]
-#[should_panic(expected: "ONLY_PERPS_CAN_DEPOSIT")]
+#[should_panic(expected: 'ONLY_PERPS_CAN_DEPOSIT')]
 fn test_deposit_cannot_be_called_except_by_perps_contract() {
     let mut state: FlowTestBase = FlowTestBaseTrait::new();
     let vault_user = state.new_user_with_position();

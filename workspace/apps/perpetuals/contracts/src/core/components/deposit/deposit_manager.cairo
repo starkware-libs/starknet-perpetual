@@ -52,14 +52,13 @@ pub trait IDepositExternal<TContractState> {
 #[starknet::contract]
 pub(crate) mod DepositManager {
     use core::num::traits::Zero;
-    use core::panics::panic_with_byte_array;
+    use core::panic_with_felt252;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::interfaces::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::interface::IAssets;
     use perpetuals::core::components::deposit::Deposit as DepositComponent;
-    use perpetuals::core::components::deposit::errors::Error;
     use perpetuals::core::components::fulfillment::fulfillment::Fulfillement as FulfillmentComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::positions::Positions as PositionsComponent;
@@ -71,7 +70,6 @@ pub(crate) mod DepositManager {
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
     use starkware_utils::components::roles::RolesComponent;
-    use starkware_utils::errors::Describable;
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
@@ -83,6 +81,7 @@ pub(crate) mod DepositManager {
     use crate::core::components::vaults::vaults::{IVaults, Vaults as VaultsComponent};
     use crate::core::types::asset::synthetic::AssetType;
     use crate::core::types::position::PositionDiff;
+    use super::super::errors;
     use super::{DepositStatus, HashType, IDepositExternal, TimeDelta, Timestamp, deposit_hash};
 
 
@@ -262,14 +261,12 @@ pub(crate) mod DepositManager {
             let deposit_status = self.get_deposit_status(:deposit_hash);
             match deposit_status {
                 DepositStatus::NOT_REGISTERED => {
-                    panic_with_byte_array(@Error::DEPOSIT_NOT_REGISTERED.describe())
+                    panic_with_felt252(errors::DEPOSIT_NOT_REGISTERED)
                 },
                 DepositStatus::PROCESSED => {
-                    panic_with_byte_array(@Error::DEPOSIT_ALREADY_PROCESSED.describe())
+                    panic_with_felt252(errors::DEPOSIT_ALREADY_PROCESSED)
                 },
-                DepositStatus::CANCELED => {
-                    panic_with_byte_array(@Error::DEPOSIT_ALREADY_CANCELED.describe())
-                },
+                DepositStatus::CANCELED => { panic_with_felt252(errors::DEPOSIT_ALREADY_CANCELED) },
                 DepositStatus::PENDING(_) => {},
             }
             self.deposits.registered_deposits.write(deposit_hash, DepositStatus::PROCESSED);
@@ -314,7 +311,7 @@ pub(crate) mod DepositManager {
         ) {
             // check recipient position exists
             self.positions.get_position_snapshot(:position_id);
-            assert!(quantized_amount.is_non_zero(), "{}", Error::ZERO_AMOUNT);
+            assert(quantized_amount.is_non_zero(), errors::ZERO_AMOUNT);
             let (token_contract, quantum) = if (self.assets.get_collateral_id() == asset_id) {
                 let token_contract = self.assets.get_collateral_token_contract();
                 let quantum = self.assets.get_collateral_quantum();
@@ -341,10 +338,9 @@ pub(crate) mod DepositManager {
                 :quantized_amount,
                 :salt,
             );
-            assert!(
+            assert(
                 self.get_deposit_status(:deposit_hash) == DepositStatus::NOT_REGISTERED,
-                "{}",
-                Error::DEPOSIT_ALREADY_REGISTERED,
+                errors::DEPOSIT_ALREADY_REGISTERED,
             );
             self
                 .deposits
@@ -353,15 +349,14 @@ pub(crate) mod DepositManager {
 
             let unquantized_amount = quantized_amount * quantum.into();
 
-            assert!(
+            assert(
                 token_contract
                     .transfer_from(
                         sender: caller_address,
                         recipient: get_contract_address(),
                         amount: unquantized_amount.into(),
                     ),
-                "{}",
-                Error::TRANSFER_FAILED,
+                errors::TRANSFER_FAILED,
             );
 
             self
@@ -411,28 +406,21 @@ pub(crate) mod DepositManager {
                 :salt,
             );
             match self._get_deposit_status(:deposit_hash) {
-                DepositStatus::PENDING(deposit_timestamp) => assert!(
-                    now > deposit_timestamp.add(cancel_delay), "{}", Error::DEPOSIT_NOT_CANCELABLE,
+                DepositStatus::PENDING(deposit_timestamp) => assert(
+                    now > deposit_timestamp.add(cancel_delay), errors::DEPOSIT_NOT_CANCELABLE,
                 ),
-                DepositStatus::NOT_REGISTERED => panic_with_byte_array(
-                    @Error::DEPOSIT_NOT_REGISTERED.describe(),
-                ),
-                DepositStatus::PROCESSED => panic_with_byte_array(
-                    @Error::DEPOSIT_ALREADY_PROCESSED.describe(),
-                ),
-                DepositStatus::CANCELED => panic_with_byte_array(
-                    @Error::DEPOSIT_ALREADY_CANCELED.describe(),
-                ),
+                DepositStatus::NOT_REGISTERED => panic_with_felt252(errors::DEPOSIT_NOT_REGISTERED),
+                DepositStatus::PROCESSED => panic_with_felt252(errors::DEPOSIT_ALREADY_PROCESSED),
+                DepositStatus::CANCELED => panic_with_felt252(errors::DEPOSIT_ALREADY_CANCELED),
             }
 
             self
                 .deposits
                 .registered_deposits
                 .write(key: deposit_hash, value: DepositStatus::CANCELED);
-            assert!(
+            assert(
                 token_contract.transfer(recipient: depositor, amount: unquantized_amount.into()),
-                "{}",
-                Error::TRANSFER_FAILED,
+                errors::TRANSFER_FAILED,
             );
             self
                 .emit(

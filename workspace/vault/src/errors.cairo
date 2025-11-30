@@ -1,32 +1,7 @@
-use starkware_utils::errors::{Describable, ErrorDisplay};
-
-#[derive(Drop)]
-pub enum Error {
-    // Simple error constants
-    INVALID_ZERO_ADDRESS,
-    INVALID_ZERO_POSITION_ID,
-    NEGATIVE_TOTAL_VALUE,
-    ONLY_PERPS_CAN_DEPOSIT,
-    ONLY_PERPS_CAN_OWN,
-    ONLY_PERPS_CAN_RECEIVE,
-    ONLY_PERPS_CAN_WITHDRAW,
-    INITIAL_ASSETS_MUST_BE_POSITIVE,
-    RECIPIENT_CANNOT_BE_PERPS,
-}
-
-impl DescribableError of Describable<Error> {
-    fn describe(self: @Error) -> ByteArray {
-        match self {
-            // Simple error constants
-            Error::INVALID_ZERO_ADDRESS => "INVALID_ZERO_ADDRESS",
-            Error::INVALID_ZERO_POSITION_ID => "INVALID_ZERO_POSITION_ID",
-            Error::NEGATIVE_TOTAL_VALUE => "NEGATIVE_TOTAL_VALUE",
-            Error::ONLY_PERPS_CAN_DEPOSIT => "ONLY_PERPS_CAN_DEPOSIT",
-            Error::ONLY_PERPS_CAN_OWN => "ONLY_PERPS_CAN_OWN",
-            Error::ONLY_PERPS_CAN_RECEIVE => "ONLY_PERPS_CAN_RECEIVE",
-            Error::ONLY_PERPS_CAN_WITHDRAW => "ONLY_PERPS_CAN_WITHDRAW",
-            Error::INITIAL_ASSETS_MUST_BE_POSITIVE => "INITIAL_ASSETS_MUST_BE_POSITIVE",
-            Error::RECIPIENT_CANNOT_BE_PERPS => "RECIPIENT_CANNOT_BE_PERPS",
-        }
-    }
-}
+pub const INVALID_ZERO_ADDRESS: felt252 = 'INVALID_ZERO_ADDRESS';
+pub const INVALID_ZERO_POSITION_ID: felt252 = 'INVALID_ZERO_POSITION_ID';
+pub const NEGATIVE_TOTAL_VALUE: felt252 = 'NEGATIVE_TOTAL_VALUE';
+pub const ONLY_PERPS_CAN_DEPOSIT: felt252 = 'ONLY_PERPS_CAN_DEPOSIT';
+pub const ONLY_PERPS_CAN_OWN: felt252 = 'ONLY_PERPS_CAN_OWN';
+pub const ONLY_PERPS_CAN_RECEIVE: felt252 = 'ONLY_PERPS_CAN_RECEIVE';
+pub const ONLY_PERPS_CAN_WITHDRAW: felt252 = 'ONLY_PERPS_CAN_WITHDRAW';
