@@ -1,7 +1,8 @@
 use core::hash::{HashStateExTrait, HashStateTrait};
+use core::panics::panic_with_byte_array;
 use core::poseidon::PoseidonTrait;
 use openzeppelin::utils::snip12::StructHash;
-use perpetuals::core::errors::Error::{ILLEGAL_BASE_TO_QUOTE_RATIO, ILLEGAL_FEE_TO_QUOTE_RATIO};
+use perpetuals::core::errors::{illegal_base_to_quote_ratio_err, illegal_fee_to_quote_ratio_err};
 use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::position::PositionId;
 use starkware_utils::math::abs::Abs;
@@ -42,11 +43,10 @@ pub trait ValidateableOrderTrait<T> {
         let actual_base_to_quote_ratio = FractionTrait::new(
             numerator: actual_amount_base.into(), denominator: actual_amount_quote.abs().into(),
         );
-        assert!(
-            order_base_to_quote_ratio <= actual_base_to_quote_ratio,
-            "{}",
-            ILLEGAL_BASE_TO_QUOTE_RATIO(position),
-        );
+        if (order_base_to_quote_ratio > actual_base_to_quote_ratio) {
+            let err = illegal_base_to_quote_ratio_err(position);
+            panic_with_byte_array(err: @err);
+        }
 
         // Validating the fee-to-quote ratio enables increasing in both the user's quote and the
         // operator's fee.
@@ -57,11 +57,10 @@ pub trait ValidateableOrderTrait<T> {
             numerator: (order_fee_amount).into(), denominator: (order_quote_amount).abs().into(),
         );
 
-        assert!(
-            actual_fee_to_quote_ratio <= order_fee_to_quote_ratio,
-            "{}",
-            ILLEGAL_FEE_TO_QUOTE_RATIO(position),
-        );
+        if (actual_fee_to_quote_ratio > order_fee_to_quote_ratio) {
+            let err = illegal_fee_to_quote_ratio_err(position);
+            panic_with_byte_array(err: @err);
+        }
     }
 }
 

@@ -48,10 +48,7 @@ pub(crate) mod LiquidationManager {
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::AssetsComponent::InternalImpl as AssetsInternal;
-    use perpetuals::core::components::assets::errors::SYNTHETIC_NOT_EXISTS;
     use perpetuals::core::components::assets::interface::IAssets;
-    use perpetuals::core::components::external_components::interface::EXTERNAL_COMPONENT_LIQUIDATIONS;
-    use perpetuals::core::components::external_components::named_component::ITypedComponent;
     use perpetuals::core::components::fulfillment::fulfillment::Fulfillement as FulfillmentComponent;
     use perpetuals::core::components::fulfillment::interface::IFulfillment;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
@@ -61,10 +58,7 @@ pub(crate) mod LiquidationManager {
         FEE_POSITION, INSURANCE_FUND_POSITION, InternalTrait as PositionsInternal,
     };
     use perpetuals::core::components::snip::SNIP12MetadataImpl;
-    use perpetuals::core::errors::Error::CANT_LIQUIDATE_IF_POSITION;
-    use perpetuals::core::types::position::{Position, PositionDiff, PositionId, PositionTrait};
-    use perpetuals::core::utils::{validate_signature, validate_trade};
-    use perpetuals::core::value_risk_calculator::liquidated_position_validations;
+    use perpetuals::core::types::position::{PositionId, PositionTrait};
     use starknet::storage::StoragePath;
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalImpl as PausableInternal;
@@ -74,6 +68,13 @@ pub(crate) mod LiquidationManager {
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
     use starkware_utils::time::time::Time;
+    use crate::core::components::assets::errors::SYNTHETIC_NOT_EXISTS;
+    use crate::core::components::external_components::interface::EXTERNAL_COMPONENT_LIQUIDATIONS;
+    use crate::core::components::external_components::named_component::ITypedComponent;
+    use crate::core::errors::CANT_LIQUIDATE_IF_POSITION;
+    use crate::core::types::position::{Position, PositionDiff};
+    use crate::core::utils::{validate_signature, validate_trade};
+    use crate::core::value_risk_calculator::liquidated_position_validations;
     use super::{ILiquidationManager, Liquidate, Order};
 
 
@@ -183,13 +184,9 @@ pub(crate) mod LiquidationManager {
             actual_liquidator_fee: u64,
             liquidated_fee_amount: u64,
         ) {
-            assert!(
-                liquidated_position_id != INSURANCE_FUND_POSITION, "{}", CANT_LIQUIDATE_IF_POSITION,
-            );
+            assert(liquidated_position_id != INSURANCE_FUND_POSITION, CANT_LIQUIDATE_IF_POSITION);
             let liquidator_position_id = liquidator_order.position_id;
-            assert!(
-                liquidator_position_id != INSURANCE_FUND_POSITION, "{}", CANT_LIQUIDATE_IF_POSITION,
-            );
+            assert(liquidator_position_id != INSURANCE_FUND_POSITION, CANT_LIQUIDATE_IF_POSITION);
 
             let collateral_id = self.assets.get_collateral_id();
             let liquidated_order = Order {

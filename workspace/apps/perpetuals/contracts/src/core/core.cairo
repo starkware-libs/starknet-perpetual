@@ -15,7 +15,7 @@ pub mod Core {
     use perpetuals::core::components::positions::Positions::{
         FEE_POSITION, InternalTrait as PositionsInternalTrait,
     };
-    use perpetuals::core::errors::Error::{AMOUNT_OVERFLOW, SYNTHETIC_IS_ACTIVE};
+    use perpetuals::core::errors::{AMOUNT_OVERFLOW, SYNTHETIC_IS_ACTIVE};
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
     use perpetuals::core::types::asset::{AssetId, AssetStatus};
@@ -35,7 +35,6 @@ pub mod Core {
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
     use starkware_utils::components::roles::RolesComponent;
     use starkware_utils::components::roles::RolesComponent::InternalTrait as RolesInternal;
-    use starkware_utils::errors::OptionAuxTrait;
     use starkware_utils::signature::stark::{PublicKey, Signature};
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
@@ -532,7 +531,7 @@ pub mod Core {
             // Validate base asset is inactive synthetic.
             if let Option::Some(config) = self.assets.asset_config.read(base_asset_id) {
                 assert(config.asset_type == AssetType::SYNTHETIC, NOT_SYNTHETIC);
-                assert!(config.status == AssetStatus::INACTIVE, "{}", SYNTHETIC_IS_ACTIVE);
+                assert(config.status == AssetStatus::INACTIVE, SYNTHETIC_IS_ACTIVE);
             } else {
                 panic_with_felt252(ASSET_NOT_EXISTS);
             }
@@ -543,7 +542,7 @@ pub mod Core {
                     .get_asset_price(asset_id: base_asset_id)
                     .mul(rhs: base_balance)
                     .try_into()
-                    .expect_with_err(AMOUNT_OVERFLOW);
+                    .expect(AMOUNT_OVERFLOW);
             self
                 .positions
                 ._validate_imposed_reduction_trade(

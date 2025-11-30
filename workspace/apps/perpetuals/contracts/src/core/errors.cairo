@@ -1,114 +1,85 @@
 use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::position::PositionId;
 use perpetuals::core::value_risk_calculator::TVTRChange;
-use starkware_utils::errors::{Describable, ErrorDisplay};
-#[derive(Drop)]
-pub enum Error {
-    // Simple error constants
-    AMOUNT_OVERFLOW,
-    ASSET_ID_NOT_COLLATERAL,
-    CANT_TRADE_WITH_FEE_POSITION,
-    CANT_LIQUIDATE_IF_POSITION,
-    DIFFERENT_BASE_ASSET_IDS,
-    INVALID_ACTUAL_BASE_SIGN,
-    INVALID_ACTUAL_QUOTE_SIGN,
-    INVALID_AMOUNT_SIGN,
-    INVALID_BASE_CHANGE,
-    INVALID_QUOTE_AMOUNT_SIGN,
-    INVALID_QUOTE_FEE_AMOUNT,
-    INVALID_SAME_POSITIONS,
-    INVALID_ZERO_AMOUNT,
-    SYNTHETIC_IS_ACTIVE,
-    TRANSFER_FAILED,
-    SAME_BASE_QUOTE_ASSET_IDS,
-    // Error functions with parameters
-    FULFILLMENT_EXCEEDED: PositionId,
-    ILLEGAL_BASE_TO_QUOTE_RATIO: PositionId,
-    ILLEGAL_FEE_TO_QUOTE_RATIO: PositionId,
-    INVALID_FUNDING_RATE: AssetId,
-    ORDER_EXPIRED: PositionId,
-    POSITION_NOT_DELEVERAGABLE: (PositionId, TVTRChange),
-    POSITION_NOT_FAIR_DELEVERAGE: (PositionId, TVTRChange),
-    POSITION_NOT_HEALTHY_NOR_HEALTHIER: (PositionId, TVTRChange),
-    POSITION_NOT_LIQUIDATABLE: (PositionId, TVTRChange),
+
+pub const AMOUNT_OVERFLOW: felt252 = 'AMOUNT_OVERFLOW';
+pub const ASSET_ID_NOT_COLLATERAL: felt252 = 'QUOTE_ASSET_ID_NOT_COLLATERAL';
+pub const CANT_TRADE_WITH_FEE_POSITION: felt252 = 'CANT_TRADE_WITH_FEE_POSITION';
+pub const CANT_LIQUIDATE_IF_POSITION: felt252 = 'CANT_LIQUIDATE_IF_POSITION';
+pub const DIFFERENT_BASE_ASSET_IDS: felt252 = 'DIFFERENT_BASE_ASSET_IDS';
+pub const INVALID_ACTUAL_BASE_SIGN: felt252 = 'INVALID_ACTUAL_BASE_SIGN';
+pub const INVALID_ACTUAL_QUOTE_SIGN: felt252 = 'INVALID_ACTUAL_QUOTE_SIGN';
+pub const INVALID_AMOUNT_SIGN: felt252 = 'INVALID_AMOUNT_SIGN';
+pub const INVALID_BASE_CHANGE: felt252 = 'INVALID_BASE_CHANGE';
+pub const INVALID_QUOTE_AMOUNT_SIGN: felt252 = 'INVALID_QUOTE_AMOUNT_SIGN';
+pub const INVALID_QUOTE_FEE_AMOUNT: felt252 = 'INVALID_QUOTE_FEE_AMOUNT';
+pub const INVALID_SAME_POSITIONS: felt252 = 'INVALID_SAME_POSITIONS';
+pub const INVALID_ZERO_AMOUNT: felt252 = 'INVALID_ZERO_AMOUNT';
+pub const SIGNED_TX_EXPIRED: felt252 = 'SIGNED_TX_EXPIRED';
+pub const SYNTHETIC_IS_ACTIVE: felt252 = 'SYNTHETIC_IS_ACTIVE';
+pub const TRANSFER_FAILED: felt252 = 'TRANSFER_FAILED';
+pub const SAME_BASE_QUOTE_ASSET_IDS: felt252 = 'SAME_BASE_QUOTE_ASSET_IDS';
+
+pub fn fulfillment_exceeded_err(position_id: PositionId) -> ByteArray {
+    format!("FULFILLMENT_EXCEEDED position_id: {:?}", position_id)
 }
 
-impl DescribableError of Describable<Error> {
-    fn describe(self: @Error) -> ByteArray {
-        match self {
-            // Simple error constants
-            Error::AMOUNT_OVERFLOW => "AMOUNT_OVERFLOW",
-            Error::ASSET_ID_NOT_COLLATERAL => "QUOTE_ASSET_ID_NOT_COLLATERAL",
-            Error::CANT_TRADE_WITH_FEE_POSITION => "CANT_TRADE_WITH_FEE_POSITION",
-            Error::CANT_LIQUIDATE_IF_POSITION => "CANT_LIQUIDATE_IF_POSITION",
-            Error::DIFFERENT_BASE_ASSET_IDS => "DIFFERENT_BASE_ASSET_IDS",
-            Error::INVALID_ACTUAL_BASE_SIGN => "INVALID_ACTUAL_BASE_SIGN",
-            Error::INVALID_ACTUAL_QUOTE_SIGN => "INVALID_ACTUAL_QUOTE_SIGN",
-            Error::INVALID_AMOUNT_SIGN => "INVALID_AMOUNT_SIGN",
-            Error::INVALID_BASE_CHANGE => "INVALID_BASE_CHANGE",
-            Error::INVALID_QUOTE_AMOUNT_SIGN => "INVALID_QUOTE_AMOUNT_SIGN",
-            Error::INVALID_QUOTE_FEE_AMOUNT => "INVALID_QUOTE_FEE_AMOUNT",
-            Error::INVALID_SAME_POSITIONS => "INVALID_SAME_POSITIONS",
-            Error::INVALID_ZERO_AMOUNT => "INVALID_ZERO_AMOUNT",
-            Error::SYNTHETIC_IS_ACTIVE => "SYNTHETIC_IS_ACTIVE",
-            Error::TRANSFER_FAILED => "TRANSFER_FAILED",
-            Error::SAME_BASE_QUOTE_ASSET_IDS => "SAME_BASE_QUOTE_ASSET_IDS",
-            // Error functions with parameters
-            Error::FULFILLMENT_EXCEEDED(position_id) => format!(
-                "FULFILLMENT_EXCEEDED position_id: {:?}", *position_id,
-            ),
-            Error::ILLEGAL_BASE_TO_QUOTE_RATIO(position_id) => format!(
-                "ILLEGAL_BASE_TO_QUOTE_RATIO position_id: {:?}", *position_id,
-            ),
-            Error::ILLEGAL_FEE_TO_QUOTE_RATIO(position_id) => format!(
-                "ILLEGAL_FEE_TO_QUOTE_RATIO position_id: {:?}", *position_id,
-            ),
-            Error::INVALID_FUNDING_RATE(synthetic_id) => format!(
-                "INVALID_FUNDING_RATE synthetic_id: {:?}", *synthetic_id,
-            ),
-            Error::ORDER_EXPIRED(position_id) => format!(
-                "ORDER_EXPIRED position_id: {:?}", *position_id,
-            ),
-            Error::POSITION_NOT_DELEVERAGABLE((
-                position_id, tvtr,
-            )) => format!(
-                "POSITION_IS_NOT_DELEVERAGABLE position_id: {:?} TV before {:?}, TR before {:?}, TV after {:?}, TR after {:?}",
-                *position_id,
-                *tvtr.before.total_value,
-                *tvtr.before.total_risk,
-                *tvtr.after.total_value,
-                *tvtr.after.total_risk,
-            ),
-            Error::POSITION_NOT_FAIR_DELEVERAGE((
-                position_id, tvtr,
-            )) => format!(
-                "POSITION_IS_NOT_FAIR_DELEVERAGE position_id: {:?} TV before {:?}, TR before {:?}, TV after {:?}, TR after {:?}",
-                *position_id,
-                *tvtr.before.total_value,
-                *tvtr.before.total_risk,
-                *tvtr.after.total_value,
-                *tvtr.after.total_risk,
-            ),
-            Error::POSITION_NOT_HEALTHY_NOR_HEALTHIER((
-                position_id, tvtr,
-            )) => format!(
-                "POSITION_NOT_HEALTHY_NOR_HEALTHIER position_id: {:?} TV before {:?}, TR before {:?}, TV after {:?}, TR after {:?}",
-                *position_id,
-                *tvtr.before.total_value,
-                *tvtr.before.total_risk,
-                *tvtr.after.total_value,
-                *tvtr.after.total_risk,
-            ),
-            Error::POSITION_NOT_LIQUIDATABLE((
-                position_id, tvtr,
-            )) => format!(
-                "POSITION_IS_NOT_LIQUIDATABLE position_id: {:?} TV before {:?}, TR before {:?}, TV after {:?}, TR after {:?}",
-                *position_id,
-                *tvtr.before.total_value,
-                *tvtr.before.total_risk,
-                *tvtr.after.total_value,
-                *tvtr.after.total_risk,
-            ),
-        }
-    }
+pub fn illegal_base_to_quote_ratio_err(position_id: PositionId) -> ByteArray {
+    format!("ILLEGAL_BASE_TO_QUOTE_RATIO position_id: {:?}", position_id)
+}
+
+pub fn illegal_fee_to_quote_ratio_err(position_id: PositionId) -> ByteArray {
+    format!("ILLEGAL_FEE_TO_QUOTE_RATIO position_id: {:?}", position_id)
+}
+
+pub fn invalid_funding_rate_err(synthetic_id: AssetId) -> ByteArray {
+    format!("INVALID_FUNDING_RATE synthetic_id: {:?}", synthetic_id)
+}
+
+pub fn order_expired_err(position_id: PositionId) -> ByteArray {
+    format!("ORDER_EXPIRED position_id: {:?}", position_id)
+}
+
+pub fn position_not_deleveragable(position_id: PositionId, tvtr: TVTRChange) -> ByteArray {
+    format!(
+        "POSITION_IS_NOT_DELEVERAGABLE position_id: {:?} TV before {:?}, TR before {:?}, TV after {:?}, TR after {:?}",
+        position_id,
+        tvtr.before.total_value,
+        tvtr.before.total_risk,
+        tvtr.after.total_value,
+        tvtr.after.total_risk,
+    )
+}
+
+pub fn position_not_fair_deleverage(position_id: PositionId, tvtr: TVTRChange) -> ByteArray {
+    format!(
+        "POSITION_IS_NOT_FAIR_DELEVERAGE position_id: {:?} TV before {:?}, TR before {:?}, TV after {:?}, TR after {:?}",
+        position_id,
+        tvtr.before.total_value,
+        tvtr.before.total_risk,
+        tvtr.after.total_value,
+        tvtr.after.total_risk,
+    )
+}
+
+pub fn position_not_healthy_nor_healthier(position_id: PositionId, tvtr: TVTRChange) -> ByteArray {
+    format!(
+        "POSITION_NOT_HEALTHY_NOR_HEALTHIER position_id: {:?} TV before {:?}, TR before {:?}, TV after {:?}, TR after {:?}",
+        position_id,
+        tvtr.before.total_value,
+        tvtr.before.total_risk,
+        tvtr.after.total_value,
+        tvtr.after.total_risk,
+    )
+}
+
+pub fn position_not_liquidatable(position_id: PositionId, tvtr: TVTRChange) -> ByteArray {
+    format!(
+        "POSITION_IS_NOT_LIQUIDATABLE position_id: {:?} TV before {:?}, TR before {:?}, TV after {:?}, TR after {:?}",
+        position_id,
+        tvtr.before.total_value,
+        tvtr.before.total_risk,
+        tvtr.after.total_value,
+        tvtr.after.total_risk,
+    )
 }

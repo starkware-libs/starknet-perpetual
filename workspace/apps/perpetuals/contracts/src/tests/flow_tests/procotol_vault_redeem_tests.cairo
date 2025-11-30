@@ -136,7 +136,7 @@ fn test_redeem_from_protocol_vault_redeem_to_same_position() {
 
 #[test]
 #[should_panic(expected: "ILLEGAL_BASE_TO_QUOTE_RATIO position_id: PositionId { value: 555 }")]
-fn test_redeem_from_protocol_vault_unfair_user_redeem() {
+fn test_redeem_from_protocol_vault_unfair__user_redeem() {
     let mut state: FlowTestBase = FlowTestBaseTrait::new();
     let vault_user = state.new_user_with_position();
     let redeeming_user = state.new_user_with_position_id(555_u32.into());
@@ -186,7 +186,7 @@ fn test_redeem_from_protocol_vault_unfair_user_redeem() {
 
 #[test]
 #[should_panic(expected: "ILLEGAL_BASE_TO_QUOTE_RATIO position_id: PositionId { value: 333 }")]
-fn test_redeem_from_protocol_vault_unfair_vault_redeem() {
+fn test_redeem_from_protocol_vault_unfair__vault_redeem() {
     let mut state: FlowTestBase = FlowTestBaseTrait::new();
     let vault_user = state.new_user_with_position_id(333_u32.into());
     let redeeming_user = state.new_user_with_position_id(555_u32.into());

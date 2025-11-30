@@ -2143,7 +2143,7 @@ fn test_late_funding() {
 }
 
 #[test]
-#[should_panic(expected: "INVALID_BASE_CHANGE")]
+#[should_panic(expected: 'INVALID_BASE_CHANGE')]
 fn test_liquidate_change_sign() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {
