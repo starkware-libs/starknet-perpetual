@@ -3,12 +3,15 @@ use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::asset::synthetic::{AssetBalanceDiffEnriched, AssetBalanceInfo};
 use perpetuals::core::types::balance::{Balance, BalanceDiff};
 use perpetuals::core::types::funding::FundingIndex;
-use starknet::ContractAddress;
-use starknet::storage::{Mutable, StoragePath, StoragePointerReadAccess};
+use starknet::storage::{Mutable, StoragePath, StoragePointer0Offset, StoragePointerReadAccess};
+use starknet::storage_access::storage_address_from_base_and_offset;
+use starknet::syscalls::storage_read_syscall;
+use starknet::{ContractAddress, SyscallResultTrait};
 use starkware_utils::signature::stark::PublicKey;
 use starkware_utils::storage::iterable_map::{
     IterableMap, IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
 };
+
 
 pub const POSITION_VERSION: u8 = 1;
 
@@ -146,5 +149,124 @@ pub impl PositionMutableImpl of PositionMutableTrait {
     }
     fn get_version(self: StoragePath<Mutable<Position>>) -> u8 {
         self.version.read()
+    }
+}
+
+#[generate_trait]
+pub impl OptionAssetBalanceReadAccessImpl of OptionAssetBalanceReadAccessTrait {
+    /// Reads the Option<AssetBalance> from the storage.
+    /// The offset is used to read specific fields of the struct.
+    #[inline]
+    fn read(
+        entry: StoragePointer0Offset<Option<AssetBalance>>, offset: OptionAssetBalanceOffset,
+    ) -> felt252 {
+        storage_read_syscall(
+            0,
+            storage_address_from_base_and_offset(entry.__storage_pointer_address__, offset.into()),
+        )
+            .unwrap_syscall()
+    }
+
+    /// Reads the variant of the Option<AssetBalance>.
+    /// The variant mark if the Option is Some or None.
+    #[inline]
+    fn read_variant(entry: StoragePointer0Offset<Option<AssetBalance>>) -> felt252 {
+        Self::read(entry, OptionAssetBalanceOffset::VARIANT)
+    }
+
+    /// Returns true if the Option is Some, false if None.
+    /// At the storage 0 indicates None, 1 indicates Some.
+    #[inline]
+    fn is_some(entry: StoragePointer0Offset<Option<AssetBalance>>) -> bool {
+        let variant = Self::read_variant(entry);
+        variant == 1
+    }
+
+    /// Returns true if the Option is None, false if Some.
+    /// At the storage 0 indicates None, 1 indicates Some.
+    #[inline]
+    fn is_none(entry: StoragePointer0Offset<Option<AssetBalance>>) -> bool {
+        let variant = Self::read_variant(entry);
+        variant == 0
+    }
+
+    /// Reads the funding index from the Option<AssetBalance>.
+    /// This function does not check if the Option is Some or None.
+    fn at_funding_index(entry: StoragePointer0Offset<Option<AssetBalance>>) -> FundingIndex {
+        let funding_index = Self::read(entry, OptionAssetBalanceOffset::FUNDING_INDEX);
+        let funding_index: i64 = funding_index.try_into().unwrap();
+        funding_index.into()
+    }
+
+    /// Gets the funding index from the Option<AssetBalance>.
+    /// Returns None if the Option is None.
+    fn get_funding_index(
+        entry: StoragePointer0Offset<Option<AssetBalance>>,
+    ) -> Option<FundingIndex> {
+        if Self::is_none(entry) {
+            return Option::None;
+        }
+        Option::Some(Self::at_funding_index(entry))
+    }
+
+    /// Reads the balance from the Option<AssetBalance>.
+    /// This function does not check if the Option is Some or None.
+    fn at_balance(entry: StoragePointer0Offset<Option<AssetBalance>>) -> Balance {
+        let balance = Self::read(entry, OptionAssetBalanceOffset::BALANCE);
+        let balance: i64 = balance.try_into().unwrap();
+        balance.into()
+    }
+
+    /// Gets the balance from the Option<AssetBalance>.
+    /// Returns None if the Option is None.
+    fn get_balance(entry: StoragePointer0Offset<Option<AssetBalance>>) -> Option<Balance> {
+        if Self::is_none(entry) {
+            return Option::None;
+        }
+        Option::Some(Self::at_balance(entry))
+    }
+
+    /// Reads the version from the Option<AssetBalance>.
+    /// This function does not check if the Option is Some or None.
+    fn at_version(entry: StoragePointer0Offset<Option<AssetBalance>>) -> u8 {
+        let version = Self::read(entry, OptionAssetBalanceOffset::VERSION);
+        let version: u8 = version.try_into().unwrap();
+        version
+    }
+
+    /// Gets the version from the Option<AssetBalance>.
+    /// Returns None if the Option is None.
+    fn get_version(entry: StoragePointer0Offset<Option<AssetBalance>>) -> Option<u8> {
+        if Self::is_none(entry) {
+            return Option::None;
+        }
+        Option::Some(Self::at_version(entry))
+    }
+}
+
+/// In the storage, the Option<AssetBalance> is stored as a struct with the following layout:
+/// - variant: u8 (1 for Some, 0 for None)
+/// - version: u8
+/// - balance: i64
+/// - funding_index: i64
+/// The offsets are used to read specific fields of the struct.
+#[derive(Copy, Drop, Debug, PartialEq, Serde)]
+pub enum OptionAssetBalanceOffset {
+    VARIANT,
+    VERSION,
+    BALANCE,
+    FUNDING_INDEX,
+}
+
+
+/// Convert the enum to u8 for storage access.
+pub impl OptionAssetBalanceOffsetIntoU8 of Into<OptionAssetBalanceOffset, u8> {
+    fn into(self: OptionAssetBalanceOffset) -> u8 {
+        match self {
+            OptionAssetBalanceOffset::VARIANT => 0_u8,
+            OptionAssetBalanceOffset::VERSION => 1_u8,
+            OptionAssetBalanceOffset::BALANCE => 2_u8,
+            OptionAssetBalanceOffset::FUNDING_INDEX => 3_u8,
+        }
     }
 }
