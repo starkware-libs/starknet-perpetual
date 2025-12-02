@@ -1,4 +1,7 @@
 use core::num::traits::Zero;
+use perpetuals::core::components::assets::assets_manager::{
+    IAssetsExternalDispatcher, IAssetsExternalDispatcherTrait,
+};
 use perpetuals::core::components::assets::interface::{IAssetsDispatcher, IAssetsDispatcherTrait};
 use perpetuals::core::components::deposit::interface::{IDepositDispatcher, IDepositDispatcherTrait};
 use perpetuals::core::components::positions::interface::{
@@ -184,7 +187,7 @@ fn test_deleverage_only_operator() {
 #[should_panic(expected: "ONLY_APP_GOVERNOR")]
 fn test_add_oracle_to_asset_only_app_governor() {
     let (cfg, contract_address) = setup();
-    let dispatcher = IAssetsDispatcher { contract_address };
+    let dispatcher = IAssetsExternalDispatcher { contract_address };
     dispatcher
         .add_oracle_to_asset(
             asset_id: cfg.synthetic_cfg.synthetic_id,
@@ -198,7 +201,7 @@ fn test_add_oracle_to_asset_only_app_governor() {
 #[should_panic(expected: "ONLY_APP_GOVERNOR")]
 fn test_add_synthetic_asset_only_app_governor() {
     let (cfg, contract_address) = setup();
-    let dispatcher = IAssetsDispatcher { contract_address };
+    let dispatcher = IAssetsExternalDispatcher { contract_address };
     dispatcher
         .add_synthetic_asset(
             asset_id: cfg.synthetic_cfg.synthetic_id,
@@ -214,7 +217,7 @@ fn test_add_synthetic_asset_only_app_governor() {
 #[should_panic(expected: "ONLY_APP_GOVERNOR")]
 fn test_deactivate_synthetic_only_app_governor() {
     let (cfg, contract_address) = setup();
-    let dispatcher = IAssetsDispatcher { contract_address };
+    let dispatcher = IAssetsExternalDispatcher { contract_address };
     dispatcher.deactivate_synthetic(synthetic_id: cfg.synthetic_cfg.synthetic_id);
 }
 
