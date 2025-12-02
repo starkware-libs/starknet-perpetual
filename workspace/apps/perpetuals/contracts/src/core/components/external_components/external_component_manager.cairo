@@ -14,6 +14,7 @@ pub mod ExternalComponents {
     use starkware_utils::components::replaceability::interface::IReplaceable;
     use starkware_utils::components::roles::RolesComponent;
     use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
+    use crate::core::components::assets::assets_manager::IAssetsExternalLibraryDispatcher;
     use crate::core::components::deleverage::deleverage_manager::IDeleverageManagerLibraryDispatcher;
     use crate::core::components::deposit::deposit_manager::IDepositExternalLibraryDispatcher;
     use crate::core::components::external_components::events;
@@ -26,8 +27,8 @@ pub mod ExternalComponents {
     use crate::core::components::vaults::vaults_contract::IVaultExternalLibraryDispatcher;
     use crate::core::components::withdrawal::withdrawal_manager::IWithdrawalManagerLibraryDispatcher;
     use super::super::interface::{
-        EXTERNAL_COMPONENT_DEPOSITS, EXTERNAL_COMPONENT_LIQUIDATIONS, EXTERNAL_COMPONENT_TRANSFERS,
-        EXTERNAL_COMPONENT_VAULT, EXTERNAL_COMPONENT_WITHDRAWALS,
+        EXTERNAL_COMPONENT_ASSETS, EXTERNAL_COMPONENT_DEPOSITS, EXTERNAL_COMPONENT_LIQUIDATIONS,
+        EXTERNAL_COMPONENT_TRANSFERS, EXTERNAL_COMPONENT_VAULT, EXTERNAL_COMPONENT_WITHDRAWALS,
     };
     use super::super::named_component::ITypedComponentDispatcherTrait;
 
@@ -148,6 +149,17 @@ pub mod ExternalComponents {
             assert(class_hash.is_non_zero(), 'NO_DEPOSIT_MANAGER');
             IDepositExternalLibraryDispatcher { class_hash: class_hash }
         }
+
+        fn _get_assets_manager_dispatcher(
+            self: @ComponentState<TContractState>,
+        ) -> IAssetsExternalLibraryDispatcher {
+            let class_hash = self
+                .external_component_implementations
+                .entry(EXTERNAL_COMPONENT_ASSETS)
+                .read();
+            assert(class_hash.is_non_zero(), 'NO_ASSETS_MANAGER');
+            IAssetsExternalLibraryDispatcher { class_hash: class_hash }
+        }
     }
 
     #[generate_trait]
@@ -185,7 +197,8 @@ pub mod ExternalComponents {
                 || (component_type == EXTERNAL_COMPONENT_DEPOSITS)
                 || (component_type == EXTERNAL_COMPONENT_TRANSFERS)
                 || (component_type == EXTERNAL_COMPONENT_LIQUIDATIONS)
-                || (component_type == EXTERNAL_COMPONENT_DELEVERAGES) {
+                || (component_type == EXTERNAL_COMPONENT_DELEVERAGES)
+                || (component_type == EXTERNAL_COMPONENT_ASSETS) {
                 let now = Time::now();
                 let activation_time = now.add(update_delay);
                 let entry = self.registered_external_components.entry(component_type);
