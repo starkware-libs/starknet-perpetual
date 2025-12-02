@@ -4,7 +4,7 @@ use core::poseidon::PoseidonTrait;
 use openzeppelin::presets::interfaces::{
     AccountUpgradeableABIDispatcher, AccountUpgradeableABIDispatcherTrait,
 };
-use perpetuals::core::components::assets::interface::IAssets;
+use perpetuals::core::components::assets::interface::{IAssets, IAssetsManager};
 use perpetuals::core::components::operator_nonce::interface::IOperatorNonce;
 use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
 use perpetuals::core::components::positions::interface::IPositions;
@@ -42,9 +42,10 @@ use starkware_utils_testing::test_utils::{
 };
 use crate::core::components::deposit::interface::IDeposit;
 use crate::core::components::external_components::interface::{
-    EXTERNAL_COMPONENT_DELEVERAGES, EXTERNAL_COMPONENT_DEPOSITS, EXTERNAL_COMPONENT_LIQUIDATIONS,
-    EXTERNAL_COMPONENT_TRANSFERS, EXTERNAL_COMPONENT_VAULT, EXTERNAL_COMPONENT_WITHDRAWALS,
-    IExternalComponents, IExternalComponentsDispatcher, IExternalComponentsDispatcherTrait,
+    EXTERNAL_COMPONENT_ASSETS, EXTERNAL_COMPONENT_DELEVERAGES, EXTERNAL_COMPONENT_DEPOSITS,
+    EXTERNAL_COMPONENT_LIQUIDATIONS, EXTERNAL_COMPONENT_TRANSFERS, EXTERNAL_COMPONENT_VAULT,
+    EXTERNAL_COMPONENT_WITHDRAWALS, IExternalComponents, IExternalComponentsDispatcher,
+    IExternalComponentsDispatcherTrait,
 };
 
 /// The `User` struct represents a user corresponding to a position in the state of the Core
@@ -520,6 +521,8 @@ pub fn init_state(cfg: @PerpetualsInitConfig, token_state: @TokenState) -> Core:
         .unwrap()
         .contract_class();
 
+    let assets_external_component = snforge_std::declare("AssetsManager").unwrap().contract_class();
+
     cheat_caller_address(
         contract_address: test_address(),
         caller_address: *cfg.governance_admin,
@@ -558,6 +561,11 @@ pub fn init_state(cfg: @PerpetualsInitConfig, token_state: @TokenState) -> Core:
             component_type: EXTERNAL_COMPONENT_DEPOSITS,
             component_address: *deposit_external_component.class_hash,
         );
+    state
+        .register_external_component(
+            component_type: EXTERNAL_COMPONENT_ASSETS,
+            component_address: *assets_external_component.class_hash,
+        );
 
     state
         .activate_external_component(
@@ -589,6 +597,11 @@ pub fn init_state(cfg: @PerpetualsInitConfig, token_state: @TokenState) -> Core:
         .activate_external_component(
             component_type: EXTERNAL_COMPONENT_DEPOSITS,
             component_address: *deposit_external_component.class_hash,
+        );
+    state
+        .activate_external_component(
+            component_type: EXTERNAL_COMPONENT_ASSETS,
+            component_address: *assets_external_component.class_hash,
         );
 
     stop_cheat_caller_address(contract_address: test_address());
@@ -826,6 +839,7 @@ pub fn register_external_components_by_dispatcher(
     let deposit_external_component = snforge_std::declare("DepositManager")
         .unwrap()
         .contract_class();
+    let assets_external_component = snforge_std::declare("AssetsManager").unwrap().contract_class();
 
     cheat_caller_address(
         :contract_address, caller_address: GOVERNANCE_ADMIN(), span: CheatSpan::Indefinite,
@@ -861,6 +875,11 @@ pub fn register_external_components_by_dispatcher(
             component_type: EXTERNAL_COMPONENT_DEPOSITS,
             component_address: *deposit_external_component.class_hash,
         );
+    external_components_dispatcher
+        .register_external_component(
+            component_type: EXTERNAL_COMPONENT_ASSETS,
+            component_address: *assets_external_component.class_hash,
+        );
     start_cheat_block_timestamp_global(Time::now().add(Time::seconds(*cfg.upgrade_delay)).into());
     external_components_dispatcher
         .activate_external_component(
@@ -891,6 +910,11 @@ pub fn register_external_components_by_dispatcher(
         .activate_external_component(
             component_type: EXTERNAL_COMPONENT_DEPOSITS,
             component_address: *deposit_external_component.class_hash,
+        );
+    external_components_dispatcher
+        .activate_external_component(
+            component_type: EXTERNAL_COMPONENT_ASSETS,
+            component_address: *assets_external_component.class_hash,
         );
     stop_cheat_caller_address(:contract_address);
 }
