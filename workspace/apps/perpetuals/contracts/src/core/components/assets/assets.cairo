@@ -1,5 +1,6 @@
 #[starknet::component]
 pub mod AssetsComponent {
+    use RolesComponent::InternalTrait as RolesInternalTrait;
     use core::cmp::min;
     use core::num::traits::{Pow, Zero};
     use core::panic_with_felt252;
@@ -50,6 +51,8 @@ pub mod AssetsComponent {
     use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
     use crate::core::components::external_components::external_component_manager::ExternalComponents as ExternalComponentsComponent;
     use crate::core::components::external_components::external_component_manager::ExternalComponents::InternalTrait as ExternalComponentsInternalTrait;
+    use super::super::assets_manager::IAssetsExternalSafeDispatcherTrait;
+
 
     const MAX_TIME: u64 = 2_u64.pow(56);
 
@@ -254,6 +257,16 @@ pub mod AssetsComponent {
         impl Roles: RolesComponent::HasComponent<TContractState>,
         impl ExternalComponents: ExternalComponentsComponent::HasComponent<TContractState>,
     > of IAssetsManager<ComponentState<TContractState>> {
+        /// Add oracle to a synthetic asset.
+        ///
+        /// Validations:
+        /// - Only the app governor can call this function.
+        /// - The 'oracle_public_key' does not exist in the Oracle map.
+        /// - The size of 'oracle_name' is 40 bits.
+        /// - The size of 'asset_name' is 128 bits.
+        ///
+        /// Execution:
+        /// - Add a new entry to the Oracle map.
         fn add_oracle_to_asset(
             ref self: ComponentState<TContractState>,
             asset_id: AssetId,
@@ -261,6 +274,7 @@ pub mod AssetsComponent {
             oracle_name: felt252,
             asset_name: felt252,
         ) {
+            get_dep_component!(@self, Roles).only_app_governor();
             let external_components = get_dep_component!(@self, ExternalComponents);
             external_components
                 ._get_assets_manager_dispatcher()
@@ -272,6 +286,35 @@ pub mod AssetsComponent {
                 );
         }
 
+
+        /// Add asset is called by the app governer to add a new synthetic asset.
+        ///
+        /// Validations:
+        /// - Only the app_governor can call this function.
+        /// - The asset does not exists.
+        /// - Each risk factor in risk_factor_tiers is less or equal to 1000.
+        /// - The quorum is greater than 0.
+        ///
+        /// Execution:
+        /// - Add new entry to asset_config.
+        ///     - Set the asset as in-active.
+        /// - Add a new entry at the beginning of timely_data
+        ///     - Set the price to zero.
+        ///     - Set the funding index to zero.
+        ///     - Set the `last_price_update` to zero.
+        ///
+        /// Risk factor tiers example:
+        /// - risk_factor_tiers = [10, 20, 30, 50, 100, 200, 400]
+        /// - risk_factor_first_tier_boundary = 10,000
+        /// - risk_factor_tier_size = 20,000
+        /// which means:
+        /// - [0, 10,000) -> 1%
+        /// - [10,000, 30,000) -> 2%
+        /// - [30,000, 50,000) -> 3%
+        /// - [50,000, 70,000) -> 5%
+        /// - [70,000, 90,000) -> 10%
+        /// - [90,000, 110,000) -> 20%
+        /// - [110,000, MAX) -> 40%
         fn add_synthetic_asset(
             ref self: ComponentState<TContractState>,
             asset_id: AssetId,
@@ -281,17 +324,19 @@ pub mod AssetsComponent {
             quorum: u8,
             resolution_factor: u64,
         ) {
-            let external_components = get_dep_component!(@self, ExternalComponents);
-            external_components
-                ._get_assets_manager_dispatcher()
-                .add_synthetic_asset(
-                    asset_id: asset_id,
-                    risk_factor_tiers: risk_factor_tiers,
-                    risk_factor_first_tier_boundary: risk_factor_first_tier_boundary,
-                    risk_factor_tier_size: risk_factor_tier_size,
-                    quorum: quorum,
-                    resolution_factor: resolution_factor,
-                );
+            get_dep_component!(@self, Roles).only_app_governor();
+            self
+                ._add_asset(
+                    asset_id,
+                    risk_factor_tiers,
+                    risk_factor_first_tier_boundary,
+                    risk_factor_tier_size,
+                    quorum,
+                    resolution_factor,
+                    AssetType::SYNTHETIC,
+                    0,
+                    None,
+                )
         }
 
         fn add_vault_collateral_asset(
@@ -305,21 +350,30 @@ pub mod AssetsComponent {
             risk_factor_tier_size: u128,
             quorum: u8,
         ) {
-            let external_components = get_dep_component!(@self, ExternalComponents);
-            external_components
-                ._get_assets_manager_dispatcher()
-                .add_vault_collateral_asset(
-                    asset_id: asset_id,
-                    erc20_contract_address: erc20_contract_address,
-                    quantum: quantum,
-                    resolution_factor: resolution_factor,
-                    risk_factor_tiers: risk_factor_tiers,
-                    risk_factor_first_tier_boundary: risk_factor_first_tier_boundary,
-                    risk_factor_tier_size: risk_factor_tier_size,
-                    quorum: quorum,
-                );
+            get_dep_component!(@self, Roles).only_app_governor();
+            self
+                ._add_asset(
+                    asset_id,
+                    risk_factor_tiers,
+                    risk_factor_first_tier_boundary,
+                    risk_factor_tier_size,
+                    quorum,
+                    resolution_factor,
+                    AssetType::VAULT_SHARE_COLLATERAL,
+                    quantum,
+                    Some(erc20_contract_address),
+                )
         }
 
+
+        /// Update synthetic asset risk factors.
+        /// Validations:
+        /// - Only the operator can call this function, cause it must be sequenced.
+        /// (Liqudation may fail if submitted out of order)
+        /// - Each risk factor in risk_factor_tiers is less or equal to 1000.
+        /// - After update postitions risk must be the same or lower.
+        ///
+        /// Execution:
         fn update_synthetic_asset_risk_factor(
             ref self: ComponentState<TContractState>,
             operator_nonce: u64,
@@ -328,6 +382,10 @@ pub mod AssetsComponent {
             risk_factor_first_tier_boundary: u128,
             risk_factor_tier_size: u128,
         ) {
+            // Validations:
+            get_dep_component!(@self, Pausable).assert_not_paused();
+            let mut nonce = get_dep_component_mut!(ref self, OperatorNonce);
+            nonce.use_checked_nonce(:operator_nonce);
             let external_components = get_dep_component!(@self, ExternalComponents);
             external_components
                 ._get_assets_manager_dispatcher()
@@ -340,27 +398,63 @@ pub mod AssetsComponent {
                 );
         }
 
+        /// - Deactivate synthetic asset.
+        ///
+        /// Validations:
+        /// - Only the app governor can call this function.
+        /// - The asset is already exists and active.
+        ///
+        /// Execution:
+        /// - Deactivate asset_config.
+        ///     - Set the asset as active = false.
+        /// - Decrement the number of active synthetic assets.
+        ///
+        /// When a synthetic asset is inactive, it can no longer be traded or liquidated. It also
+        /// stops receiving funding and price updates. Additionally, a inactive asset cannot be
+        /// reactivated.
         fn deactivate_synthetic(ref self: ComponentState<TContractState>, synthetic_id: AssetId) {
+            get_dep_component!(@self, Roles).only_app_governor();
             let external_components = get_dep_component!(@self, ExternalComponents);
             external_components
                 ._get_assets_manager_dispatcher()
                 .deactivate_synthetic(synthetic_id: synthetic_id);
         }
 
+        /// Remove oracle from asset.
+        /// Validations:
+        /// - Only the app governor can call this function.
+        /// - The oracle exists.
+        ///
+        /// Execution:
+        /// - Remove the oracle from the asset.
+        /// - Emit `OracleRemoved` event.
         fn remove_oracle_from_asset(
             ref self: ComponentState<TContractState>,
             asset_id: AssetId,
             oracle_public_key: PublicKey,
         ) {
+            get_dep_component!(@self, Roles).only_app_governor();
             let external_components = get_dep_component!(@self, ExternalComponents);
             external_components
                 ._get_assets_manager_dispatcher()
                 .remove_oracle_from_asset(asset_id: asset_id, oracle_public_key: oracle_public_key);
         }
 
+        /// Update synthetic quorum.
+        ///
+        /// Validations:
+        /// - Only the app governor can call this function.
+        /// - The asset is already exists and active.
+        /// - The quorum is not the same as the current quorum.
+        /// - The quorum is greater than 0.
+        ///
+        /// Execution:
+        /// - Update the quorum.
+        /// - Emit AssetQuorumUpdated event.
         fn update_synthetic_quorum(
             ref self: ComponentState<TContractState>, synthetic_id: AssetId, quorum: u8,
         ) {
+            get_dep_component!(@self, Roles).only_app_governor();
             let external_components = get_dep_component!(@self, ExternalComponents);
             external_components
                 ._get_assets_manager_dispatcher()
@@ -746,6 +840,63 @@ pub mod AssetsComponent {
                     );
                 }
             };
+        }
+    }
+
+    #[generate_trait]
+    impl PrivateImplWithExternalComponents<
+        TContractState,
+        +HasComponent<TContractState>,
+        +Drop<TContractState>,
+        +AccessControlComponent::HasComponent<TContractState>,
+        +SRC5Component::HasComponent<TContractState>,
+        impl OperatorNonce: OperatorNonceComponent::HasComponent<TContractState>,
+        impl Pausable: PausableComponent::HasComponent<TContractState>,
+        impl Roles: RolesComponent::HasComponent<TContractState>,
+        impl ExternalComponents: ExternalComponentsComponent::HasComponent<TContractState>,
+    > of PrivateTraitWithExternalComponents<TContractState> {
+        fn _add_asset(
+            ref self: ComponentState<TContractState>,
+            asset_id: AssetId,
+            risk_factor_tiers: Span<u16>,
+            risk_factor_first_tier_boundary: u128,
+            risk_factor_tier_size: u128,
+            quorum: u8,
+            resolution_factor: u64,
+            asset_type: AssetType,
+            quantum: u64,
+            erc20_address: Option<ContractAddress>,
+        ) {
+            let assets_manager_dispatcher = get_dep_component!(@self, ExternalComponents)
+                ._get_assets_manager_dispatcher();
+            match asset_type {
+                AssetType::SYNTHETIC => {
+                    assets_manager_dispatcher
+                        .add_synthetic_asset(
+                            :asset_id,
+                            :risk_factor_tiers,
+                            :risk_factor_first_tier_boundary,
+                            :risk_factor_tier_size,
+                            :quorum,
+                            :resolution_factor,
+                        );
+                },
+                AssetType::VAULT_SHARE_COLLATERAL => {
+                    let erc20_contract_address = erc20_address.unwrap();
+                    assets_manager_dispatcher
+                        .add_vault_collateral_asset(
+                            :asset_id,
+                            :erc20_contract_address,
+                            :quantum,
+                            :resolution_factor,
+                            :risk_factor_tiers,
+                            :risk_factor_first_tier_boundary,
+                            :risk_factor_tier_size,
+                            :quorum,
+                        );
+                },
+                AssetType::SPOT_COLLATERAL => { panic_with_felt252('TODO'); },
+            }
         }
     }
 }
