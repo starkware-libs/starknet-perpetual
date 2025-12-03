@@ -71,15 +71,24 @@ fn test_constructor() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
     let mut state = initialized_contract_state(cfg: @cfg, token_state: @token_state);
+
+        // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+    let asset_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
+    let assets_dispatcher = IAssetsDispatcher { contract_address };
+
     assert!(state.roles.is_governance_admin(GOVERNANCE_ADMIN()));
     assert!(state.replaceability.get_upgrade_delay() == UPGRADE_DELAY);
-    assert!(state.assets.get_max_price_interval() == MAX_PRICE_INTERVAL);
-    assert!(state.assets.get_max_funding_interval() == MAX_FUNDING_INTERVAL);
-    assert!(state.assets.get_max_funding_rate() == MAX_FUNDING_RATE);
-    assert!(state.assets.get_max_oracle_price_validity() == MAX_ORACLE_PRICE_VALIDITY);
+    assert!(asset_manager_dispatcher.get_max_price_interval() == MAX_PRICE_INTERVAL);
+    assert!(asset_manager_dispatcher.get_max_funding_interval() == MAX_FUNDING_INTERVAL);
+    assert!(asset_manager_dispatcher.get_max_funding_rate() == MAX_FUNDING_RATE);
+    assert!(asset_manager_dispatcher.get_max_oracle_price_validity() == MAX_ORACLE_PRICE_VALIDITY);
     assert!(state.deposits.get_cancel_delay() == CANCEL_DELAY);
-    assert!(state.assets.get_last_funding_tick() == Time::now());
-    assert!(state.assets.get_last_price_validation() == Time::now());
+    assert!(assets_dispatcher.get_last_funding_tick() == Time::now());
+    assert!(assets_dispatcher.get_last_price_validation() == Time::now());
 
     assert!(
         state
@@ -4041,7 +4050,7 @@ fn test_unsuccessful_add_vault_share_asset_zero_quantum() {
 
 #[test]
 #[should_panic(
-    expected: "Entry point selector 0x4c4fb1ab068f6039d5780c68dd0fa2f8742cceb3426d19667778ca7f3518a9 not found in contract 0x1724987234973219347210837402",
+    expected: 'ENTRYPOINT_NOT_FOUND',
 )]
 fn test_unsuccessful_add_vault_share_asset_not_erc20() {
     // Setup state, token:
