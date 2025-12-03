@@ -1,3 +1,4 @@
+use core::dict::Felt252Dict;
 use core::num::traits::{Pow, Zero};
 use perpetuals::core::components::assets::interface::{
     IAssets, IAssetsDispatcher, IAssetsDispatcherTrait,
@@ -2216,6 +2217,7 @@ fn test_cancel_deposit_before_cancellation_delay_passed() {
 fn test_successful_trade() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
+    let mut global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>> = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
     let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
 
@@ -2308,7 +2310,9 @@ fn test_successful_trade() {
     let position_a = state.positions.get_position_snapshot(position_id: user_a.position_id);
     let user_a_collateral_balance = state
         .positions
-        .get_collateral_provisional_balance(position: position_a, provisional_delta: Option::None);
+        .get_collateral_provisional_balance(
+            position: position_a, provisional_delta: Option::None, ref :global_funding_index_cache,
+        );
     let user_a_synthetic_balance = state
         .positions
         .get_synthetic_balance(position: position_a, :synthetic_id);
@@ -2320,7 +2324,9 @@ fn test_successful_trade() {
     let position_b = state.positions.get_position_snapshot(position_id: user_b.position_id);
     let user_b_collateral_balance = state
         .positions
-        .get_collateral_provisional_balance(position: position_b, provisional_delta: Option::None);
+        .get_collateral_provisional_balance(
+            position: position_b, provisional_delta: Option::None, ref :global_funding_index_cache,
+        );
     let user_b_synthetic_balance = state
         .positions
         .get_synthetic_balance(position: position_b, :synthetic_id);
@@ -2332,7 +2338,9 @@ fn test_successful_trade() {
     let position = state.positions.get_position_snapshot(position_id: FEE_POSITION);
     let fee_position_balance = state
         .positions
-        .get_collateral_provisional_balance(:position, provisional_delta: Option::None);
+        .get_collateral_provisional_balance(
+            :position, provisional_delta: Option::None, ref :global_funding_index_cache,
+        );
     assert!(fee_position_balance == (FEE + FEE).into());
 }
 
@@ -2456,6 +2464,7 @@ fn test_successful_withdraw_request_with_public_key() {
 fn test_successful_deleverage() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
+    let mut global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>> = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
     let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
 
@@ -2533,7 +2542,9 @@ fn test_successful_deleverage() {
     let deleveraged_collateral_balance = state
         .positions
         .get_collateral_provisional_balance(
-            position: deleveraged_position, provisional_delta: Option::None,
+            position: deleveraged_position,
+            provisional_delta: Option::None,
+            ref :global_funding_index_cache,
         );
     let deleveraged_synthetic_balance = state
         .positions
@@ -2544,7 +2555,9 @@ fn test_successful_deleverage() {
     let deleverager_collateral_balance = state
         .positions
         .get_collateral_provisional_balance(
-            position: deleverager_position, provisional_delta: Option::None,
+            position: deleverager_position,
+            provisional_delta: Option::None,
+            ref :global_funding_index_cache,
         );
     let deleverager_synthetic_balance = state
         .positions
@@ -2557,6 +2570,7 @@ fn test_successful_deleverage() {
 fn test_successful_liquidate() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
+    let mut global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>> = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
     let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
 
@@ -2642,7 +2656,9 @@ fn test_successful_liquidate() {
     let liquidated_collateral_balance = state
         .positions
         .get_collateral_provisional_balance(
-            position: liquidated_position, provisional_delta: Option::None,
+            position: liquidated_position,
+            provisional_delta: Option::None,
+            ref :global_funding_index_cache,
         );
     let liquidated_synthetic_balance = state
         .positions
@@ -2657,7 +2673,9 @@ fn test_successful_liquidate() {
     let liquidator_collateral_balance = state
         .positions
         .get_collateral_provisional_balance(
-            position: liquidator_position, provisional_delta: Option::None,
+            position: liquidator_position,
+            provisional_delta: Option::None,
+            ref :global_funding_index_cache,
         );
     let liquidator_synthetic_balance = state
         .positions
@@ -2673,7 +2691,9 @@ fn test_successful_liquidate() {
     let fee_position_balance = state
         .positions
         .get_collateral_provisional_balance(
-            position: fee_position, provisional_delta: Option::None,
+            position: fee_position,
+            provisional_delta: Option::None,
+            ref :global_funding_index_cache,
         );
     assert!(fee_position_balance == FEE.into());
 
@@ -2683,7 +2703,9 @@ fn test_successful_liquidate() {
     let insurance_position_balance = state
         .positions
         .get_collateral_provisional_balance(
-            position: insurance_fund_position, provisional_delta: Option::None,
+            position: insurance_fund_position,
+            provisional_delta: Option::None,
+            ref :global_funding_index_cache,
         );
     assert!(insurance_position_balance == INSURANCE_FEE.into());
 }
@@ -2955,6 +2977,7 @@ fn test_successful_transfer_request_using_public_key() {
 fn test_successful_transfer() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
+    let mut global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>> = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
     let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
 
@@ -3033,7 +3056,9 @@ fn test_successful_transfer() {
     let sender_collateral_balance = state
         .positions
         .get_collateral_provisional_balance(
-            position: sender_position, provisional_delta: Option::None,
+            position: sender_position,
+            provisional_delta: Option::None,
+            ref :global_funding_index_cache,
         );
     assert_eq!(sender_collateral_balance, 0_i64.into());
 
@@ -3043,7 +3068,9 @@ fn test_successful_transfer() {
     let recipient_collateral_balance = state
         .positions
         .get_collateral_provisional_balance(
-            position: recipient_position, provisional_delta: Option::None,
+            position: recipient_position,
+            provisional_delta: Option::None,
+            ref :global_funding_index_cache,
         );
     assert_eq!(recipient_collateral_balance, (2 * COLLATERAL_BALANCE_AMOUNT).into());
 }

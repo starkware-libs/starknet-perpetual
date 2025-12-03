@@ -41,6 +41,7 @@ pub trait IVaultExternal<TContractState> {
 
 #[starknet::contract]
 pub(crate) mod VaultsManager {
+    use core::dict::Felt252Dict;
     use core::num::traits::{WideMul, Zero};
     use core::panics::panic_with_byte_array;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
@@ -57,6 +58,7 @@ pub(crate) mod VaultsManager {
     use perpetuals::core::components::positions::Positions as PositionsComponent;
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
     use perpetuals::core::types::asset::AssetId;
+    use perpetuals::core::types::funding::FundingIndex;
     use perpetuals::core::types::position::{PositionId, PositionTrait};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
@@ -269,6 +271,10 @@ pub(crate) mod VaultsManager {
                 collateral_diff: order.quote_amount.into(), asset_diff: Option::None,
             };
 
+            let mut price_cache: Felt252Dict<u64> = Default::default();
+            let mut global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>> =
+                Default::default();
+
             self
                 .positions
                 .validate_healthy_or_healthier_position(
@@ -276,6 +282,8 @@ pub(crate) mod VaultsManager {
                     position: sending_position_snapshot,
                     position_diff: sending_position_diff,
                     tvtr_before: Default::default(),
+                    ref :price_cache,
+                    ref :global_funding_index_cache,
                 );
 
             self
@@ -556,6 +564,9 @@ pub(crate) mod VaultsManager {
             };
 
             // vault health checks
+            let mut price_cache: Felt252Dict<u64> = Default::default();
+            let mut global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>> =
+                Default::default();
             self
                 .positions
                 .validate_healthy_or_healthier_position(
@@ -563,6 +574,8 @@ pub(crate) mod VaultsManager {
                     position: vault_position,
                     position_diff: vault_position_diff,
                     tvtr_before: Default::default(),
+                    ref :price_cache,
+                    ref :global_funding_index_cache,
                 );
 
             self
@@ -574,13 +587,17 @@ pub(crate) mod VaultsManager {
             self
                 .positions
                 .validate_asset_balance_is_not_negative(
-                    position: vault_position, asset_id: self.assets.get_collateral_id(),
+                    position: vault_position,
+                    asset_id: self.assets.get_collateral_id(),
+                    ref :global_funding_index_cache,
                 );
 
             self
                 .positions
                 .validate_asset_balance_is_not_negative(
-                    position: redeeming_position, asset_id: order.base_asset_id,
+                    position: redeeming_position,
+                    asset_id: order.base_asset_id,
+                    ref :global_funding_index_cache,
                 );
             // user health checks
 
@@ -591,6 +608,8 @@ pub(crate) mod VaultsManager {
                     position: redeeming_position,
                     position_diff: redeeming_position_diff,
                     tvtr_before: Default::default(),
+                    ref :price_cache,
+                    ref :global_funding_index_cache,
                 );
 
             self

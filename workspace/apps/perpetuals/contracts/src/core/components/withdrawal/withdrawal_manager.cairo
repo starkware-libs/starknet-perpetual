@@ -55,6 +55,7 @@ pub trait IWithdrawalManager<TContractState> {
 
 #[starknet::contract]
 pub(crate) mod WithdrawalManager {
+    use core::dict::Felt252Dict;
     use core::num::traits::Zero;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::interfaces::erc20::IERC20DispatcherTrait;
@@ -68,6 +69,7 @@ pub(crate) mod WithdrawalManager {
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalImpl as OperatorNonceInternal;
     use perpetuals::core::components::positions::Positions as PositionsComponent;
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
+    use perpetuals::core::types::funding::FundingIndex;
     use perpetuals::core::types::position::{PositionId, PositionTrait};
     use starknet::ContractAddress;
     use starknet::storage::StoragePointerReadAccess;
@@ -225,10 +227,19 @@ pub(crate) mod WithdrawalManager {
                 collateral_diff: -amount.into(), asset_diff: Option::None,
             };
 
+            let mut price_cache: Felt252Dict<u64> = Default::default();
+            let mut global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>> =
+                Default::default();
+
             self
                 .positions
                 .validate_healthy_or_healthier_position(
-                    :position_id, :position, :position_diff, tvtr_before: Default::default(),
+                    :position_id,
+                    :position,
+                    :position_diff,
+                    tvtr_before: Default::default(),
+                    ref :price_cache,
+                    ref :global_funding_index_cache,
                 );
 
             self.positions.apply_diff(:position_id, :position_diff);

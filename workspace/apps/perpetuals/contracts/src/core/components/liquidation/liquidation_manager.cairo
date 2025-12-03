@@ -42,6 +42,7 @@ pub trait ILiquidationManager<TContractState> {
 
 #[starknet::contract]
 pub(crate) mod LiquidationManager {
+    use core::dict::Felt252Dict;
     use core::num::traits::Zero;
     use core::panic_with_felt252;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
@@ -58,6 +59,7 @@ pub(crate) mod LiquidationManager {
         FEE_POSITION, INSURANCE_FUND_POSITION, InternalTrait as PositionsInternal,
     };
     use perpetuals::core::components::snip::SNIP12MetadataImpl;
+    use perpetuals::core::types::funding::FundingIndex;
     use perpetuals::core::types::position::{PositionId, PositionTrait};
     use starknet::storage::StoragePath;
     use starkware_utils::components::pausable::PausableComponent;
@@ -184,6 +186,9 @@ pub(crate) mod LiquidationManager {
             actual_liquidator_fee: u64,
             liquidated_fee_amount: u64,
         ) {
+            let mut price_cache: Felt252Dict<u64> = Default::default();
+            let mut global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>> =
+                Default::default();
             assert(liquidated_position_id != INSURANCE_FUND_POSITION, CANT_LIQUIDATE_IF_POSITION);
             let liquidator_position_id = liquidator_order.position_id;
             assert(liquidator_position_id != INSURANCE_FUND_POSITION, CANT_LIQUIDATE_IF_POSITION);
@@ -269,6 +274,8 @@ pub(crate) mod LiquidationManager {
                     position_id: liquidated_position_id,
                     position: liquidated_position,
                     position_diff: liquidated_position_diff,
+                    ref :price_cache,
+                    ref :global_funding_index_cache,
                 );
             self
                 .positions
@@ -277,6 +284,8 @@ pub(crate) mod LiquidationManager {
                     position: liquidator_position,
                     position_diff: liquidator_position_diff,
                     tvtr_before: Default::default(),
+                    ref :price_cache,
+                    ref :global_funding_index_cache,
                 );
 
             // Apply Diffs.
@@ -330,6 +339,8 @@ pub(crate) mod LiquidationManager {
             position_id: PositionId,
             position: StoragePath<Position>,
             position_diff: PositionDiff,
+            ref price_cache: Felt252Dict<u64>,
+            ref global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>>,
         ) {
             let (synthetic_diff_id, synthetic_diff_balance) = if let Option::Some((id, balance)) =
                 position_diff
@@ -345,16 +356,19 @@ pub(crate) mod LiquidationManager {
                 );
             let (provisional_delta, unchanged_assets) = self
                 .positions
-                .derive_funding_delta_and_unchanged_assets(:position, :position_diff);
+                .derive_funding_delta_and_unchanged_assets(
+                    :position, :position_diff, ref :price_cache, ref :global_funding_index_cache,
+                );
             let synthetic_enriched_position_diff = self
                 .positions
-                .enrich_asset(:position, :position_diff);
+                .enrich_asset(:position, :position_diff, ref :price_cache);
             let position_diff_enriched = self
                 .positions
                 .enrich_collateral(
                     :position,
                     position_diff: synthetic_enriched_position_diff,
                     provisional_delta: Option::Some(provisional_delta),
+                    ref :global_funding_index_cache,
                 );
 
             liquidated_position_validations(

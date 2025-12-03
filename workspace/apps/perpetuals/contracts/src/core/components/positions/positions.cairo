@@ -1,5 +1,6 @@
 #[starknet::component]
 pub mod Positions {
+    use core::dict::{Felt252Dict, Felt252DictTrait};
     use core::nullable::{FromNullableResult, match_nullable};
     use core::num::traits::Zero;
     use core::panic_with_felt252;
@@ -21,11 +22,12 @@ pub mod Positions {
     use perpetuals::core::types::asset::AssetId;
     use perpetuals::core::types::asset::synthetic::AssetBalanceInfo;
     use perpetuals::core::types::balance::Balance;
-    use perpetuals::core::types::funding::calculate_funding;
+    use perpetuals::core::types::funding::{FundingIndex, calculate_funding};
     use perpetuals::core::types::position::{
         AssetBalance, POSITION_VERSION, Position, PositionData, PositionDiff, PositionId,
         PositionMutableTrait, PositionTrait,
     };
+    use perpetuals::core::types::price::Price;
     use perpetuals::core::types::set_owner_account::SetOwnerAccountArgs;
     use perpetuals::core::types::set_public_key::SetPublicKeyArgs;
     use perpetuals::core::value_risk_calculator::{
@@ -96,14 +98,22 @@ pub mod Positions {
         fn get_position_assets(
             self: @ComponentState<TContractState>, position_id: PositionId,
         ) -> PositionData {
+            let mut price_cache: Felt252Dict<u64> = Default::default();
+            let mut global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>> =
+                Default::default();
             let position = self.get_position_snapshot(:position_id);
             let (provisional_delta, assets) = self
                 .derive_funding_delta_and_unchanged_assets(
-                    :position, position_diff: Default::default(),
+                    :position,
+                    position_diff: Default::default(),
+                    ref :price_cache,
+                    ref :global_funding_index_cache,
                 );
             let collateral_balance = self
                 .get_collateral_provisional_balance(
-                    :position, provisional_delta: Option::Some(provisional_delta),
+                    :position,
+                    provisional_delta: Option::Some(provisional_delta),
+                    ref :global_funding_index_cache,
                 );
 
             PositionData { assets, collateral_balance }
@@ -114,14 +124,22 @@ pub mod Positions {
         fn get_position_tv_tr(
             self: @ComponentState<TContractState>, position_id: PositionId,
         ) -> PositionTVTR {
+            let mut price_cache: Felt252Dict<u64> = Default::default();
+            let mut global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>> =
+                Default::default();
             let position = self.get_position_snapshot(:position_id);
             let (provisional_delta, unchanged_assets) = self
                 .derive_funding_delta_and_unchanged_assets(
-                    :position, position_diff: Default::default(),
+                    :position,
+                    position_diff: Default::default(),
+                    ref :price_cache,
+                    ref :global_funding_index_cache,
                 );
             let collateral_balance = self
                 .get_collateral_provisional_balance(
-                    :position, provisional_delta: Option::Some(provisional_delta),
+                    :position,
+                    provisional_delta: Option::Some(provisional_delta),
+                    ref :global_funding_index_cache,
                 );
 
             calculate_position_tvtr(:unchanged_assets, :collateral_balance)
@@ -447,8 +465,12 @@ pub mod Positions {
             position: StoragePath<Position>,
             position_diff: AssetEnrichedPositionDiff,
             provisional_delta: Option<Balance>,
+            ref global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>>,
         ) -> PositionDiffEnriched {
-            let before = self.get_collateral_provisional_balance(:position, :provisional_delta);
+            let before = self
+                .get_collateral_provisional_balance(
+                    :position, :provisional_delta, ref :global_funding_index_cache,
+                );
             let after = before + position_diff.collateral_diff;
             let collateral_enriched = BalanceDiff { before: before, after };
 
@@ -463,12 +485,21 @@ pub mod Positions {
             self: @ComponentState<TContractState>,
             position: StoragePath<Position>,
             position_diff: PositionDiff,
+            ref price_cache: Felt252Dict<u64>,
         ) -> AssetEnrichedPositionDiff {
             let asset_enriched = if let Option::Some((asset_id, diff)) = position_diff.asset_diff {
                 let balance_before = self.get_synthetic_balance(:position, synthetic_id: asset_id);
                 let balance_after = balance_before + diff;
                 let assets = get_dep_component!(self, Assets);
-                let price = assets.get_asset_price(:asset_id);
+
+                let cached_price = price_cache.get(asset_id.into());
+                let price: Price = if (cached_price == 0) {
+                    let price = assets.get_asset_price(:asset_id);
+                    price_cache.insert(asset_id.into(), price.into());
+                    price.into()
+                } else {
+                    cached_price.into()
+                };
                 let risk_factor_before = assets
                     .get_asset_risk_factor(:asset_id, balance: balance_before, :price);
                 let risk_factor_after = assets
@@ -525,6 +556,7 @@ pub mod Positions {
             self: @ComponentState<TContractState>,
             position: StoragePath<Position>,
             provisional_delta: Option<Balance>,
+            ref global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>>,
         ) -> Balance {
             let assets = get_dep_component!(self, Assets);
             let mut collateral_provisional_balance = position.collateral_balance.read();
@@ -536,7 +568,18 @@ pub mod Positions {
                 if synthetic.balance.is_zero() {
                     continue;
                 }
-                let global_funding_index = assets.get_funding_index_unsafe(synthetic_id);
+                let cached_global_funding_index = global_funding_index_cache
+                    .get(synthetic_id.into());
+                let global_funding_index = match match_nullable(cached_global_funding_index) {
+                    FromNullableResult::Null => {
+                        let global_funding_index = assets.get_funding_index_unsafe(synthetic_id);
+                        // update cache
+                        global_funding_index_cache
+                            .insert(synthetic_id.into(), NullableTrait::new(global_funding_index));
+                        global_funding_index
+                    },
+                    FromNullableResult::NotNull(value) => value.unbox(),
+                };
                 collateral_provisional_balance +=
                     calculate_funding(
                         old_funding_index: synthetic.funding_index,
@@ -553,6 +596,8 @@ pub mod Positions {
             self: @ComponentState<TContractState>,
             position: StoragePath<Position>,
             position_diff: PositionDiff,
+            ref price_cache: Felt252Dict<u64>,
+            ref global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>>,
         ) -> (Balance, Span<AssetBalanceInfo>) {
             let assets = get_dep_component!(self, Assets);
             let mut unchanged_assets = array![];
@@ -569,13 +614,34 @@ pub mod Positions {
                 if balance.is_zero() {
                     continue;
                 }
-                let (price, funding_index) = assets
-                    .get_price_and_funding_index(asset_id: synthetic_id);
+
+                // Read cached values or fetch and cache them.
+                let cached_global_funding_index = global_funding_index_cache
+                    .get(synthetic_id.into());
+                let global_funding_index = match match_nullable(cached_global_funding_index) {
+                    FromNullableResult::Null => {
+                        let global_funding_index = assets.get_funding_index_unsafe(synthetic_id);
+                        // update cache
+                        global_funding_index_cache
+                            .insert(synthetic_id.into(), NullableTrait::new(global_funding_index));
+                        global_funding_index
+                    },
+                    FromNullableResult::NotNull(value) => value.unbox(),
+                };
+
+                let cached_price = price_cache.get(synthetic_id.into());
+                let price: Price = if (cached_price == 0) {
+                    let price = assets.get_asset_price_unsafe(synthetic_id.into());
+                    price_cache.insert(synthetic_id.into(), price.into());
+                    price.into()
+                } else {
+                    cached_price.into()
+                };
 
                 provisional_delta +=
                     calculate_funding(
                         old_funding_index: synthetic.funding_index,
-                        new_funding_index: funding_index,
+                        new_funding_index: global_funding_index,
                         balance: synthetic.balance,
                     );
                 if synthetic_diff_id == synthetic_id {
@@ -603,10 +669,14 @@ pub mod Positions {
             self: @ComponentState<TContractState>,
             position: StoragePath<Position>,
             asset_id: AssetId,
+            ref global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>>,
         ) {
             let assets = get_dep_component!(self, Assets);
             let balance = if (asset_id == assets.get_collateral_id()) {
-                self.get_collateral_provisional_balance(position, None)
+                self
+                    .get_collateral_provisional_balance(
+                        position, None, ref :global_funding_index_cache,
+                    )
             } else {
                 self.get_synthetic_balance(:position, synthetic_id: asset_id)
             };
@@ -620,17 +690,26 @@ pub mod Positions {
             position: StoragePath<Position>,
             position_diff: PositionDiff,
             tvtr_before: Nullable<PositionTVTR>,
+            ref price_cache: Felt252Dict<u64>,
+            ref global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>>,
         ) -> PositionTVTR {
-            let asset_enriched_position_diff = self.enrich_asset(:position, :position_diff);
+            let asset_enriched_position_diff = self
+                .enrich_asset(:position, :position_diff, ref :price_cache);
             let tvtr_before = match match_nullable(tvtr_before) {
                 FromNullableResult::Null => {
                     let (provisional_delta, unchanged_assets) = self
-                        .derive_funding_delta_and_unchanged_assets(:position, :position_diff);
+                        .derive_funding_delta_and_unchanged_assets(
+                            :position,
+                            :position_diff,
+                            ref :price_cache,
+                            ref :global_funding_index_cache,
+                        );
                     let position_diff_enriched = self
                         .enrich_collateral(
                             :position,
                             position_diff: asset_enriched_position_diff,
                             provisional_delta: Option::Some(provisional_delta),
+                            ref :global_funding_index_cache,
                         );
 
                     calculate_position_tvtr_before(:unchanged_assets, :position_diff_enriched)
@@ -765,12 +844,19 @@ pub mod Positions {
         fn _get_position_state(
             self: @ComponentState<TContractState>, position: StoragePath<Position>,
         ) -> PositionState {
+            let mut price_cache: Felt252Dict<u64> = Default::default();
+            let mut global_funding_index_cache: Felt252Dict<Nullable<FundingIndex>> =
+                Default::default();
             let position_diff = Default::default();
             let (provisional_delta, unchanged_assets) = self
-                .derive_funding_delta_and_unchanged_assets(:position, :position_diff);
+                .derive_funding_delta_and_unchanged_assets(
+                    :position, :position_diff, ref :price_cache, ref :global_funding_index_cache,
+                );
             let collateral_balance = self
                 .get_collateral_provisional_balance(
-                    :position, provisional_delta: Option::Some(provisional_delta),
+                    :position,
+                    provisional_delta: Option::Some(provisional_delta),
+                    ref :global_funding_index_cache,
                 );
             evaluate_position(:unchanged_assets, :collateral_balance)
         }
