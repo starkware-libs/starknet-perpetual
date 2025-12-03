@@ -26,6 +26,15 @@ pub trait IAssets<TContractState> {
         signed_prices: Span<SignedPrice>,
     );
 
+    fn update_synthetic_asset_risk_factor(
+        ref self: TContractState,
+        operator_nonce: u64,
+        asset_id: AssetId,
+        risk_factor_tiers: Span<u16>,
+        risk_factor_first_tier_boundary: u128,
+        risk_factor_tier_size: u128,
+    );
+
     // View functions.
     fn get_collateral_token_contract(self: @TContractState) -> IERC20Dispatcher;
     fn get_collateral_quantum(self: @TContractState) -> u64;
@@ -35,7 +44,6 @@ pub trait IAssets<TContractState> {
     fn get_collateral_id(self: @TContractState) -> AssetId;
     fn get_asset_config(self: @TContractState, synthetic_id: AssetId) -> AssetConfig;
     fn get_timely_data(self: @TContractState, synthetic_id: AssetId) -> TimelyData;
-    fn get_risk_factor_tiers(self: @TContractState, asset_id: AssetId) -> Span<RiskFactor>;
 }
 
 
@@ -56,14 +64,6 @@ pub trait IAssetsManager<TContractState> {
         risk_factor_tier_size: u128,
         quorum: u8,
         resolution_factor: u64,
-    );
-    fn update_synthetic_asset_risk_factor(
-        ref self: TContractState,
-        operator_nonce: u64,
-        asset_id: AssetId,
-        risk_factor_tiers: Span<u16>,
-        risk_factor_first_tier_boundary: u128,
-        risk_factor_tier_size: u128,
     );
     fn add_vault_collateral_asset(
         ref self: TContractState,
@@ -87,4 +87,5 @@ pub trait IAssetsManager<TContractState> {
     fn get_max_funding_interval(self: @TContractState) -> TimeDelta;
     fn get_max_oracle_price_validity(self: @TContractState) -> TimeDelta;
     fn get_max_funding_rate(self: @TContractState) -> u32;
+    fn get_risk_factor_tiers(self: @TContractState, asset_id: AssetId) -> Span<RiskFactor>;
 }
