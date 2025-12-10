@@ -45,7 +45,7 @@ jobs:
           scarb-version: "2.12.2"
 
       - name: Build Contracts
-        run: scarb build
+        run: scarb --release build
 
       - uses: actions/setup-python@v4
         with:
