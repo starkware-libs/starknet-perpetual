@@ -1,6 +1,7 @@
 use core::num::traits::{Pow, Zero};
 use perpetuals::core::components::assets::interface::{
-    IAssets, IAssetsDispatcher, IAssetsDispatcherTrait,
+    IAssets, IAssetsDispatcher, IAssetsDispatcherTrait, IAssetsManager, IAssetsManagerDispatcher,
+    IAssetsManagerDispatcherTrait,
 };
 use perpetuals::core::components::deposit::deposit_manager::deposit_hash;
 use perpetuals::core::components::deposit::interface::{
@@ -67,18 +68,23 @@ use crate::tests::event_test_utils::assert_add_spot_event_with_expected;
 
 #[test]
 fn test_constructor() {
+    // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
     let mut state = initialized_contract_state(cfg: @cfg, token_state: @token_state);
+
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+    let assets_dispatcher = IAssetsDispatcher { contract_address };
+
     assert!(state.roles.is_governance_admin(GOVERNANCE_ADMIN()));
     assert!(state.replaceability.get_upgrade_delay() == UPGRADE_DELAY);
-    assert!(state.assets.get_max_price_interval() == MAX_PRICE_INTERVAL);
-    assert!(state.assets.get_max_funding_interval() == MAX_FUNDING_INTERVAL);
-    assert!(state.assets.get_max_funding_rate() == MAX_FUNDING_RATE);
-    assert!(state.assets.get_max_oracle_price_validity() == MAX_ORACLE_PRICE_VALIDITY);
+    assert!(assets_dispatcher.get_max_price_interval() == MAX_PRICE_INTERVAL);
+    assert!(assets_dispatcher.get_max_funding_interval() == MAX_FUNDING_INTERVAL);
+    assert!(assets_dispatcher.get_max_funding_rate() == MAX_FUNDING_RATE);
+    assert!(assets_dispatcher.get_max_oracle_price_validity() == MAX_ORACLE_PRICE_VALIDITY);
     assert!(state.deposits.get_cancel_delay() == CANCEL_DELAY);
-    assert!(state.assets.get_last_funding_tick() == Time::now());
-    assert!(state.assets.get_last_price_validation() == Time::now());
+    assert!(assets_dispatcher.get_last_funding_tick() == Time::now());
+    assert!(assets_dispatcher.get_last_price_validation() == Time::now());
 
     assert!(
         state
@@ -231,6 +237,7 @@ fn test_signature_validation() {
 
     let dispatcher = ICoreSafeDispatcher { contract_address };
     let asset_dispatcher = IAssetsDispatcher { contract_address };
+    let assets_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
     let deposit_dispatcher = IDepositDispatcher { contract_address };
     let position_dispatcher = IPositionsDispatcher { contract_address };
 
@@ -256,7 +263,7 @@ fn test_signature_validation() {
 
     // Add synthetic assets.
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
-    asset_dispatcher
+    assets_manager_dispatcher
         .add_synthetic_asset(
             asset_id: synthetic_id_1,
             :risk_factor_tiers,
@@ -267,7 +274,7 @@ fn test_signature_validation() {
         );
 
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
-    asset_dispatcher
+    assets_manager_dispatcher
         .add_synthetic_asset(
             asset_id: synthetic_id_2,
             :risk_factor_tiers,
@@ -279,7 +286,7 @@ fn test_signature_validation() {
 
     // Add to oracle.
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
-    asset_dispatcher
+    assets_manager_dispatcher
         .add_oracle_to_asset(
             asset_id: synthetic_id_1,
             oracle_public_key: oracle1.key_pair.public_key,
@@ -288,7 +295,7 @@ fn test_signature_validation() {
         );
 
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
-    asset_dispatcher
+    assets_manager_dispatcher
         .add_oracle_to_asset(
             asset_id: synthetic_id_2,
             oracle_public_key: oracle1.key_pair.public_key,
@@ -889,6 +896,7 @@ fn test_rf_update_valid_same_array() {
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
     let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
 
+    let asset_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
     let asset_dispatcher = IAssetsDispatcher { contract_address };
 
     let synthetic_id_1 = SYNTHETIC_ASSET_ID_1();
@@ -901,7 +909,7 @@ fn test_rf_update_valid_same_array() {
 
     // Add synthetic assets.
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
-    asset_dispatcher
+    asset_manager_dispatcher
         .add_synthetic_asset(
             asset_id: synthetic_id_1,
             :risk_factor_tiers,
@@ -931,6 +939,7 @@ fn test_rf_update_valid_same_short_array() {
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
     let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
 
+    let asset_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
     let asset_dispatcher = IAssetsDispatcher { contract_address };
 
     let synthetic_id_1 = SYNTHETIC_ASSET_ID_1();
@@ -943,7 +952,7 @@ fn test_rf_update_valid_same_short_array() {
 
     // Add synthetic assets.
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
-    asset_dispatcher
+    asset_manager_dispatcher
         .add_synthetic_asset(
             asset_id: synthetic_id_1,
             :risk_factor_tiers,
@@ -975,6 +984,7 @@ fn test_rf_update_invalid_same_short_array() {
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
     let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
 
+    let asset_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
     let asset_dispatcher = IAssetsDispatcher { contract_address };
 
     let synthetic_id_1 = SYNTHETIC_ASSET_ID_1();
@@ -988,7 +998,7 @@ fn test_rf_update_invalid_same_short_array() {
 
     // Add synthetic assets.
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
-    asset_dispatcher
+    asset_manager_dispatcher
         .add_synthetic_asset(
             asset_id: synthetic_id_1,
             :risk_factor_tiers,
@@ -1019,6 +1029,7 @@ fn test_rf_update_invalid_super_short_array() {
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
     let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
 
+    let asset_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
     let asset_dispatcher = IAssetsDispatcher { contract_address };
 
     let synthetic_id_1 = SYNTHETIC_ASSET_ID_1();
@@ -1032,7 +1043,7 @@ fn test_rf_update_invalid_super_short_array() {
 
     // Add synthetic assets.
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
-    asset_dispatcher
+    asset_manager_dispatcher
         .add_synthetic_asset(
             asset_id: synthetic_id_1,
             :risk_factor_tiers,
@@ -1062,6 +1073,7 @@ fn test_rf_update_valid_super_short_array() {
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
     let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
 
+    let asset_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
     let asset_dispatcher = IAssetsDispatcher { contract_address };
 
     let synthetic_id_1 = SYNTHETIC_ASSET_ID_1();
@@ -1075,7 +1087,7 @@ fn test_rf_update_valid_super_short_array() {
 
     // Add synthetic assets.
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
-    asset_dispatcher
+    asset_manager_dispatcher
         .add_synthetic_asset(
             asset_id: synthetic_id_1,
             :risk_factor_tiers,
@@ -1106,6 +1118,7 @@ fn test_rf_update_valid_same_super_short_array_increase() {
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
     let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
 
+    let asset_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
     let asset_dispatcher = IAssetsDispatcher { contract_address };
 
     let synthetic_id_1 = SYNTHETIC_ASSET_ID_1();
@@ -1119,7 +1132,7 @@ fn test_rf_update_valid_same_super_short_array_increase() {
 
     // Add synthetic assets.
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
-    asset_dispatcher
+    asset_manager_dispatcher
         .add_synthetic_asset(
             asset_id: synthetic_id_1,
             :risk_factor_tiers,
@@ -1150,6 +1163,7 @@ fn test_rf_update_invalid_same_short_array_increase() {
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
     let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
 
+    let asset_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
     let asset_dispatcher = IAssetsDispatcher { contract_address };
 
     let synthetic_id_1 = SYNTHETIC_ASSET_ID_1();
@@ -1163,7 +1177,7 @@ fn test_rf_update_invalid_same_short_array_increase() {
 
     // Add synthetic assets.
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
-    asset_dispatcher
+    asset_manager_dispatcher
         .add_synthetic_asset(
             asset_id: synthetic_id_1,
             :risk_factor_tiers,
@@ -1194,6 +1208,7 @@ fn test_rf_update_valid_lower_array() {
     let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
 
     let asset_dispatcher = IAssetsDispatcher { contract_address };
+    let assets_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
 
     let synthetic_id_1 = SYNTHETIC_ASSET_ID_1();
 
@@ -1206,7 +1221,7 @@ fn test_rf_update_valid_lower_array() {
 
     // Add synthetic assets.
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
-    asset_dispatcher
+    assets_manager_dispatcher
         .add_synthetic_asset(
             asset_id: synthetic_id_1,
             :risk_factor_tiers,
@@ -1228,7 +1243,7 @@ fn test_rf_update_valid_lower_array() {
         );
 
     let synthetic_config = asset_dispatcher.get_asset_config(synthetic_id: synthetic_id_1);
-    let tiers = asset_dispatcher.get_risk_factor_tiers(asset_id: synthetic_id_1);
+    let tiers = assets_manager_dispatcher.get_risk_factor_tiers(asset_id: synthetic_id_1);
     for i in 0..risk_factor_tiers_2.len() {
         assert!(*tiers[i] == RiskFactorTrait::new(*risk_factor_tiers_2[i]));
     }
@@ -1245,6 +1260,7 @@ fn test_rf_update_invalid_higher_last_element_array() {
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
     let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
 
+    let asset_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
     let asset_dispatcher = IAssetsDispatcher { contract_address };
 
     let synthetic_id_1 = SYNTHETIC_ASSET_ID_1();
@@ -1258,7 +1274,7 @@ fn test_rf_update_invalid_higher_last_element_array() {
 
     // Add synthetic assets.
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
-    asset_dispatcher
+    asset_manager_dispatcher
         .add_synthetic_asset(
             asset_id: synthetic_id_1,
             :risk_factor_tiers,
@@ -1289,6 +1305,7 @@ fn test_rf_update_invalid_median_last_element_array() {
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
     let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
 
+    let asset_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
     let asset_dispatcher = IAssetsDispatcher { contract_address };
 
     let synthetic_id_1 = SYNTHETIC_ASSET_ID_1();
@@ -1302,7 +1319,7 @@ fn test_rf_update_invalid_median_last_element_array() {
 
     // Add synthetic assets.
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
-    asset_dispatcher
+    asset_manager_dispatcher
         .add_synthetic_asset(
             asset_id: synthetic_id_1,
             :risk_factor_tiers,
@@ -1332,6 +1349,7 @@ fn test_rf_update_valid_more_frequent_array() {
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
     let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
 
+    let asset_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
     let asset_dispatcher = IAssetsDispatcher { contract_address };
 
     let synthetic_id_1 = SYNTHETIC_ASSET_ID_1();
@@ -1346,7 +1364,7 @@ fn test_rf_update_valid_more_frequent_array() {
 
     // Add synthetic assets.
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
-    asset_dispatcher
+    asset_manager_dispatcher
         .add_synthetic_asset(
             asset_id: synthetic_id_1,
             :risk_factor_tiers,
@@ -1379,6 +1397,7 @@ fn test_rf_update_invalid_more_frequent_array() {
     let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
     let mut spy = snforge_std::spy_events();
 
+    let asset_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
     let asset_dispatcher = IAssetsDispatcher { contract_address };
 
     let synthetic_id_1 = SYNTHETIC_ASSET_ID_1();
@@ -1393,7 +1412,7 @@ fn test_rf_update_invalid_more_frequent_array() {
 
     // Add synthetic assets.
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
-    asset_dispatcher
+    asset_manager_dispatcher
         .add_synthetic_asset(
             asset_id: synthetic_id_1,
             :risk_factor_tiers,
@@ -1433,6 +1452,7 @@ fn test_rf_update_valid_less_frequent_array() {
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
     let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
 
+    let asset_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
     let asset_dispatcher = IAssetsDispatcher { contract_address };
 
     let synthetic_id_1 = SYNTHETIC_ASSET_ID_1();
@@ -1447,7 +1467,7 @@ fn test_rf_update_valid_less_frequent_array() {
 
     // Add synthetic assets.
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
-    asset_dispatcher
+    asset_manager_dispatcher
         .add_synthetic_asset(
             asset_id: synthetic_id_1,
             :risk_factor_tiers,
@@ -1478,6 +1498,7 @@ fn test_rf_update_invalid_less_frequent_array() {
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
     let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
 
+    let asset_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
     let asset_dispatcher = IAssetsDispatcher { contract_address };
 
     let synthetic_id_1 = SYNTHETIC_ASSET_ID_1();
@@ -1492,7 +1513,7 @@ fn test_rf_update_invalid_less_frequent_array() {
 
     // Add synthetic assets.
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
-    asset_dispatcher
+    asset_manager_dispatcher
         .add_synthetic_asset(
             asset_id: synthetic_id_1,
             :risk_factor_tiers,
@@ -1525,6 +1546,7 @@ fn test_rf_update_valid_different_step_size() {
     let mut spy = snforge_std::spy_events();
 
     let asset_dispatcher = IAssetsDispatcher { contract_address };
+    let assets_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
 
     let synthetic_id_1 = SYNTHETIC_ASSET_ID_1();
 
@@ -1539,7 +1561,7 @@ fn test_rf_update_valid_different_step_size() {
 
     // Add synthetic assets.
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
-    asset_dispatcher
+    assets_manager_dispatcher
         .add_synthetic_asset(
             asset_id: synthetic_id_1,
             :risk_factor_tiers,
@@ -1561,7 +1583,7 @@ fn test_rf_update_valid_different_step_size() {
         );
 
     let synthetic_config = asset_dispatcher.get_asset_config(synthetic_id: synthetic_id_1);
-    let tiers = asset_dispatcher.get_risk_factor_tiers(asset_id: synthetic_id_1);
+    let tiers = assets_manager_dispatcher.get_risk_factor_tiers(asset_id: synthetic_id_1);
     for i in 0..risk_factor_tiers_2.len() {
         assert!(*tiers[i] == RiskFactorTrait::new(*risk_factor_tiers_2[i]));
     }
@@ -1591,6 +1613,7 @@ fn test_rf_update_invalid_different_step_size() {
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
     let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
 
+    let asset_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
     let asset_dispatcher = IAssetsDispatcher { contract_address };
 
     let synthetic_id_1 = SYNTHETIC_ASSET_ID_1();
@@ -1605,7 +1628,7 @@ fn test_rf_update_invalid_different_step_size() {
 
     // Add synthetic assets.
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
-    asset_dispatcher
+    asset_manager_dispatcher
         .add_synthetic_asset(
             asset_id: synthetic_id_1,
             :risk_factor_tiers,
@@ -4027,7 +4050,6 @@ fn test_unsuccessful_add_vault_share_asset_zero_quantum() {
             asset_id: cfg.vault_share_cfg.collateral_id,
             erc20_contract_address: vault_share_state.address,
             quantum: 0,
-            resolution_factor: 1_000_000_000,
             risk_factor_tiers: risk_factor_1,
             :risk_factor_first_tier_boundary,
             :risk_factor_tier_size,
@@ -4036,9 +4058,7 @@ fn test_unsuccessful_add_vault_share_asset_zero_quantum() {
 }
 
 #[test]
-#[should_panic(
-    expected: "Entry point selector 0x4c4fb1ab068f6039d5780c68dd0fa2f8742cceb3426d19667778ca7f3518a9 not found in contract 0x1724987234973219347210837402",
-)]
+#[should_panic(expected: 'ENTRYPOINT_NOT_FOUND')]
 fn test_unsuccessful_add_vault_share_asset_not_erc20() {
     // Setup state, token:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -4057,7 +4077,6 @@ fn test_unsuccessful_add_vault_share_asset_not_erc20() {
             asset_id: cfg.vault_share_cfg.collateral_id,
             erc20_contract_address: test_address(),
             quantum: 1,
-            resolution_factor: 1_000_000_000,
             risk_factor_tiers: risk_factor_1,
             :risk_factor_first_tier_boundary,
             :risk_factor_tier_size,
@@ -4084,7 +4103,6 @@ fn test_successful_add_vault_share_asset() {
             asset_id: cfg.vault_share_cfg.collateral_id,
             erc20_contract_address: cfg.vault_share_cfg.contract_address,
             quantum: cfg.vault_share_cfg.quantum,
-            resolution_factor: cfg.vault_share_cfg.resolution_factor,
             risk_factor_tiers: cfg.vault_share_cfg.risk_factor_tiers,
             risk_factor_first_tier_boundary: cfg.vault_share_cfg.risk_factor_first_tier_boundary,
             risk_factor_tier_size: cfg.vault_share_cfg.risk_factor_tier_size,
@@ -4135,7 +4153,6 @@ fn test_successful_vault_token_deposit() {
             asset_id: cfg.vault_share_cfg.collateral_id,
             erc20_contract_address: cfg.vault_share_cfg.contract_address,
             quantum: cfg.vault_share_cfg.quantum,
-            resolution_factor: cfg.vault_share_cfg.resolution_factor,
             risk_factor_tiers: cfg.vault_share_cfg.risk_factor_tiers,
             risk_factor_first_tier_boundary: cfg.vault_share_cfg.risk_factor_first_tier_boundary,
             risk_factor_tier_size: cfg.vault_share_cfg.risk_factor_tier_size,
@@ -4278,7 +4295,6 @@ fn test_successful_vault_token_cancel_deposit() {
             asset_id: cfg.vault_share_cfg.collateral_id,
             erc20_contract_address: cfg.vault_share_cfg.contract_address,
             quantum: cfg.vault_share_cfg.quantum,
-            resolution_factor: cfg.vault_share_cfg.resolution_factor,
             risk_factor_tiers: cfg.vault_share_cfg.risk_factor_tiers,
             risk_factor_first_tier_boundary: cfg.vault_share_cfg.risk_factor_first_tier_boundary,
             risk_factor_tier_size: cfg.vault_share_cfg.risk_factor_tier_size,
@@ -4385,7 +4401,6 @@ fn test_successful_vault_share_process_deposit() {
             asset_id: cfg.vault_share_cfg.collateral_id,
             erc20_contract_address: cfg.vault_share_cfg.contract_address,
             quantum: cfg.vault_share_cfg.quantum,
-            resolution_factor: cfg.vault_share_cfg.resolution_factor,
             risk_factor_tiers: cfg.vault_share_cfg.risk_factor_tiers,
             risk_factor_first_tier_boundary: cfg.vault_share_cfg.risk_factor_first_tier_boundary,
             risk_factor_tier_size: cfg.vault_share_cfg.risk_factor_tier_size,

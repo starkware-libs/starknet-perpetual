@@ -1,5 +1,7 @@
 use openzeppelin::interfaces::erc4626::{IERC4626Dispatcher, IERC4626DispatcherTrait};
-use perpetuals::core::components::assets::interface::IAssetsDispatcher;
+use perpetuals::core::components::assets::interface::{
+    IAssetsManagerDispatcher, IAssetsManagerDispatcherTrait,
+};
 use perpetuals::tests::constants::*;
 use perpetuals::tests::flow_tests::infra::*;
 use perpetuals::tests::flow_tests::perps_tests_facade::*;
@@ -39,7 +41,7 @@ fn test_registering_vault_shares_with_more_than_one_risk_tier_fails() {
     );
 
     let asset_id = asset_info.asset_id;
-    let assets_dispatcher = IAssetsDispatcher {
+    let assets_dispatcher = IAssetsManagerDispatcher {
         contract_address: state.facade.perpetuals_contract,
     };
 
@@ -53,7 +55,6 @@ fn test_registering_vault_shares_with_more_than_one_risk_tier_fails() {
             asset_id,
             erc20_contract_address: vault.contract_address,
             quantum: 1,
-            resolution_factor: asset_info.resolution_factor,
             risk_factor_tiers: risk_factor_1,
             :risk_factor_first_tier_boundary,
             :risk_factor_tier_size,
