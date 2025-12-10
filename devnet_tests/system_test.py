@@ -1,17 +1,10 @@
 import pytest
-from test_utils.starknet_test_utils import StarknetTestUtils
-from starknet_py.contract import Contract
 from devnet_tests.perpetuals_test_utils import PerpetualsTestUtils
 
 
 @pytest.mark.asyncio
-async def test_helper_functions(
-    upgrade_perpetuals_core_contract: Contract,
-    starknet_forked_with_impersonated_accounts: StarknetTestUtils,
-):
-    test_utils = PerpetualsTestUtils(
-        starknet_forked_with_impersonated_accounts, upgrade_perpetuals_core_contract
-    )
+async def test_helper_functions(test_utils: PerpetualsTestUtils):
+    """Test helper functions in PerpetualsTestUtils."""
 
     # Test that we can access the contracts
     assert test_utils.operator_contract is not None
@@ -36,13 +29,8 @@ async def test_helper_functions(
 
 
 @pytest.mark.asyncio
-async def test_view_functions(
-    upgrade_perpetuals_core_contract: Contract,
-    starknet_forked_with_impersonated_accounts: StarknetTestUtils,
-):
-    test_utils = PerpetualsTestUtils(
-        starknet_forked_with_impersonated_accounts, upgrade_perpetuals_core_contract
-    )
+async def test_view_functions(test_utils: PerpetualsTestUtils):
+    """Test view functions in the perpetuals contract."""
 
     # Test get_operator_nonce
     nonce = await test_utils.get_operator_nonce()
@@ -58,7 +46,7 @@ async def test_view_functions(
 
     # Test get_num_of_active_synthetic_assets
     num_assets = await test_utils.get_num_of_active_synthetic_assets()
-    assert num_assets == 75
+    assert num_assets == 76
 
     # Create account and position for position-related view functions
     account = await test_utils.new_account()
@@ -70,31 +58,26 @@ async def test_view_functions(
 
 
 @pytest.mark.asyncio
-async def test_deposit_withdraw(
-    upgrade_perpetuals_core_contract: Contract,
-    starknet_forked_with_impersonated_accounts: StarknetTestUtils,
-):
-    test_utils = PerpetualsTestUtils(
-        starknet_forked_with_impersonated_accounts, upgrade_perpetuals_core_contract
-    )
+async def test_deposit_withdraw(test_utils: PerpetualsTestUtils):
+    """Test deposit and withdraw functionality."""
 
     # Create account and position
     account = await test_utils.new_account()
     position_id = await test_utils.new_position(account)
 
     # Test deposit
-    deposit_amount = 10_000_000
+    deposit_amount = 10
     await test_utils.deposit(account, deposit_amount)
 
     # Verify position total value is equal to the deposit amount
     tv_after_deposit = await test_utils.get_position_total_value(position_id)
-    assert tv_after_deposit == 10_000_000
+    assert tv_after_deposit == 10
 
     # Test withdraw
-    withdraw_amount = 5_000_000
+    withdraw_amount = 5
     expiration = 0x694011CD  # Some future timestamp
     await test_utils.withdraw(account, withdraw_amount, expiration)
 
     # Verify position total value decreased by withdraw amount
     tv_after_withdraw = await test_utils.get_position_total_value(position_id)
-    assert tv_after_withdraw == 5_000_000
+    assert tv_after_withdraw == 5

@@ -17,9 +17,16 @@ printf "${GREEN}Run black succeed\n"
 
 printf "${YELLOW} pytest...\n"
 pytest . -sv -n auto
-printf "${GREEN}Pytest succeed\n"
+PYTEST_EXIT_CODE=$?
 
+if [ $PYTEST_EXIT_CODE -eq 0 ]; then
+    printf "${GREEN}Pytest succeed\n"
+else
+    printf "${RED}Pytest failed with exit code $PYTEST_EXIT_CODE\n"
+fi
 
 # Reset
 printf "${COLOR_OFF}"
 popd
+
+exit $PYTEST_EXIT_CODE

@@ -34,17 +34,24 @@ def formatted_timestamp(seconds: int) -> dict:
 
 class PerpetualsTestUtils:
     def __init__(
-        self, StarknetTestUtils: StarknetTestUtils, upgrade_perpetuals_core_contract: dict
+        self,
+        StarknetTestUtils: StarknetTestUtils,
+        upgrade_perpetuals_core_contract: dict,
+        rich_usdc_holder_account: Account,
     ):
         self.starknet_test_utils = StarknetTestUtils
         self.operator_contract = upgrade_perpetuals_core_contract["operator_contract"]
         self.app_governor_contract = upgrade_perpetuals_core_contract["app_governor_contract"]
+        self.rich_usdc_holder_account = rich_usdc_holder_account
 
         self.operator_nonce = None
         self.accounts_number = 0
         self.account_contracts = {}
         self.account_key_pairs = {}  # key_pairs[account] = (public_key, private_key)
         self.account_positions = {}
+
+        random_seed = int(os.getenv("RANDOM_SEED", "0"))
+        random.seed(random_seed)
 
     ## Helper functions
 
@@ -85,12 +92,13 @@ class PerpetualsTestUtils:
 
     async def get_operator_nonce(self) -> int:
         (nonce,) = await self.operator_contract.functions["get_operator_nonce"].call()
-        self.operator_nonce = nonce
         return nonce
 
     async def consume_operator_nonce(self) -> int:
         if self.operator_nonce is None:
-            await self.get_operator_nonce()
+            nonce = await self.get_operator_nonce()
+            self.operator_nonce = nonce + 1
+            return nonce
         nonce = self.operator_nonce
         self.operator_nonce += 1
         return nonce
@@ -119,11 +127,8 @@ class PerpetualsTestUtils:
 
     ## Storage-mutating functions
 
-    async def new_position(self, account: Account, seed: int | None = None, tries: int = 3) -> int:
+    async def new_position(self, account: Account, tries: int = 3) -> int:
         error = None
-        if seed is None:
-            seed = int(os.getenv("RANDOM_SEED", "0"))
-        random.seed(seed)
         while tries > 0:
             position_id = random.randint(1, MAX_UINT32)
             try:
@@ -132,6 +137,7 @@ class PerpetualsTestUtils:
                     formatted_position_id(position_id),
                     self.get_account_public_key(account),
                     self.get_account_address(account),
+                    True,
                     auto_estimate=True,
                 )
                 await invocation.wait_for_acceptance(check_interval=0.1)
@@ -142,12 +148,38 @@ class PerpetualsTestUtils:
             except Exception as e:
                 tries -= 1
                 error = e
+                self.operator_nonce = None
                 continue
 
         assert error is not None
         raise Exception(f"Failed to create a new position: {error}")
 
     async def deposit(self, account: Account, amount: int):
+        # Fund the account with collateral tokens
+        async def _fund_account_with_collateral(account: Account, amount: int):
+            """Fund an account with collateral tokens using the rich USDC holder account."""
+            # Get the ERC20 contract
+            abi, cairo_version = await ContractAbiResolver(
+                address=await self.get_collateral_token_contract(),
+                client=self.rich_usdc_holder_account.client,
+                proxy_config=ProxyConfig(),
+            ).resolve()
+
+            erc20_contract = Contract(
+                address=await self.get_collateral_token_contract(),
+                abi=abi,
+                provider=self.rich_usdc_holder_account,
+                cairo_version=cairo_version,
+            )
+
+            # Transfer tokens to the test account
+            invocation = await erc20_contract.functions["transfer"].invoke_v3(
+                account.address, amount, auto_estimate=True
+            )
+            await invocation.wait_for_acceptance(check_interval=0.1)
+
+        await _fund_account_with_collateral(account, amount)
+
         # Approve deposit
         async def _approve_deposit(account: Account, amount: int):
             abi, cairo_version = await ContractAbiResolver(
@@ -177,7 +209,6 @@ class PerpetualsTestUtils:
             .functions["deposit"]
             .invoke_v3(
                 formatted_asset_id(await self.get_collateral_asset_id()),
-                self.get_account_address(account),
                 formatted_position_id(self.get_account_position_id(account)),
                 amount,
                 salt,
@@ -190,8 +221,8 @@ class PerpetualsTestUtils:
         async def _process_deposit(account: Account, amount: int, salt: int):
             invocation = await self.operator_contract.functions["process_deposit"].invoke_v3(
                 await self.consume_operator_nonce(),
-                formatted_asset_id(await self.get_collateral_asset_id()),
                 self.get_account_address(account),
+                formatted_asset_id(await self.get_collateral_asset_id()),
                 formatted_position_id(self.get_account_position_id(account)),
                 amount,
                 salt,
