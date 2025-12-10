@@ -324,6 +324,8 @@ struct Settlement {
     pub actual_amount_quote_a: i64,
     pub actual_fee_a: u64,
     pub actual_fee_b: u64,
+    pub interest_amount_a: i64,
+    pub interest_amount_b: i64,
 }
 ```
 
@@ -355,6 +357,9 @@ pub struct Position {
     pub collateral_balance: Balance,
     pub asset_balances: IterableMap<AssetId, AssetBalance>,
     pub owner_protection_enabled: bool,
+    // TODO(Mohammad): need to think about the initial value (if last_updated == 0 )
+    // Possible solution: in first update `interest_amount` should be zero.
+    pub last_interest_amount_applied_time: Timestamp,
 }
 ```
 
@@ -1367,6 +1372,7 @@ pub struct SpotAssetAdded {
     pub risk_factor_tier_size: u128,
     pub resolution_factor: u64,
     pub quorum: u8,
+    pub quantum: u64,
 }
 ```
 
@@ -1664,7 +1670,6 @@ fn add_vault_collateral_asset(
     asset_id: AssetId,
     erc20_contract_address: ContractAddress,
     quantum: u64,
-    resolution_factor: u64,
     risk_factor_tiers: Span<u16>,
     risk_factor_first_tier_boundary: u128,
     risk_factor_tier_size: u128,
@@ -1714,12 +1719,67 @@ Only APP\_GOVERNOR can execute.
 - INVALID_SHARE_RESOLUTION
 - INVALID_VAULT_RF_TIERS
 
-###### Update Synthetic Asset Risk Factor
-
-Update synthetic asset risk factors. This function must be sequenced by the operator to prevent liquidation failures if submitted out of order.
+###### Add collateral Asset
 
 ```rust
-fn update_synthetic_asset_risk_factor(
+fn add_spot_asset(
+    ref self: ContractState,
+    asset_id: AssetId,
+    erc20_contract_address: ContractAddress,
+    quantum: u64,
+    resolution_factor: u64,
+    risk_factor_tiers: Span<u16>,
+    risk_factor_first_tier_boundary: u128,
+    risk_factor_tier_size: u128,
+    quorum: u8,
+)
+```
+
+**Access Control:**
+
+Only APP\_GOVERNOR can execute.
+
+**Validations:**
+
+1. App governor is the caller.
+2. `asset_id` does not exist in the system.
+3. `risk_factor_tiers` length is exactly 1.
+4. `risk_factor_first_tier_boundary`, `risk_factor_tier_size`, `quorum`, and `resolution_factor` are non zero.
+5. All values in $0 \leq risk\\_factor\\_tiers \leq 1000$ (risk factors are stored as values * 1000, so 1000 represents 100%).
+6. `erc20_contract_address` is not zero.
+7. `quantum` is non-zero.
+
+**Logic:**
+
+1. Run validations.
+3. Add a new entry to asset\_config with AssetType::SPOT_COLLATERAL.
+4. Initialize status = AssetStatus::PENDING. It will be updated during the next price tick of this asset.
+5. Add a new entry to timely\_data map with:
+   1. price = 0.
+   2. funding\_index = 0.
+   3. last\_price\_update = Zero::zero().
+6. Add the `risk_factor_tiers` to the assets risk\_factor map.
+
+**Emits:**
+[SpotAssetAdded](#spotassetadded)
+
+**Errors:**
+
+- ONLY_APP_GOVERNOR
+- SYNTHETIC_ALREADY_EXISTS
+- INVALID_ZERO_QUORUM
+- INVALID_SHARE_QUANTUM
+- INVALID_UNDERLYING
+- INVALID_SHARE_RESOLUTION
+- INVALID_VAULT_RF_TIERS
+
+
+###### Update Synthetic Asset Risk Factor
+
+Update asset risk factors. This function must be sequenced by the operator to prevent liquidation failures if submitted out of order.
+
+```rust
+fn update_asset_risk_factor(
     ref self: ContractState,
     operator_nonce: u64,
     asset_id: AssetId,
@@ -2053,7 +2113,7 @@ pub struct Deposit {
     pub position_id: PositionId,
     #[key]
     pub depositing_address: ContractAddress,
-    pub collateral_id: AssetId,
+    pub asset_id: AssetId,
     pub quantized_amount: u64,
     pub unquantized_amount: u64,
     #[key]
@@ -2156,13 +2216,13 @@ pub fn deposit_hash(
 
 1. `quantized_amount` is non zero.
 2. `deposit_hash` is not registered in `registered_deposits`.
-3. `asset_id` is a registered asset or the base collateral.
+3. `asset_id` is a registered collateral (including vault shares).
 4. if `asset_id` is a vault asset then `position_id` is not a vault position.
 
 **Logic:**
 
 1. Register `deposit_hash` as `DepositStatus::PENDING` in `registered_deposits` with the current timestamp.
-2. Transfer `quantized_amount*.quantum` from `get_caller_address()` to `get_contract_address()`
+2. Transfer `quantized_amount*quantum` from `get_caller_address()` to `get_contract_address()`
 
 **Errors:**
 
@@ -2864,6 +2924,7 @@ pub struct Withdraw {
     pub expiration: Timestamp,
     #[key]
     pub withdraw_request_hash: felt252,
+    pub interest_amount: i64,
 }
 ```
 
@@ -2896,6 +2957,8 @@ pub struct Trade {
     pub order_a_hash: felt252,
     #[key]
     pub order_b_hash: felt252,
+    pub interest_amount_a: i64,
+    pub interest_amount_b: i64,
 }
 ```
 
@@ -2927,6 +2990,7 @@ pub struct Transfer {
     pub position_id: PositionId,
     pub collateral_id: AssetId,
     pub amount: u64,
+    pub sender_interest_amount: i64,
     pub expiration: Timestamp,
     #[key]
     pub transfer_request_hash: felt252,
@@ -2955,6 +3019,8 @@ pub struct Liquidate {
     pub insurance_fund_fee_amount: u64,
     #[key]
     pub liquidator_order_hash: felt252,
+    pub interest_amount_liquidated: i64,
+    pub interest_amount_liquidator: i64,
 }
 ```
 
@@ -2971,6 +3037,8 @@ pub struct Deleverage {
     pub deleveraged_base_amount: i64,
     pub quote_asset_id: AssetId,
     pub deleveraged_quote_amount: i64,
+    pub interest_amount_deleveraged: i64,
+    pub interest_amount_deleverager: i64,
 }
 ```
 
@@ -3008,6 +3076,7 @@ pub struct InvestInVault {
     pub shares_received: u64,
     pub user_investment: u64,
     pub quantized_amount: u64
+    pub interest_amount_investor: i64,
 }
 ```
 
@@ -3098,6 +3167,7 @@ fn withdraw_request(
     ref self: ContractState,
     signature: Signature,
     // WithdrawArgs
+    asset_id: AssetId,
     recipient: ContractAddress,
     position_id: PositionId,
     amount: u64,
@@ -3149,11 +3219,13 @@ fn withdraw(
     ref self: ContractState,
     operator_nonce: u64,
     // WithdrawArgs
+    asset_id: AssetId,
     recipient: ContractAddress,
     position_id: PositionId,
     amount: u64,
     expiration: Timestamp,
     salt: felt252,
+    interest_amount: i64,
 )
 ```
 
@@ -3173,15 +3245,18 @@ Only the Operator can execute.
 4. [Price validation](#price)
 5. [Expiration validation](#expiration)
 6. [Request approval check on withdraw message](#requests-1)
+7. Asset id is registered.
+8. Interest amount is in range.
 
 
 **Logic:**
 
 1. Run withdraw validations
 2. Mark withdraw request as `RequestStatus::PROCESSED` in the requests component.
-3. [Fundamental validation](#fundamental)
-4. Subtract the amount from the position collateral.
-5. Transfer `amount * collateral.asset_id.quantum` from the contract to the recipient.
+3. Add interest amount to the base collateral balance, including updating timestamp.
+4. [Fundamental validation](#fundamental)
+5. Subtract the amount from the position collateral.
+6. Transfer `amount * collateral.asset_id.quantum` from the contract to the recipient.
 
 **Errors:**
 
@@ -3231,7 +3306,8 @@ Anyone can execute.
 2. Amount is non zero.
 3. Caller is the owner address.
 4. Request is new.
-5. `position_id` is not a vault position (vault positions cannot initiate transfer requests).
+5. Asset id is registered.
+6. `position_id` is not a vault position (vault positions cannot initiate transfer requests).
 
 **Logic:**
 
@@ -3264,6 +3340,7 @@ fn transfer(
     amount: u64,
     expiration: Timestamp,
     salt: felt252,
+    sender_interest_amount: i64,
 )
 ```
 
@@ -3285,13 +3362,15 @@ Only the Operator can execute.
 6. [Expiration validation](#expiration)
 7. `recipient != position_id`.
 8. [Request approval check on transfer message](#requests-1)
+9. Check interest amount in range.
 
 **Logic:**
 
 1. Run transfer validations
 2. Subtract the amount from the `position_id` collateral balance.
-3. Add the amount to the recipient `recipient` collateral balance.
-4. [Fundamental validation](#fundamental) for `position_id` in transfer.
+3. Add sender_interest_amount to sender's collateral balance, including updating timestamp.
+4. Add the amount to the recipient `recipient` collateral balance.
+5. [Fundamental validation](#fundamental) for `position_id` in transfer.
 
 **Emits:**
 
@@ -3327,6 +3406,8 @@ fn trade(
     actual_amount_quote_a: i64,
     actual_fee_a: u64,
     actual_fee_b: u64,
+    interest_amount_a: i64,
+    interest_amount_b: i64,
 )
 ```
 
@@ -3362,6 +3443,7 @@ Only the Operator can execute.
 20. `actual_fee_b / |actual_amount_quote_a| ≤ order_b.fee.amount / |order_b.quote.amount|`
 21. `order_a.base.amount/|order_a.quote.amount|≤actual_amount_base_a/|actual_amount_quote_a|`
 22. `order_b.base.amount/|order_b.quote.amount|≤(-actual_amount_base_a)/|actual_amount_quote_a|`
+23. Check interest amounts is in range for both positions.
 
 **Logic:**
 
@@ -3372,6 +3454,7 @@ Only the Operator can execute.
 5. Subtract `actual_amount_base_a` from the `order_b` position base id synthetic.
 6. Add the `actual_amount_quote_a` to the `order_a` position collateral.
 7. Subtract the `actual_amount_quote_a` from the `order_b` position collateral.
+8. Update collateral balance with interest amounts, including updating timestamp.
 8. [Fundamental validation](#fundamental) for both positions in trade.
 9. `fulfillment[order_a_hash]+=|actual_amount_base_a|`
 10. `fulfillment[order_b_hash]+=|actual_amount_base_a|`
@@ -3462,6 +3545,8 @@ fn liquidate(
     /// The `liquidated_fee_amount` is paid by the liquidated position to the
     /// insurance fund position.
     liquidated_fee_amount: u64,
+    interest_amount_liquidated: i64,
+    interest_amount_liquidator: i64,
 )
 ```
 
@@ -3497,6 +3582,7 @@ Only the Operator can execute.
 20. `|fulfillment[liquidator_order_hash]|+|actual_amount_base_liquidated|≤|liquidator_order.base.amount|`
 21. `actual_liquidator_fee / |actual_amount_quote_liquidated| ≤ liquidator_order.fee.amount / |liquidator_order.quote.amount|`
 22. `actual_amount_base_liquidated / |actual_amount_quote_liquidated| ≤ - liquidator_order.base.amount / |liquidator_order.quote.amount|`
+23. Check interest amounts in range for both positions.
 
 **Logic:**
 
@@ -3509,8 +3595,9 @@ Only the Operator can execute.
 7. Add `actual_liquidator_fee` to the `fee_position` collateral.
 8. Subtract `liquidated_fee_amount` from the `liquidated_position_id` collateral.
 9. Add `liquidated_fee_amount` to the `insurance_fund` collateral.
-10. `fulfillment[liquidator_order_hash] += |actual_amount_base_liquidated|`
-11. [Fundamental validation](#fundamental) for both positions.
+10. Add interest amounts to collateral balances for both positions, including timestamps.
+11. `fulfillment[liquidator_order_hash] += |actual_amount_base_liquidated|`
+12. [Fundamental validation](#fundamental) for both positions.
 
 **Emits:**
 
@@ -3559,6 +3646,8 @@ fn deleverage(
     base_asset_id: AssetId,
     deleveraged_base_amount: i64,
     deleveraged_quote_amount: i64,
+    interest_amount_deleveraged: i64,
+    interest_amount_deleverager: i64,
 )
 ```
 
@@ -3579,6 +3668,7 @@ Only the Operator can execute.
 9. deleveraged\_base\_amount and deleveraged\_quote\_amount have opposite signs.
 10. `deleveraged_position.balance` decreases in magnitude after the change: `|base_deleveraged.amount|` must not exceed `|deleveraged_position.balance|`, and both should have the same sign
 11. `deleverager_position.balance` decreases in magnitude after the change: `|base_deleveraged.amount|` must not exceed `|deleverager_position.balance|`, and both should have opposite sign.
+12. Check interest amounts in range for both positions.
 
 **Logic:**
 
@@ -3587,7 +3677,8 @@ Only the Operator can execute.
 3. Subtract `deleveraged_base_amount` from the `deleverager_position_id` base id synthetic.
 4. Add `deleveraged_quote_amount` to the `deleveraged_position_id` collateral.
 5. Subtract `deleveraged_quote_amount` from the `deleverager_position_id` collateral.
-6. [Fundamental validation](#fundamental) for both positions.
+6. Add interest amounts to collateral balances for both positions, including timestamps.
+7. [Fundamental validation](#fundamental) for both positions.
 
 **Emits:**
 [deleverage](#deleverage)
@@ -3690,6 +3781,7 @@ fn invest_in_vault(
     signature: Signature,
     order: LimitOrder,
     correlation_id: felt252,
+    interest_amount: i64,
 )
 ```
 
@@ -3714,6 +3806,7 @@ Only the Operator can execute.
 9. Amount is non zero.
 10. Caller is the operator.
 11. Request is new (check not exists in the fulfillment).
+12. Check (investor) interest amount in range.
 
 **Logic:**
 
@@ -3722,11 +3815,12 @@ Only the Operator can execute.
 3. vault contract calculates the amount of shares to mint (total assets (=TV of the vault position) / # of shares) and mints the vault shares to the perps contract and transfers the underlying asset to the perps contract as well.
 4. decrease the position_id collateral_id balance by quantized_amount.
 5. increase the vault_position_id collateral_id balance by quantized_amount.
-6. calls the perps deposit function to deposit the vault shares to the user
+6. calls the perps deposit function to deposit the vault shares to the user.
+7. Add investor interest amount to collateral balance, including timestamp.
 
 **Emits:**
 
-[InvestInVault](#depositedintovault)
+[InvestInVault](#investinvault)
 
 **Errors:**
 
@@ -3744,6 +3838,8 @@ fn redeem_from_vault(
     vault_signature: Signature,
     actual_shares_user: i64,
     actual_collateral_user: i64,
+    interest_amount_investor: i64,
+    interest_amount_vault: i64,
 );
 ```
 
@@ -3773,6 +3869,7 @@ Only the Operator can execute.
 12. Caller is the operator.
 13. Request is new (check user payload hash not exists in the fulfillment map).
 14. `number_of_shares * vault_share_execution_price >= minimum_quantized_amount`
+15. Check interest amount in range for both positions.
 
 **Logic:**
 
@@ -3783,6 +3880,7 @@ Only the Operator can execute.
 5. call the new redeem function of the vault contract (a version where the price of a vault share is dicateded by the operator) which burns the vault shares and transfers the assets from the vault contract to the perps contract
 6. increase the position_id collateral_id balance by vault_share_execution_price*number_of_shares
 7. reduce the vault_position_id collateral_id balance by vault_share_execution_price*number_of_shares
+8. Add interest amounts to collateral balances for both positions, including timestamp.
 
 **Emits:**
 
