@@ -47,6 +47,17 @@ pub impl BalanceSubAssign of core::ops::SubAssign<Balance, Balance> {
     }
 }
 
+pub impl Felt252TryIntoBalance of TryInto<felt252, Balance> {
+    fn try_into(self: felt252) -> Option<Balance> {
+        let value: Option<i64> = self.try_into();
+        match value {
+            None => Option::None,
+            Some(value) => Option::Some(Balance { value }),
+        }
+    }
+}
+
+
 pub impl I64IntoBalance of Into<i64, Balance> {
     fn into(self: i64) -> Balance {
         Balance { value: self }

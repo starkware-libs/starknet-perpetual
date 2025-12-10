@@ -30,6 +30,17 @@ pub impl I64IntoFundingIndex of Into<i64, FundingIndex> {
     }
 }
 
+pub impl Felt252TryIntoFundingIndex of TryInto<felt252, FundingIndex> {
+    fn try_into(self: felt252) -> Option<FundingIndex> {
+        let value: Option<i64> = self.try_into();
+        match value {
+            None => Option::None,
+            Some(value) => Option::Some(FundingIndex { value }),
+        }
+    }
+}
+
+
 
 pub trait FundingIndexMulTrait {
     /// Multiply the funding index with a balance.

@@ -1,3 +1,4 @@
+use core::hash::Hash;
 use core::num::traits::Zero;
 use perpetuals::core::types::asset::{AssetId, AssetStatus};
 use perpetuals::core::types::balance::Balance;
@@ -32,6 +33,33 @@ pub impl Felt252TryIntoAssetType of TryInto<felt252, AssetType> {
     }
 }
 
+pub struct UpdateFulfillment {
+    pub key: felt252,
+    pub diff : u64,
+    pub limit : u64,
+}
+
+fn update_fulfillment(updates: Span<UpdateFulfillment>) {
+}
+
+// fn get_fulfillment_contract_address_from_timestamp
+fn get_fulfillment_contract_address_from_timestamp(
+    timestamp: Timestamp,
+) -> ContractAddress;
+
+fn cleanup_order_fulfillment(
+    order: Order,
+) {
+}
+
+fn apply_order_fulfillment(
+    updates: Span<UpdateFulfillment>,
+) {
+    /// pre processing steps
+    /// retrive the contract addresses for the fullfillment
+    /// combine updates by contract address
+    /// call the fullfillment contract with the combined updates
+}
 #[derive(Copy, Drop, Serde, starknet::Store)]
 pub struct AssetConfig {
     version: u8,
