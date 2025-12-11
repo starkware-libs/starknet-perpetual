@@ -58,9 +58,7 @@ fn settlement_1() -> Settlement {
             base_asset_id: 0x485950452d33000000000000000000.into(),
             base_amount: 0x3a98.try_into().unwrap(),
             quote_asset_id: 0x1.into(),
-            quote_amount: 0x800000000000010ffffffffffffffffffffffffffffffffffffffffb13ce231
-                .try_into()
-                .unwrap(),
+            quote_amount: -1321410000_i64,
             fee_asset_id: 0x1.into(),
             fee_amount: 0x50a71.try_into().unwrap(),
             expiration: Timestamp { seconds: 0x6933e295.try_into().unwrap() },
@@ -69,9 +67,7 @@ fn settlement_1() -> Settlement {
         order_b: Order {
             position_id: PositionId { value: 0x30d7e.try_into().unwrap() },
             base_asset_id: 0x485950452d33000000000000000000.into(),
-            base_amount: 0x800000000000010ffffffffffffffffffffffffffffffffffffffffffffe599
-                .try_into()
-                .unwrap(),
+            base_amount: -6760_i64,
             quote_asset_id: 0x1.into(),
             quote_amount: 0x11d0c058.try_into().unwrap(),
             fee_asset_id: 0x1.into(),
@@ -80,9 +76,7 @@ fn settlement_1() -> Settlement {
             salt: 0x3a3590e6.into(),
         },
         actual_amount_base_a: 0xfa,
-        actual_amount_quote_a: 0x800000000000010ffffffffffffffffffffffffffffffffffffffffff57554b
-            .try_into()
-            .unwrap(),
+        actual_amount_quote_a: -11053750_i64,
         actual_fee_a: 0xacb,
         actual_fee_b: 0x0,
     }
@@ -105,9 +99,7 @@ fn settlement_2() -> Settlement {
             base_asset_id: 0x4554482d3400000000000000000000.into(),
             base_amount: 0x48a8.try_into().unwrap(),
             quote_asset_id: 0x1.into(),
-            quote_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffbe1cf7101
-                .try_into()
-                .unwrap(),
+            quote_amount: -17686368000_i64,
             fee_asset_id: 0x1.into(),
             fee_amount: 0x3cb8a9.try_into().unwrap(),
             expiration: Timestamp { seconds: 0x6933f115.try_into().unwrap() },
@@ -116,9 +108,7 @@ fn settlement_2() -> Settlement {
         order_b: Order {
             position_id: PositionId { value: 0x30d7e.try_into().unwrap() },
             base_asset_id: 0x4554482d3400000000000000000000.into(),
-            base_amount: 0x800000000000010ffffffffffffffffffffffffffffffffffffffffffffef85
-                .try_into()
-                .unwrap(),
+            base_amount: -4220_i64,
             quote_asset_id: 0x1.into(),
             quote_amount: 0x780e5830.try_into().unwrap(),
             fee_asset_id: 0x1.into(),
@@ -127,9 +117,7 @@ fn settlement_2() -> Settlement {
             salt: 0x4dda9a9.into(),
         },
         actual_amount_base_a: 0x136,
-        actual_amount_quote_a: 0x800000000000010fffffffffffffffffffffffffffffffffffffffff72e4389
-            .try_into()
-            .unwrap(),
+        actual_amount_quote_a: -147963000_i64,
         actual_fee_a: 0x820b,
         actual_fee_b: 0x0,
     }
@@ -152,9 +140,7 @@ fn settlement_3() -> Settlement {
             base_asset_id: 0x4254432d3600000000000000000000.into(),
             base_amount: 0xa3c.try_into().unwrap(),
             quote_asset_id: 0x1.into(),
-            quote_amount: 0x800000000000010ffffffffffffffffffffffffffffffffffffffffee0d90b1
-                .try_into()
-                .unwrap(),
+            quote_amount: -301100880_i64,
             fee_asset_id: 0x1.into(),
             fee_amount: 0xeb3d.try_into().unwrap(),
             expiration: Timestamp { seconds: 0x68bd406a.try_into().unwrap() },
@@ -163,9 +149,7 @@ fn settlement_3() -> Settlement {
         order_b: Order {
             position_id: PositionId { value: 0x31303.try_into().unwrap() },
             base_asset_id: 0x4254432d3600000000000000000000.into(),
-            base_amount: 0x800000000000010ffffffffffffffffffffffffffffffffffffffffffff0237
-                .try_into()
-                .unwrap(),
+            base_amount: -64970_i64,
             quote_asset_id: 0x1.into(),
             quote_amount: 0xfdca.try_into().unwrap(),
             fee_asset_id: 0x1.into(),
@@ -174,13 +158,12 @@ fn settlement_3() -> Settlement {
             salt: 0x9756924.into(),
         },
         actual_amount_base_a: 0x438,
-        actual_amount_quote_a: 0x800000000000010fffffffffffffffffffffffffffffffffffffffff89a1c61
-            .try_into()
-            .unwrap(),
+        actual_amount_quote_a: -124117920_i64,
         actual_fee_a: 0x0,
         actual_fee_b: 0x6d16,
     }
 }
+
 fn settlement_4() -> Settlement {
     Settlement {
         signature_a: array![
@@ -198,9 +181,7 @@ fn settlement_4() -> Settlement {
             base_asset_id: 0x5452554d502d310000000000000000.into(),
             base_amount: 0x2710.try_into().unwrap(),
             quote_asset_id: 0x1.into(),
-            quote_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffbf229f701
-                .try_into()
-                .unwrap(),
+            quote_amount: -17412000000_i64,
             fee_asset_id: 0x1.into(),
             fee_amount: 0x3bc784.try_into().unwrap(),
             expiration: Timestamp { seconds: 0x6933f223.try_into().unwrap() },
@@ -209,9 +190,7 @@ fn settlement_4() -> Settlement {
         order_b: Order {
             position_id: PositionId { value: 0x1f4.try_into().unwrap() },
             base_asset_id: 0x5452554d502d310000000000000000.into(),
-            base_amount: 0x800000000000010ffffffffffffffffffffffffffffffffffffffffffff935f
-                .try_into()
-                .unwrap(),
+            base_amount: -27810_i64,
             quote_asset_id: 0x1.into(),
             quote_amount: 0x5a46fe8d0.try_into().unwrap(),
             fee_asset_id: 0x1.into(),
@@ -220,9 +199,7 @@ fn settlement_4() -> Settlement {
             salt: 0x7ba67460.into(),
         },
         actual_amount_base_a: 0xfa,
-        actual_amount_quote_a: 0x800000000000010fffffffffffffffffffffffffffffffffffffffff303df71
-            .try_into()
-            .unwrap(),
+        actual_amount_quote_a: -217850000_i64,
         actual_fee_a: 0xbf78,
         actual_fee_b: 0x0,
     }
@@ -245,9 +222,7 @@ fn settlement_5() -> Settlement {
             base_asset_id: 0x454e412d3000000000000000000000.into(),
             base_amount: 0x2710.try_into().unwrap(),
             quote_asset_id: 0x1.into(),
-            quote_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffcb0752cc1
-                .try_into()
-                .unwrap(),
+            quote_amount: -14219400000_i64,
             fee_asset_id: 0x1.into(),
             fee_amount: 0x30d185.try_into().unwrap(),
             expiration: Timestamp { seconds: 0x6933f2eb.try_into().unwrap() },
@@ -256,9 +231,7 @@ fn settlement_5() -> Settlement {
         order_b: Order {
             position_id: PositionId { value: 0x30d7e.try_into().unwrap() },
             base_asset_id: 0x454e412d3000000000000000000000.into(),
-            base_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffffffe5d
-                .try_into()
-                .unwrap(),
+            base_amount: -420_i64,
             quote_asset_id: 0x1.into(),
             quote_amount: 0x11cc6328.try_into().unwrap(),
             fee_asset_id: 0x1.into(),
@@ -267,9 +240,7 @@ fn settlement_5() -> Settlement {
             salt: 0x6894e2cc.into(),
         },
         actual_amount_base_a: 0xfa,
-        actual_amount_quote_a: 0x800000000000010fffffffffffffffffffffffffffffffffffffffff567dd5d
-            .try_into()
-            .unwrap(),
+        actual_amount_quote_a: -177742500_i64,
         actual_fee_a: 0x9c38,
         actual_fee_b: 0x0,
     }
@@ -292,9 +263,7 @@ fn settlement_6() -> Settlement {
             base_asset_id: 0x424e422d3400000000000000000000.into(),
             base_amount: 0x96.try_into().unwrap(),
             quote_asset_id: 0x1.into(),
-            quote_amount: 0x800000000000010ffffffffffffffffffffffffffffffffffffffffff385817
-                .try_into()
-                .unwrap(),
+            quote_amount: -13084650_i64,
             fee_asset_id: 0x1.into(),
             fee_amount: 0x198f.try_into().unwrap(),
             expiration: Timestamp { seconds: 0x68bd4012.try_into().unwrap() },
@@ -303,9 +272,7 @@ fn settlement_6() -> Settlement {
         order_b: Order {
             position_id: PositionId { value: 0x19cb3.try_into().unwrap() },
             base_asset_id: 0x424e422d3400000000000000000000.into(),
-            base_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffffddd21
-                .try_into()
-                .unwrap(),
+            base_amount: -140000_i64,
             quote_asset_id: 0x1.into(),
             quote_amount: 0x222e0.try_into().unwrap(),
             fee_asset_id: 0x1.into(),
@@ -314,13 +281,12 @@ fn settlement_6() -> Settlement {
             salt: 0x0ba3b07a.into(),
         },
         actual_amount_base_a: 0x96,
-        actual_amount_quote_a: 0x800000000000010ffffffffffffffffffffffffffffffffffffffffff385817
-            .try_into()
-            .unwrap(),
+        actual_amount_quote_a: -13084650_i64,
         actual_fee_a: 0x0,
         actual_fee_b: 0xb80,
     }
 }
+
 
 fn settlement_7() -> Settlement {
     Settlement {
@@ -339,9 +305,7 @@ fn settlement_7() -> Settlement {
             base_asset_id: 0x424e422d3400000000000000000000.into(),
             base_amount: 0x8c.try_into().unwrap(),
             quote_asset_id: 0x1.into(),
-            quote_amount: 0x800000000000010ffffffffffffffffffffffffffffffffffffffffff45aea9
-                .try_into()
-                .unwrap(),
+            quote_amount: -12210520_i64,
             fee_asset_id: 0x1.into(),
             fee_amount: 0x17da.try_into().unwrap(),
             expiration: Timestamp { seconds: 0x68bd4012.try_into().unwrap() },
@@ -350,9 +314,7 @@ fn settlement_7() -> Settlement {
         order_b: Order {
             position_id: PositionId { value: 0x19cb3.try_into().unwrap() },
             base_asset_id: 0x424e422d3400000000000000000000.into(),
-            base_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffffddd21
-                .try_into()
-                .unwrap(),
+            base_amount: -140000_i64,
             quote_asset_id: 0x1.into(),
             quote_amount: 0x222e0.try_into().unwrap(),
             fee_asset_id: 0x1.into(),
@@ -361,13 +323,12 @@ fn settlement_7() -> Settlement {
             salt: 0x0ba3b07a.into(),
         },
         actual_amount_base_a: 0x8c,
-        actual_amount_quote_a: 0x800000000000010ffffffffffffffffffffffffffffffffffffffffff45aea9
-            .try_into()
-            .unwrap(),
+        actual_amount_quote_a: -12210520_i64,
         actual_fee_a: 0x0,
         actual_fee_b: 0xabb,
     }
 }
+
 fn settlement_8() -> Settlement {
     Settlement {
         signature_a: array![
@@ -385,9 +346,7 @@ fn settlement_8() -> Settlement {
             base_asset_id: 0x424e422d3400000000000000000000.into(),
             base_amount: 0x78.try_into().unwrap(),
             quote_asset_id: 0x1.into(),
-            quote_amount: 0x800000000000010ffffffffffffffffffffffffffffffffffffffffff6052a9
-                .try_into()
-                .unwrap(),
+            quote_amount: -10464600_i64,
             fee_asset_id: 0x1.into(),
             fee_amount: 0x1471.try_into().unwrap(),
             expiration: Timestamp { seconds: 0x68bd4012.try_into().unwrap() },
@@ -396,9 +355,7 @@ fn settlement_8() -> Settlement {
         order_b: Order {
             position_id: PositionId { value: 0x19cb3.try_into().unwrap() },
             base_asset_id: 0x424e422d3400000000000000000000.into(),
-            base_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffffddd21
-                .try_into()
-                .unwrap(),
+            base_amount: -140000_i64,
             quote_asset_id: 0x1.into(),
             quote_amount: 0x222e0.try_into().unwrap(),
             fee_asset_id: 0x1.into(),
@@ -407,13 +364,12 @@ fn settlement_8() -> Settlement {
             salt: 0x0ba3b07a.into(),
         },
         actual_amount_base_a: 0x78,
-        actual_amount_quote_a: 0x800000000000010ffffffffffffffffffffffffffffffffffffffffff6052a9
-            .try_into()
-            .unwrap(),
+        actual_amount_quote_a: -10464600_i64,
         actual_fee_a: 0x0,
         actual_fee_b: 0x932,
     }
 }
+
 fn settlement_9() -> Settlement {
     Settlement {
         signature_a: array![
@@ -431,9 +387,7 @@ fn settlement_9() -> Settlement {
             base_asset_id: 0x424e422d3400000000000000000000.into(),
             base_amount: 0x3ca.try_into().unwrap(),
             quote_asset_id: 0x1.into(),
-            quote_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffaf555f7
-                .try_into()
-                .unwrap(),
+            quote_amount: -84584970_i64,
             fee_asset_id: 0x1.into(),
             fee_amount: 0x0.try_into().unwrap(),
             expiration: Timestamp { seconds: 0x68bd4de9.try_into().unwrap() },
@@ -442,9 +396,7 @@ fn settlement_9() -> Settlement {
         order_b: Order {
             position_id: PositionId { value: 0x19cb3.try_into().unwrap() },
             base_asset_id: 0x424e422d3400000000000000000000.into(),
-            base_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffffddd21
-                .try_into()
-                .unwrap(),
+            base_amount: -140000_i64,
             quote_asset_id: 0x1.into(),
             quote_amount: 0x222e0.try_into().unwrap(),
             fee_asset_id: 0x1.into(),
@@ -453,13 +405,12 @@ fn settlement_9() -> Settlement {
             salt: 0x0ba3b07a.into(),
         },
         actual_amount_base_a: 0x3ca,
-        actual_amount_quote_a: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffaf555f7
-            .try_into()
-            .unwrap(),
+        actual_amount_quote_a: -84584970_i64,
         actual_fee_a: 0x0,
         actual_fee_b: 0x4a57,
     }
 }
+
 fn settlement_10() -> Settlement {
     Settlement {
         signature_a: array![
@@ -477,9 +428,7 @@ fn settlement_10() -> Settlement {
             base_asset_id: 0x424e422d3400000000000000000000.into(),
             base_amount: 0xb392.try_into().unwrap(),
             quote_asset_id: 0x1.into(),
-            quote_amount: 0x800000000000010ffffffffffffffffffffffffffffffffffffffff1113f777
-                .try_into()
-                .unwrap(),
+            quote_amount: -4008446090_i64,
             fee_asset_id: 0x1.into(),
             fee_amount: 0x1e9500.try_into().unwrap(),
             expiration: Timestamp { seconds: 0x68bd421e.try_into().unwrap() },
@@ -488,9 +437,7 @@ fn settlement_10() -> Settlement {
         order_b: Order {
             position_id: PositionId { value: 0x19cb3.try_into().unwrap() },
             base_asset_id: 0x424e422d3400000000000000000000.into(),
-            base_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffffddd21
-                .try_into()
-                .unwrap(),
+            base_amount: -140000_i64,
             quote_asset_id: 0x1.into(),
             quote_amount: 0x222e0.try_into().unwrap(),
             fee_asset_id: 0x1.into(),
@@ -499,13 +446,12 @@ fn settlement_10() -> Settlement {
             salt: 0x0ba3b07a.into(),
         },
         actual_amount_base_a: 0x3b6,
-        actual_amount_quote_a: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffb100163
-            .try_into()
-            .unwrap(),
+        actual_amount_quote_a: -82837150_i64,
         actual_fee_a: 0x0,
         actual_fee_b: 0x48ce,
     }
 }
+
 fn settlement_11() -> Settlement {
     Settlement {
         signature_a: array![
@@ -523,9 +469,7 @@ fn settlement_11() -> Settlement {
             base_asset_id: 0x4144412d3100000000000000000000.into(),
             base_amount: 0x10e.try_into().unwrap(),
             quote_asset_id: 0x1.into(),
-            quote_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffe88adf9
-                .try_into()
-                .unwrap(),
+            quote_amount: -24597000_i64,
             fee_asset_id: 0x1.into(),
             fee_amount: 0x300b.try_into().unwrap(),
             expiration: Timestamp { seconds: 0x68bd4030.try_into().unwrap() },
@@ -534,9 +478,7 @@ fn settlement_11() -> Settlement {
         order_b: Order {
             position_id: PositionId { value: 0x18829.try_into().unwrap() },
             base_asset_id: 0x4144412d3100000000000000000000.into(),
-            base_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffffff98f
-                .try_into()
-                .unwrap(),
+            base_amount: -1650_i64,
             quote_asset_id: 0x1.into(),
             quote_amount: 0x8f0d75c.try_into().unwrap(),
             fee_asset_id: 0x1.into(),
@@ -545,13 +487,12 @@ fn settlement_11() -> Settlement {
             salt: 0xe4cc404e.into(),
         },
         actual_amount_base_a: 0x10e,
-        actual_amount_quote_a: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffe89765d
-            .try_into()
-            .unwrap(),
+        actual_amount_quote_a: -24545700_i64,
         actual_fee_a: 0x17f8,
         actual_fee_b: 0x0,
     }
 }
+
 fn settlement_12() -> Settlement {
     Settlement {
         signature_a: array![
@@ -569,9 +510,7 @@ fn settlement_12() -> Settlement {
             base_asset_id: 0x5749462d3100000000000000000000.into(),
             base_amount: 0x69a.try_into().unwrap(),
             quote_asset_id: 0x1.into(),
-            quote_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffff71445a1
-                .try_into()
-                .unwrap(),
+            quote_amount: -149666400_i64,
             fee_asset_id: 0x1.into(),
             fee_amount: 0x0.try_into().unwrap(),
             expiration: Timestamp { seconds: 0x68bd4e07.try_into().unwrap() },
@@ -580,9 +519,7 @@ fn settlement_12() -> Settlement {
         order_b: Order {
             position_id: PositionId { value: 0x1f9.try_into().unwrap() },
             base_asset_id: 0x5749462d3100000000000000000000.into(),
-            base_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffffffe99
-                .try_into()
-                .unwrap(),
+            base_amount: -360_i64,
             quote_asset_id: 0x1.into(),
             quote_amount: 0x1e5c2b0.try_into().unwrap(),
             fee_asset_id: 0x1.into(),
@@ -591,9 +528,7 @@ fn settlement_12() -> Settlement {
             salt: 0x2b1f3065.into(),
         },
         actual_amount_base_a: 0x168,
-        actual_amount_quote_a: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffe198681
-            .try_into()
-            .unwrap(),
+        actual_amount_quote_a: -31881600_i64,
         actual_fee_a: 0x0,
         actual_fee_b: 0x1f22,
     }

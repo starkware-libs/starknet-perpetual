@@ -34,7 +34,7 @@ inlining-strategy = "avoid"
 panic-backtrace = true
 
 [profile.release.cairo]
-inlining-strategy = "avoid"
+inlining-strategy = 30
 
 [[test]]
 name = "perpetuals_unittest"

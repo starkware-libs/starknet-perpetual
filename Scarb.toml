@@ -19,7 +19,7 @@ inlining-strategy = "avoid"
 panic-backtrace = true
 
 [profile.release.cairo]
-inlining-strategy = "avoid"
+inlining-strategy = 30
 
 [workspace.tool.scarb]
 allow-prebuilt-plugins = ["snforge_std"]
