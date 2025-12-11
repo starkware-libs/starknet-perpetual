@@ -30,11 +30,11 @@ scarb.workspace = true
 [profile.dev.cairo]
 unstable-add-statements-code-locations-debug-info = true
 unstable-add-statements-functions-debug-info = true
-inlining-strategy = "avoid"
+inlining-strategy = 30
 panic-backtrace = true
 
 [profile.release.cairo]
-inlining-strategy = "avoid"
+inlining-strategy = 30
 
 [[test]]
 name = "perpetuals_unittest"

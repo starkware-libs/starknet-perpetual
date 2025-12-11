@@ -98,9 +98,7 @@ fn SETTLEMENT_1() -> Settlement {
         order_b: Order {
             position_id: POSITION_ID_0x1f4,
             base_asset_id: AssetIdTrait::new(0x47524153532d310000000000000000),
-            base_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffffc2e1d
-                .try_into()
-                .unwrap(),
+            base_amount: -250340_i64,
             quote_asset_id: AssetIdTrait::new(0x1),
             quote_amount: 0x42dddc5d0.try_into().unwrap(),
             fee_asset_id: AssetIdTrait::new(0x1),
@@ -109,9 +107,7 @@ fn SETTLEMENT_1() -> Settlement {
             salt: 0x43cb5fd4,
         },
         actual_amount_base_a: 0x181a.try_into().unwrap(),
-        actual_amount_quote_a: 0x800000000000010ffffffffffffffffffffffffffffffffffffffffe5a1adf9
-            .try_into()
-            .unwrap(),
+        actual_amount_quote_a: -442389000_i64,
         actual_fee_a: 0x184d1.try_into().unwrap(),
         actual_fee_b: 0,
     }
@@ -134,9 +130,7 @@ fn SETTLEMENT_2() -> Settlement {
             base_asset_id: AssetIdTrait::new(0x5345492d3000000000000000000000),
             base_amount: 0x212.try_into().unwrap(),
             quote_asset_id: AssetIdTrait::new(0x1),
-            quote_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffff70226f5
-                .try_into()
-                .unwrap(),
+            quote_amount: -150853900_i64,
             fee_asset_id: AssetIdTrait::new(0x1),
             fee_amount: 0, // 0xb6157f
             expiration: Timestamp { seconds: 0x68ca7aad },
@@ -145,9 +139,7 @@ fn SETTLEMENT_2() -> Settlement {
         order_b: Order {
             position_id: POSITION_ID_0x1f9,
             base_asset_id: AssetIdTrait::new(0x5345492d3000000000000000000000),
-            base_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffffffeb7
-                .try_into()
-                .unwrap(),
+            base_amount: -330_i64,
             quote_asset_id: AssetIdTrait::new(0x1),
             quote_amount: 0x5971c74.try_into().unwrap(),
             fee_asset_id: AssetIdTrait::new(0x1),
@@ -156,9 +148,7 @@ fn SETTLEMENT_2() -> Settlement {
             salt: 0x20023f2e,
         },
         actual_amount_base_a: 0x14a.try_into().unwrap(),
-        actual_amount_quote_a: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffa66c625
-            .try_into()
-            .unwrap(),
+        actual_amount_quote_a: -93927900_i64,
         actual_fee_a: 0,
         actual_fee_b: 0x5bb9.try_into().unwrap(),
     }
@@ -181,9 +171,7 @@ fn SETTLEMENT_3() -> Settlement {
             base_asset_id: AssetIdTrait::new(0x4f4e444f2d31000000000000000000),
             base_amount: 0xead76.try_into().unwrap(),
             quote_asset_id: AssetIdTrait::new(0x1),
-            quote_amount: 0x800000000000010ffffffffffffffffffffffffffffffffffffffea64f5af5d
-                .try_into()
-                .unwrap(),
+            quote_amount: -92795457700_i64,
             fee_asset_id: AssetIdTrait::new(0x1),
             fee_amount: 0x2c3f921.try_into().unwrap(),
             expiration: Timestamp { seconds: 0x68ca6cd9 },
@@ -192,9 +180,7 @@ fn SETTLEMENT_3() -> Settlement {
         order_b: Order {
             position_id: POSITION_ID_0x1f9,
             base_asset_id: AssetIdTrait::new(0x4f4e444f2d31000000000000000000),
-            base_amount: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffffffefd
-                .try_into()
-                .unwrap(),
+            base_amount: -260_i64,
             quote_asset_id: AssetIdTrait::new(0x1),
             quote_amount: 0x17e0288.try_into().unwrap(),
             fee_asset_id: AssetIdTrait::new(0x1),
@@ -203,9 +189,7 @@ fn SETTLEMENT_3() -> Settlement {
             salt: 0x3f211f2d,
         },
         actual_amount_base_a: 0x104.try_into().unwrap(),
-        actual_amount_quote_a: 0x800000000000010fffffffffffffffffffffffffffffffffffffffffe8146a9
-            .try_into()
-            .unwrap(),
+        actual_amount_quote_a: -25082200_i64,
         actual_fee_a: 0,
         actual_fee_b: 0x187e.try_into().unwrap(),
     }
