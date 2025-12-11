@@ -25,4 +25,5 @@ pub struct InvestInVault {
     pub invested_asset_id: AssetId,
     pub shares_received: u64,
     pub user_investment: u64,
+    pub correlation_id: felt252,
 }
