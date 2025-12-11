@@ -1227,7 +1227,7 @@ fn test_reduce_synthetic() {
     state.facade.deactivate_synthetic(synthetic_id: asset_id);
     state
         .facade
-        .reduce_inactive_asset_position(
+        .reduce_asset_position(
             position_id_a: user_1.position_id,
             position_id_b: user_2.position_id,
             base_asset_id: asset_id,

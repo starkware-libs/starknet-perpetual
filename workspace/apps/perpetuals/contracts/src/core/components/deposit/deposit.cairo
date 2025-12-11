@@ -21,6 +21,7 @@ pub(crate) mod Deposit {
     use starkware_utils::components::roles::RolesComponent;
     use starkware_utils::signature::stark::HashType;
     use starkware_utils::time::time::{Time, TimeDelta};
+    use crate::core::components::assets::interface::IAssets;
     use crate::core::components::deposit::deposit_manager::IDepositExternalDispatcherTrait;
     use crate::core::components::external_components::external_component_manager::ExternalComponents as ExternalComponentsComponent;
     use crate::core::components::external_components::external_component_manager::ExternalComponents::InternalTrait as ExternalComponentsInternalTrait;
@@ -54,6 +55,17 @@ pub(crate) mod Deposit {
         impl Vaults: VaultsComponent::HasComponent<TContractState>,
         impl ExternalComponents: ExternalComponentsComponent::HasComponent<TContractState>,
     > of IDeposit<ComponentState<TContractState>> {
+        fn deposit(
+            ref self: ComponentState<TContractState>,
+            position_id: PositionId,
+            quantized_amount: u64,
+            salt: felt252,
+        ) {
+            let assets = get_dep_component!(@self, Assets);
+            let pnl_collateral_id = assets.get_collateral_id();
+            self.deposit_asset(asset_id: pnl_collateral_id, :position_id, :quantized_amount, :salt)
+        }
+
         /// Deposit is called by the user to add a deposit request.
         ///
         /// Validations:
@@ -65,7 +77,7 @@ pub(crate) mod Deposit {
         /// - Registers the deposit request.
         /// - Updates the deposit status to pending.
         /// - Emits a Deposit event.
-        fn deposit(
+        fn deposit_asset(
             ref self: ComponentState<TContractState>,
             asset_id: AssetId,
             position_id: PositionId,

@@ -7,7 +7,7 @@ pub mod Core {
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::AssetsComponent::InternalTrait as AssetsInternal;
-    use perpetuals::core::components::assets::errors::{ASSET_NOT_EXISTS, NOT_SYNTHETIC};
+    use perpetuals::core::components::assets::errors::{NOT_SYNTHETIC, NO_SUCH_ASSET};
     use perpetuals::core::components::deposit::Deposit;
     use perpetuals::core::components::deposit::Deposit::InternalTrait as DepositInternal;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
@@ -17,11 +17,11 @@ pub mod Core {
         FEE_POSITION, InternalTrait as PositionsInternalTrait,
     };
     use perpetuals::core::errors::{
-        AMOUNT_OVERFLOW, INVALID_ZERO_TIMEOUT, SYNTHETIC_IS_ACTIVE, TRADE_ASSET_NOT_SYNTHETIC,
+        AMOUNT_OVERFLOW, INVALID_ZERO_TIMEOUT, TRADE_ASSET_NOT_SYNTHETIC,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
-    use perpetuals::core::types::asset::{AssetId, AssetStatus};
+    use perpetuals::core::types::asset::AssetId;
     use perpetuals::core::types::balance::Balance;
     use perpetuals::core::types::order::{LimitOrder, Order};
     use perpetuals::core::types::position::{PositionDiff, PositionId, PositionTrait};
@@ -45,6 +45,7 @@ pub mod Core {
     use starkware_utils::time::time::{TimeDelta, Timestamp};
     use crate::core::components::assets::interface::IAssets;
     use crate::core::components::deleverage::deleverage_manager::IDeleverageManagerDispatcherTrait;
+    use crate::core::components::deposit::events as deposit_events;
     use crate::core::components::external_components::external_component_manager::ExternalComponents as ExternalComponentsComponent;
     use crate::core::components::external_components::external_component_manager::ExternalComponents::InternalTrait as ExternalComponentsInternalTrait;
     use crate::core::components::fulfillment::fulfillment::Fulfillement;
@@ -52,6 +53,7 @@ pub mod Core {
     use crate::core::components::liquidation::liquidation_manager::ILiquidationManagerDispatcherTrait;
     use crate::core::components::snip::SNIP12MetadataImpl;
     use crate::core::components::transfer::transfer_manager::ITransferManagerDispatcherTrait;
+    use crate::core::components::vaults::events as vault_events;
     use crate::core::components::vaults::vaults::{IVaults, Vaults as VaultsComponent};
     use crate::core::components::vaults::vaults_contract::IVaultExternalDispatcherTrait;
     use crate::core::components::withdrawal::withdrawal_manager::IWithdrawalManagerDispatcherTrait;
@@ -94,6 +96,9 @@ pub mod Core {
 
     #[abi(embed_v0)]
     impl AssetsImpl = AssetsComponent::AssetsImpl<ContractState>;
+
+    #[abi(embed_v0)]
+    impl AssetsManagerImpl = AssetsComponent::AssetsManagerImpl<ContractState>;
 
     #[abi(embed_v0)]
     impl ReplaceabilityImpl =
@@ -175,7 +180,7 @@ pub mod Core {
         #[flat]
         PositionsEvent: Positions::Event,
         Deleverage: events::Deleverage,
-        InactiveAssetPositionReduced: events::InactiveAssetPositionReduced,
+        AssetPositionReduced: events::AssetPositionReduced,
         Liquidate: events::Liquidate,
         Trade: events::Trade,
         Withdraw: events::Withdraw,
@@ -186,6 +191,11 @@ pub mod Core {
         ExternalComponentsEvent: ExternalComponentsComponent::Event,
         #[flat]
         VaultsEvent: VaultsComponent::Event,
+        //duplicated for ABI
+        Deposit: deposit_events::Deposit,
+        DepositCanceled: deposit_events::DepositCanceled,
+        DepositProcessed: deposit_events::DepositProcessed,
+        InvestInVault: vault_events::InvestInVault,
     }
 
     #[constructor]
@@ -526,7 +536,7 @@ pub mod Core {
         /// Execution:
         /// - Update the position, based on `base_asset`.
         /// - Adjust collateral balances based on `quote_amount`.
-        fn reduce_inactive_asset_position(
+        fn reduce_asset_position(
             ref self: ContractState,
             operator_nonce: u64,
             position_id_a: PositionId,
@@ -542,12 +552,10 @@ pub mod Core {
             let position_a = self.positions.get_position_snapshot(position_id: position_id_a);
             let position_b = self.positions.get_position_snapshot(position_id: position_id_b);
 
-            // Validate base asset is inactive synthetic.
             if let Option::Some(config) = self.assets.asset_config.read(base_asset_id) {
                 assert(config.asset_type == AssetType::SYNTHETIC, NOT_SYNTHETIC);
-                assert(config.status == AssetStatus::INACTIVE, SYNTHETIC_IS_ACTIVE);
             } else {
-                panic_with_felt252(ASSET_NOT_EXISTS);
+                panic_with_felt252(NO_SUCH_ASSET);
             }
             let base_balance: Balance = base_amount_a.into();
             let quote_amount_a: i64 = -1
@@ -586,7 +594,7 @@ pub mod Core {
 
             self
                 .emit(
-                    events::InactiveAssetPositionReduced {
+                    events::AssetPositionReduced {
                         position_id_a,
                         position_id_b,
                         base_asset_id,
@@ -635,6 +643,9 @@ pub mod Core {
             actual_shares_user: i64,
             actual_collateral_user: i64,
         ) {
+            self.pausable.assert_not_paused();
+            self.assets.validate_assets_integrity();
+            self.operator_nonce.use_checked_nonce(:operator_nonce);
             self
                 .external_components
                 ._get_vault_manager_dispatcher()
@@ -654,8 +665,8 @@ pub mod Core {
             order: ConvertPositionToVault,
             signature: Signature,
         ) {
-            self.pausable.assert_not_paused();
             self.assets.validate_assets_integrity();
+            self.pausable.assert_not_paused();
             self.operator_nonce.use_checked_nonce(:operator_nonce);
             self
                 .external_components
@@ -667,6 +678,7 @@ pub mod Core {
             operator_nonce: u64,
             signature: Span<felt252>,
             order: LimitOrder,
+            correlation_id: felt252,
         ) {
             self.pausable.assert_not_paused();
             self.assets.validate_assets_integrity();
@@ -674,7 +686,9 @@ pub mod Core {
             self
                 .external_components
                 ._get_vault_manager_dispatcher()
-                .invest_in_vault(operator_nonce: operator_nonce, :signature, :order)
+                .invest_in_vault(
+                    operator_nonce: operator_nonce, :signature, :order, :correlation_id,
+                )
         }
 
         // Forced actions.
