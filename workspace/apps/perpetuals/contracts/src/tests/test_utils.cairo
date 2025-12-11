@@ -46,6 +46,7 @@ use crate::core::components::external_components::interface::{
     EXTERNAL_COMPONENT_TRANSFERS, EXTERNAL_COMPONENT_VAULT, EXTERNAL_COMPONENT_WITHDRAWALS,
     IExternalComponents, IExternalComponentsDispatcher, IExternalComponentsDispatcherTrait,
 };
+use super::constants::{FORCED_ACTION_TIMELOCK, PREMIUM_COST};
 
 /// The `User` struct represents a user corresponding to a position in the state of the Core
 /// contract.
@@ -144,6 +145,8 @@ pub struct PerpetualsInitConfig {
     pub fee_position_owner_public_key: felt252,
     pub insurance_fund_position_owner_account: ContractAddress,
     pub insurance_fund_position_owner_public_key: felt252,
+    pub forced_action_timelock: u64,
+    pub premium_cost: u64,
     pub collateral_cfg: CollateralCfg,
     pub synthetic_cfg: SyntheticCfg,
     pub vault_share_cfg: VaultCollateralCfg,
@@ -165,6 +168,8 @@ pub impl CoreImpl of CoreTrait {
         self.cancel_delay.serialize(ref calldata);
         self.fee_position_owner_public_key.serialize(ref calldata);
         self.insurance_fund_position_owner_public_key.serialize(ref calldata);
+        self.forced_action_timelock.serialize(ref calldata);
+        self.premium_cost.serialize(ref calldata);
 
         let core_contract = snforge_std::declare("Core").unwrap().contract_class();
         let (core_contract_address, _) = core_contract.deploy(@calldata).unwrap();
@@ -215,6 +220,8 @@ impl PerpetualsInitConfigDefault of Default<PerpetualsInitConfig> {
             fee_position_owner_public_key: OPERATOR_PUBLIC_KEY(),
             insurance_fund_position_owner_account: OPERATOR(),
             insurance_fund_position_owner_public_key: OPERATOR_PUBLIC_KEY(),
+            forced_action_timelock: FORCED_ACTION_TIMELOCK,
+            premium_cost: PREMIUM_COST,
             collateral_cfg: CollateralCfg {
                 token_cfg: TokenConfig {
                     name: COLLATERAL_NAME(),
@@ -699,6 +706,8 @@ pub fn initialized_contract_state(
         cancel_delay: CANCEL_DELAY,
         fee_position_owner_public_key: OPERATOR_PUBLIC_KEY(),
         insurance_fund_position_owner_public_key: OPERATOR_PUBLIC_KEY(),
+        forced_action_timelock: FORCED_ACTION_TIMELOCK,
+        premium_cost: PREMIUM_COST,
     );
     state
 }

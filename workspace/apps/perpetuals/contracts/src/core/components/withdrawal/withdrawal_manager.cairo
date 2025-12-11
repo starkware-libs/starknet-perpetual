@@ -32,6 +32,34 @@ pub struct Withdraw {
     pub salt: felt252,
 }
 
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct ForcedWithdrawRequest {
+    #[key]
+    pub position_id: PositionId,
+    #[key]
+    pub recipient: ContractAddress,
+    pub collateral_id: AssetId,
+    pub amount: u64,
+    pub expiration: Timestamp,
+    #[key]
+    pub forced_withdraw_request_hash: felt252,
+    pub salt: felt252,
+}
+
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct ForcedWithdraw {
+    #[key]
+    pub position_id: PositionId,
+    #[key]
+    pub recipient: ContractAddress,
+    pub collateral_id: AssetId,
+    pub amount: u64,
+    pub expiration: Timestamp,
+    #[key]
+    pub forced_withdraw_request_hash: felt252,
+    pub salt: felt252,
+}
+
 #[starknet::interface]
 pub trait IWithdrawalManager<TContractState> {
     fn withdraw_request(
@@ -44,6 +72,23 @@ pub trait IWithdrawalManager<TContractState> {
         salt: felt252,
     );
     fn withdraw(
+        ref self: TContractState,
+        recipient: ContractAddress,
+        position_id: PositionId,
+        amount: u64,
+        expiration: Timestamp,
+        salt: felt252,
+    );
+    fn forced_withdraw_request(
+        ref self: TContractState,
+        signature: Signature,
+        recipient: ContractAddress,
+        position_id: PositionId,
+        amount: u64,
+        expiration: Timestamp,
+        salt: felt252,
+    );
+    fn forced_withdraw(
         ref self: TContractState,
         recipient: ContractAddress,
         position_id: PositionId,
@@ -68,25 +113,32 @@ pub(crate) mod WithdrawalManager {
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalImpl as OperatorNonceInternal;
     use perpetuals::core::components::positions::Positions as PositionsComponent;
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
-    use perpetuals::core::types::position::{PositionId, PositionTrait};
-    use starknet::ContractAddress;
-    use starknet::storage::StoragePointerReadAccess;
+    use perpetuals::core::components::snip::SNIP12MetadataImpl;
+    use perpetuals::core::errors::{
+        FORCED_WAIT_REQUIRED, INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED, TRANSFER_FAILED,
+    };
+    use perpetuals::core::types::asset::AssetId;
+    use perpetuals::core::types::position::{Position, PositionDiff, PositionId, PositionTrait};
+    use perpetuals::core::types::withdraw::{ForcedWithdrawArgs, WithdrawArgs};
+    use starknet::storage::{StoragePath, StoragePointerReadAccess};
+    use starknet::{ContractAddress, get_block_info, get_caller_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalImpl as PausableInternal;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent::InternalTrait as RequestApprovalsInternal;
     use starkware_utils::components::roles::RolesComponent;
+    use starkware_utils::hash::message_hash::OffchainMessageHash;
+    use starkware_utils::signature::stark::HashType;
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
-    use starkware_utils::time::time::validate_expiration;
+    use starkware_utils::time::time::{Time, TimeDelta, validate_expiration};
     use crate::core::components::external_components::interface::EXTERNAL_COMPONENT_WITHDRAWALS;
     use crate::core::components::external_components::named_component::ITypedComponent;
-    use crate::core::components::snip::SNIP12MetadataImpl;
-    use crate::core::errors::{INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED, TRANSFER_FAILED};
-    use crate::core::types::position::PositionDiff;
-    use crate::core::types::withdraw::WithdrawArgs;
-    use super::{IWithdrawalManager, Signature, Timestamp, Withdraw, WithdrawRequest};
+    use super::{
+        ForcedWithdraw, ForcedWithdrawRequest, IWithdrawalManager, Signature, Timestamp, Withdraw,
+        WithdrawRequest,
+    };
 
     impl SnipImpl = SNIP12MetadataImpl;
 
@@ -95,6 +147,8 @@ pub(crate) mod WithdrawalManager {
     pub enum Event {
         Withdraw: Withdraw,
         WithdrawRequest: WithdrawRequest,
+        ForcedWithdraw: ForcedWithdraw,
+        ForcedWithdrawRequest: ForcedWithdrawRequest,
         #[flat]
         FulfillmentEvent: FulfillmentComponent::Event,
         #[flat]
@@ -136,6 +190,10 @@ pub(crate) mod WithdrawalManager {
         src5: SRC5Component::Storage,
         #[substorage(v0)]
         pub request_approvals: RequestApprovalsComponent::Storage,
+        // Timelock before forced actions can be executed.
+        forced_action_timelock: TimeDelta,
+        // Cost for executing forced actions.
+        premium_cost: u64,
     }
 
     component!(path: FulfillmentComponent, storage: fulfillment_tracking, event: FulfillmentEvent);
@@ -208,9 +266,175 @@ pub(crate) mod WithdrawalManager {
             expiration: super::Timestamp,
             salt: felt252,
         ) {
-            validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
             let collateral_id = self.assets.get_collateral_id();
             let position = self.positions.get_position_snapshot(:position_id);
+
+            let hash = self
+                ._withdraw(
+                    :recipient,
+                    :position_id,
+                    :amount,
+                    :expiration,
+                    :salt,
+                    :position,
+                    :collateral_id,
+                );
+
+            self
+                .emit(
+                    Withdraw {
+                        position_id,
+                        recipient,
+                        collateral_id,
+                        amount,
+                        expiration,
+                        withdraw_request_hash: hash,
+                        salt,
+                    },
+                );
+        }
+
+        fn forced_withdraw_request(
+            ref self: ContractState,
+            signature: Signature,
+            recipient: ContractAddress,
+            position_id: PositionId,
+            amount: u64,
+            expiration: Timestamp,
+            salt: felt252,
+        ) {
+            /// Validations:
+            ///
+            // Validate position exists.
+            let position = self.positions.get_position_snapshot(:position_id);
+            let collateral_id = self.assets.get_collateral_id();
+            assert(amount.is_non_zero(), INVALID_ZERO_AMOUNT);
+
+            let owner_account = if (position.owner_protection_enabled.read()) {
+                position.get_owner_account()
+            } else {
+                Option::None
+            };
+            let public_key = position.get_owner_public_key();
+
+            // Validate the withdraw request was not registered nor processed yet.
+            let withdraw_args_hash = self
+                .request_approvals
+                .store_approval(
+                    :public_key,
+                    args: WithdrawArgs {
+                        position_id, salt, expiration, collateral_id, amount, recipient,
+                    },
+                );
+
+            // Validate the forced request signature
+            let hash = self
+                .request_approvals
+                .register_forced_approval(
+                    :owner_account,
+                    :public_key,
+                    :signature,
+                    args: ForcedWithdrawArgs { withdraw_args_hash },
+                );
+
+            /// Executions:
+
+            // Transfer premium_cost (forced fee) from the caller to the sequencer address.
+            let premium_cost = self.premium_cost.read();
+            let quantum = self.assets.get_collateral_quantum();
+            let token_contract = self.assets.get_collateral_token_contract();
+
+            assert(
+                token_contract
+                    .transfer_from(
+                        sender: get_caller_address(),
+                        recipient: get_block_info().sequencer_address,
+                        amount: (premium_cost * quantum).into(),
+                    ),
+                TRANSFER_FAILED,
+            );
+
+            self
+                .emit(
+                    ForcedWithdrawRequest {
+                        position_id,
+                        recipient,
+                        collateral_id,
+                        amount,
+                        expiration,
+                        forced_withdraw_request_hash: hash,
+                        salt,
+                    },
+                );
+        }
+
+        fn forced_withdraw(
+            ref self: ContractState,
+            recipient: ContractAddress,
+            position_id: PositionId,
+            amount: u64,
+            expiration: Timestamp,
+            salt: felt252,
+        ) {
+            let position = self.positions.get_position_snapshot(:position_id);
+            let public_key = position.get_owner_public_key();
+            let collateral_id = self.assets.get_collateral_id();
+
+            // Calculate forced withdraw hash
+            let withdraw_args = WithdrawArgs {
+                position_id, salt, expiration, collateral_id, amount, recipient,
+            };
+            let withdraw_args_hash = withdraw_args.get_message_hash(:public_key);
+
+            let (request_time, forced_withdraw_request_hash) = self
+                .request_approvals
+                .consume_forced_approved_request(
+                    args: ForcedWithdrawArgs { withdraw_args_hash }, :public_key,
+                );
+
+            let now = Time::now();
+            let forced_action_timelock = self.forced_action_timelock.read();
+            assert(request_time.add(forced_action_timelock) <= now, FORCED_WAIT_REQUIRED);
+
+            self
+                ._withdraw(
+                    :recipient,
+                    :position_id,
+                    :amount,
+                    :expiration,
+                    :salt,
+                    :position,
+                    :collateral_id,
+                );
+
+            self
+                .emit(
+                    ForcedWithdraw {
+                        position_id,
+                        recipient,
+                        collateral_id,
+                        amount,
+                        expiration,
+                        forced_withdraw_request_hash,
+                        salt,
+                    },
+                );
+        }
+    }
+
+    #[generate_trait]
+    impl PrivateImpl of PrivateTrait {
+        fn _withdraw(
+            ref self: ContractState,
+            recipient: ContractAddress,
+            position_id: PositionId,
+            amount: u64,
+            expiration: Timestamp,
+            salt: felt252,
+            position: StoragePath<Position>,
+            collateral_id: AssetId,
+        ) -> HashType {
+            validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
             let hash = self
                 .request_approvals
                 .consume_approved_request(
@@ -240,18 +464,7 @@ pub(crate) mod WithdrawalManager {
                 TRANSFER_FAILED,
             );
 
-            self
-                .emit(
-                    Withdraw {
-                        position_id,
-                        recipient,
-                        collateral_id,
-                        amount,
-                        expiration,
-                        withdraw_request_hash: hash,
-                        salt,
-                    },
-                );
+            hash
         }
     }
 }

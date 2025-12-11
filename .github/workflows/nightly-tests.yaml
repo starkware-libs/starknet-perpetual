@@ -1,0 +1,74 @@
+name: Nightly Tests
+
+on:
+  schedule:
+    # Run daily at midnight UTC
+    - cron: '0 0 * * *'
+  workflow_dispatch: # Allow manual triggering from GitHub UI
+
+jobs:
+  python_tests:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install asdf
+        run: scripts/install_asdf.sh
+
+      - name: Install starknet-devnet
+        run: |
+          asdf plugin add starknet-devnet
+          asdf install starknet-devnet 0.3.0
+          asdf global starknet-devnet 0.3.0
+
+      - uses: software-mansion/setup-scarb@v1
+        with:
+          scarb-version: "2.12.2"
+
+      - name: Build Contracts
+        run: scarb --release build
+
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - run: pip install -r requirements.txt
+
+      - name: Run Python Tests
+        id: run_tests
+        run: scripts/python_tests.sh
+
+      - name: Slack Notification - Success
+        if: always() && steps.run_tests.conclusion == 'success'
+        continue-on-error: true
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
+          slack-message: |
+            ✅ *Nightly Tests Passed*
+            Repository: ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
+      - name: Slack Notification - Failure
+        if: always() && steps.run_tests.conclusion != 'success'
+        continue-on-error: true
+        uses: slackapi/slack-github-action@v1.27.0
+        with:
+          channel-id: ${{ secrets.SLACK_CHANNEL_ID }}
+          slack-message: |
+            ❌ *Nightly Tests Failed*
+            Repository: ${{ github.repository }}
+            Branch: ${{ github.ref_name }}
+            Commit: ${{ github.sha }}
+            Test Status: ${{ steps.run_tests.conclusion }}
+            Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            
+            Please check the logs for details.
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+
