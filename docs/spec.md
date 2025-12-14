@@ -27,7 +27,7 @@ classDiagram
         trade()
         liquidate()
         deleverage()
-        reduce_inactive_asset_position()
+        reduce_asset_position()
         activate_vault()
         invest_in_vault()
         redeem_from_vault()
@@ -2819,7 +2819,7 @@ pub enum Event {
     #[flat]
     PositionsEvent: Positions::Event,
     Deleverage: events::Deleverage,
-    InactiveAssetPositionReduced: events::InactiveAssetPositionReduced,
+    AssetPositionReduced: events::AssetPositionReduced,
     Liquidate: events::Liquidate,
     Trade: events::Trade,
     Withdraw: events::Withdraw,
@@ -2974,11 +2974,11 @@ pub struct Deleverage {
 }
 ```
 
-#### InactiveAssetPositionReduced
+#### AssetPositionReduced
 
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
-pub struct InactiveAssetPositionReduced {
+pub struct AssetPositionReduced {
     #[key]
     pub position_id_a: PositionId,
     #[key]
@@ -3615,19 +3615,18 @@ Only the Operator can execute.
 - POSITION_IS_NOT_HEALTHIER
 - POSITION_NOT_HEALTHY_NOR_HEALTHIER
 
-#### InactiveAssetPositionReduced
+#### ReduceAssetPosition
 
 When a position `a` has a positive amount of an inactive asset, the system can match with a position `b` which has a negative amount of inactive asset, both without position’s signature, to clean inactive assets from the system.
 
 ```rust
-fn reduce_inactive_asset_position(
+fn reduce_asset_position(
     ref self: ContractState,
     operator_nonce: u64,
-    position_a: PositionId,
-    position_b: PositionId,
+    position_id_a: PositionId,
+    position_id_b: PositionId,
     base_asset_id: AssetId,
     base_amount_a: i64,
-    quote_amount_a: i64,
 )
 ```
 
@@ -3644,20 +3643,20 @@ Only the Operator can execute.
 5. [Price validation](#price)
 6. `position_a != position_b`
 7. `base_asset_id` must be a registered inactive synthetic asset.
-8. `base_amount_a` and `quote_amount_a` have opposite signs.
-9. `position_a.balance` decreases in magnitude after the change: `|base_amount_a|` must not exceed `|position_a.balance|`, and both should have the same sign.
-10. `position_b.balance` decreases in magnitude after the change: `|base_amount_a|` must not exceed `|position_b.balance|`, and both should have opposite sign.
+8. `position_id_a.balance` decreases in magnitude after the change: `|base_amount_a|` must not exceed `|position_id_a.balance|`, and both should have the same sign.
+9. `position_id_b.balance` decreases in magnitude after the change: `|base_amount_a|` must not exceed `|position_id_b.balance|`, and both should have opposite sign.
 
 **Logic:**
 
 1. Run validations
-2. `positions[position_a].syntethic_assets[base_asset_id] += base_amount_a`
-3. `positions[position_b].syntethic_assets[base_asset_id] -= base_amount_a`
-4. Add `quote_amount_a` to the `position_a` collateral.
-5. Subtract `quote_amount_a` from the `position_b` collateral.
+2. Calculate `quote_amount_a = -1 * price(base_asset_id) * base_amount_a`
+3. `positions[position_id_a].syntethic_assets[base_asset_id] += base_amount_a`
+4. `positions[position_id_b].syntethic_assets[base_asset_id] -= base_amount_a`
+5. Add `quote_amount_a` to the `position_id_a` collateral.
+6. Subtract `quote_amount_a` from the `position_id_b` collateral.
 
 **Emits:**
-[InactiveAssetPositionReduced](#inactiveassetpositionreduced)
+[AssetPositionReduced](#assetpositionreduced)
 
 **Errors:**
 
@@ -3686,11 +3685,12 @@ Transfer into vault is called by the operator after a user deposited an amount h
 
 ```rust
 fn invest_in_vault(
-    ref self: TContractState,
+    ref self: ContractState,
     operator_nonce: u64,
     signature: Signature,
     order: LimitOrder,
-);
+    correlation_id: felt252,
+)
 ```
 
 **Access Control:**
@@ -3794,7 +3794,7 @@ Withdraw from vault is called by the operator to let the user "cash out" his vau
 
 ```rust
 fn liquidate_vault_shares(
-    ref self: TContractState,
+    ref self: ContractState,
     operator_nonce: u64,
     liquidated_position_id: PositionId,
     vault_approval: LimitOrder,
