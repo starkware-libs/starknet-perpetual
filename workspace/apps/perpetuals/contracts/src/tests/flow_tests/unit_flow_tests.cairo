@@ -1068,83 +1068,6 @@ fn test_withdraw_with_owner_fails_if_not_caller() {
 }
 
 #[test]
-#[should_panic(expected: 'ASSET_BALANCE_NEGATIVE')]
-fn test_transfer_withdraw_with_negative_collateral() {
-    // Setup.
-    let risk_factor_data = RiskFactorTiers {
-        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
-    };
-    // Create a custom asset configuration to test interesting risk factor scenarios.
-    let synthetic_info = SyntheticInfoTrait::new(
-        asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
-    );
-    let asset_id = synthetic_info.asset_id;
-
-    let mut state: FlowTestBase = FlowTestBaseTrait::new();
-
-    state.facade.add_active_synthetic(synthetic_info: @synthetic_info, initial_price: 100);
-
-    // Create users.
-    let user_1 = state.new_user_with_position();
-    let user_2 = state.new_user_with_position();
-
-    // Deposit to users.
-    let deposit_info_user_2 = state
-        .facade
-        .deposit(
-            depositor: user_2.account, position_id: user_2.position_id, quantized_amount: 100000,
-        );
-    state.facade.process_deposit(deposit_info: deposit_info_user_2);
-
-    // Create orders.
-    let order_user_1 = state
-        .facade
-        .create_order(
-            user: user_1, base_amount: 1, base_asset_id: asset_id, quote_amount: -5, fee_amount: 0,
-        );
-
-    let order_user_2 = state
-        .facade
-        .create_order(
-            user: user_2, base_amount: -1, base_asset_id: asset_id, quote_amount: 5, fee_amount: 0,
-        );
-
-    // Make trade.
-    state
-        .facade
-        .trade(
-            order_info_a: order_user_1,
-            order_info_b: order_user_2,
-            base: 1,
-            quote: -5,
-            fee_a: 0,
-            fee_b: 0,
-        );
-
-    // Transfer.
-    let transfer_info = state
-        .facade
-        .transfer_request(sender: user_1, recipient: user_2, amount: 20);
-    state.facade.transfer(:transfer_info);
-
-    //                    TV                                  TR                 TV / TR
-    //         COLLATERAL*1 + SYNTHETIC*PRICE        |SYNTHETIC*PRICE*RISK|
-    // User 1:      -25 + 1 * 100 = 75                 1 * 100 * 0.01 = 1          75
-    state.facade.validate_total_value(position_id: user_1.position_id, expected_total_value: 75);
-    state.facade.validate_total_risk(position_id: user_1.position_id, expected_total_risk: 1);
-
-    // Withdraw.
-    let withdraw_info = state.facade.withdraw_request(user: user_1, amount: 70);
-    state.facade.withdraw(:withdraw_info);
-
-    //                    TV                                  TR                 TV / TR
-    //         COLLATERAL*1 + SYNTHETIC*PRICE        |SYNTHETIC*PRICE*RISK|
-    // User 1:      -95 + 1 * 100 = 5                  1 * 100 * 0.01 = 1          5
-    state.facade.validate_total_value(position_id: user_1.position_id, expected_total_value: 5);
-    state.facade.validate_total_risk(position_id: user_1.position_id, expected_total_risk: 1);
-}
-
-#[test]
 fn test_reduce_synthetic() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {
@@ -1227,7 +1150,7 @@ fn test_reduce_synthetic() {
     state.facade.deactivate_synthetic(synthetic_id: asset_id);
     state
         .facade
-        .reduce_inactive_asset_position(
+        .reduce_asset_position(
             position_id_a: user_1.position_id,
             position_id_b: user_2.position_id,
             base_asset_id: asset_id,

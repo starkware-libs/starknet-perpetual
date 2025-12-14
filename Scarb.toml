@@ -10,7 +10,7 @@ starkware_utils = { git = "https://github.com/starkware-libs/starkware-starknet-
 starkware_utils_testing = { git = "https://github.com/starkware-libs/starkware-starknet-utils", branch = "oz-3.0.0-alpha.2" }
 
 [scripts]
-test = "snforge test --max-n-steps 10000000000"
+test = "snforge test --run-native"
 
 [profile.dev.cairo]
 unstable-add-statements-code-locations-debug-info = true
