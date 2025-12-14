@@ -16,6 +16,9 @@ jobs:
         with:
           scarb-version: "2.12.2"
 
+      - name: Build Contracts
+        run: scarb build
+
       - name: Install cairo-coverage
         run: |
           curl -L https://raw.githubusercontent.com/software-mansion/cairo-coverage/main/scripts/install.sh | sh

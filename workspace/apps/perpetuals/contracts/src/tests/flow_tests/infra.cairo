@@ -403,7 +403,7 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
             );
     }
 
-    fn reduce_inactive_asset_position(
+    fn reduce_asset_position(
         ref self: FlowTestExtended, asset: felt252, user_a: User, user_b: User,
     ) {
         let synthetic_info = self.synthetics.get(asset).deref();
@@ -433,7 +433,7 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
         self
             .flow_test_base
             .facade
-            .reduce_inactive_asset_position(
+            .reduce_asset_position(
                 position_id_a: user_a.position_id,
                 position_id_b: user_b.position_id,
                 base_asset_id: synthetic_info.asset_id,

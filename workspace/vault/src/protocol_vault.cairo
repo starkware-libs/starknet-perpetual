@@ -18,6 +18,9 @@ pub mod ProtocolVault {
         ONLY_PERPS_CAN_DEPOSIT, ONLY_PERPS_CAN_OWN, ONLY_PERPS_CAN_RECEIVE, ONLY_PERPS_CAN_WITHDRAW,
     };
     use vault::interface::IProtocolVault;
+
+    const SCALE: u64 = 1000000_u64;
+
     component!(path: ERC4626Component, storage: erc4626, event: ERC4626Event);
     component!(path: ERC20Component, storage: erc20, event: ERC20Event);
 
@@ -67,6 +70,7 @@ pub mod ProtocolVault {
         perps_contract: ContractAddress,
         owning_position_id: u32,
         recipient: ContractAddress,
+        initial_price: u64,
     ) -> u256 {
         assert(perps_contract.is_non_zero(), INVALID_ZERO_ADDRESS);
         assert(owning_position_id.is_non_zero(), INVALID_ZERO_POSITION_ID);
@@ -77,7 +81,8 @@ pub mod ProtocolVault {
         let total_assets = self.erc4626.get_total_assets();
         assert(total_assets > 0_u256, 'INITIAL_ASSETS_MUST_BE_POSITIVE');
         assert(recipient != perps_contract, 'RECIPIENT_CANNOT_BE_PERPS');
-        self.erc20.mint(recipient, total_assets);
+        let amount_to_mint = (total_assets * SCALE.into()) / initial_price.into();
+        self.erc20.mint(recipient, amount_to_mint);
         return total_assets;
     }
 
