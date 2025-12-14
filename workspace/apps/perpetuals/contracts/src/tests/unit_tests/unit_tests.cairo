@@ -20,8 +20,9 @@ use perpetuals::core::interface::{
     ICore, ICoreDispatcher, ICoreDispatcherTrait, ICoreSafeDispatcher, ICoreSafeDispatcherTrait,
 };
 use perpetuals::core::types::asset::AssetStatus;
+use perpetuals::core::types::balance::BalanceTrait;
 use perpetuals::core::types::funding::{FUNDING_SCALE, FundingIndex, FundingTick};
-use perpetuals::core::types::order::Order;
+use perpetuals::core::types::order::{ForcedTrade, Order};
 use perpetuals::core::types::position::{POSITION_VERSION, PositionMutableTrait};
 use perpetuals::core::types::price::{
     PRICE_SCALE, PriceTrait, SignedPrice, convert_oracle_to_perps_price,
@@ -67,8 +68,12 @@ use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
 use starkware_utils_testing::test_utils::{
     Deployable, TokenTrait, assert_panic_with_felt_error, cheat_caller_address_once,
 };
-use crate::tests::event_test_utils::assert_add_spot_event_with_expected;
+use crate::tests::event_test_utils::{
+    assert_add_spot_event_with_expected, assert_forced_trade_event_with_expected,
+    assert_forced_trade_request_event_with_expected,
+};
 use crate::tests::test_utils::init_state;
+
 
 #[test]
 fn test_constructor() {
@@ -5462,4 +5467,589 @@ fn test_price_tick_vault_share_asset() {
     let data = state.assets.get_timely_data(vault_share_id);
     assert!(data.last_price_update == new_time);
     assert!(data.price.value() == expected_price.value());
+}
+
+// Forced trade tests.
+
+#[test]
+fn test_successful_forced_trade_request() {
+    // Setup state, token and users:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+
+    let user_a = Default::default();
+    init_position(cfg: @cfg, ref :state, user: user_a);
+
+    let user_b = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
+    init_position(cfg: @cfg, ref :state, user: user_b);
+
+    // Fund user_a for premium cost
+    let premium_cost: u64 = PREMIUM_COST;
+    let quantum: u64 = cfg.collateral_cfg.quantum;
+    let premium_amount: u128 = premium_cost.into() * quantum.into();
+    token_state.fund(recipient: user_a.address, amount: USER_INIT_BALANCE.try_into().unwrap());
+    token_state.approve(owner: user_a.address, spender: test_address(), amount: premium_amount);
+
+    // Setup parameters:
+    let expiration = Time::now().add(delta: Time::days(1));
+    let collateral_id = cfg.collateral_cfg.collateral_id;
+    let synthetic_id = cfg.synthetic_cfg.synthetic_id;
+
+    let order_a = Order {
+        position_id: user_a.position_id,
+        salt: user_a.salt_counter,
+        base_asset_id: synthetic_id,
+        base_amount: 10,
+        quote_asset_id: collateral_id,
+        quote_amount: -5,
+        fee_asset_id: collateral_id,
+        fee_amount: 0,
+        expiration,
+    };
+
+    let order_b = Order {
+        position_id: user_b.position_id,
+        base_asset_id: synthetic_id,
+        base_amount: -10,
+        quote_asset_id: collateral_id,
+        quote_amount: 5,
+        fee_asset_id: collateral_id,
+        fee_amount: 0,
+        expiration,
+        salt: user_b.salt_counter,
+    };
+
+    // Compute forced trade hash for signatures
+    let forced_trade = ForcedTrade { order_a, order_b };
+    let hash_a = forced_trade.get_message_hash(user_a.get_public_key());
+    let signature_a = user_a.sign_message(hash_a);
+    let hash_b = forced_trade.get_message_hash(user_b.get_public_key());
+    let signature_b = user_b.sign_message(hash_b);
+
+    let mut spy = snforge_std::spy_events();
+
+    // Test:
+    cheat_caller_address_once(contract_address: test_address(), caller_address: user_a.address);
+    state.forced_trade_request(:signature_a, :signature_b, :order_a, :order_b);
+
+    // Catch the event.
+    let events = spy.get_events().emitted_by(test_address()).events;
+    assert_forced_trade_request_event_with_expected(
+        spied_event: events[0],
+        order_a_position_id: user_a.position_id,
+        order_a_base_asset_id: synthetic_id,
+        order_a_base_amount: 10,
+        order_a_quote_asset_id: collateral_id,
+        order_a_quote_amount: -5,
+        fee_a_asset_id: collateral_id,
+        fee_a_amount: 0,
+        order_b_position_id: user_b.position_id,
+        order_b_base_asset_id: synthetic_id,
+        order_b_base_amount: -10,
+        order_b_quote_asset_id: collateral_id,
+        order_b_quote_amount: 5,
+        fee_b_asset_id: collateral_id,
+        fee_b_amount: 0,
+        order_a_hash: order_a.get_message_hash(user_a.get_public_key()),
+        order_b_hash: order_b.get_message_hash(user_b.get_public_key()),
+    );
+
+    // Check premium was transferred
+    validate_balance(
+        token_state, user_a.address, (USER_INIT_BALANCE - premium_amount).try_into().unwrap(),
+    );
+}
+
+#[test]
+fn test_successful_forced_trade_after_timelock() {
+    // Setup state, token and users:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+
+    let user_a = Default::default();
+    init_position(cfg: @cfg, ref :state, user: user_a);
+    add_synthetic_to_position(
+        ref :state,
+        synthetic_id: cfg.synthetic_cfg.synthetic_id,
+        position_id: user_a.position_id,
+        balance: SYNTHETIC_BALANCE_AMOUNT,
+    );
+
+    let user_b = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
+    init_position(cfg: @cfg, ref :state, user: user_b);
+
+    // Fund user_a for premium cost
+    let premium_cost: u64 = PREMIUM_COST;
+    let quantum: u64 = cfg.collateral_cfg.quantum;
+    let premium_amount: u128 = premium_cost.into() * quantum.into();
+    token_state.fund(recipient: user_a.address, amount: USER_INIT_BALANCE.try_into().unwrap());
+    token_state.approve(owner: user_a.address, spender: test_address(), amount: premium_amount);
+
+    // Setup parameters:
+    let expiration = Time::now().add(delta: Time::days(FORCED_ACTION_TIMELOCK * 2));
+    let collateral_id = cfg.collateral_cfg.collateral_id;
+    let synthetic_id = cfg.synthetic_cfg.synthetic_id;
+
+    let order_a = Order {
+        position_id: user_a.position_id,
+        salt: user_a.salt_counter,
+        base_asset_id: synthetic_id,
+        base_amount: -10,
+        quote_asset_id: collateral_id,
+        quote_amount: 5,
+        fee_asset_id: collateral_id,
+        fee_amount: 0,
+        expiration,
+    };
+
+    let order_b = Order {
+        position_id: user_b.position_id,
+        base_asset_id: synthetic_id,
+        base_amount: 10,
+        quote_asset_id: collateral_id,
+        quote_amount: -5,
+        fee_asset_id: collateral_id,
+        fee_amount: 0,
+        expiration,
+        salt: user_b.salt_counter,
+    };
+
+    // Request forced trade
+    let forced_trade = ForcedTrade { order_a, order_b };
+    let hash_a = forced_trade.get_message_hash(user_a.get_public_key());
+    let signature_a = user_a.sign_message(hash_a);
+    let hash_b = forced_trade.get_message_hash(user_b.get_public_key());
+    let signature_b = user_b.sign_message(hash_b);
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: user_a.address);
+    state.forced_trade_request(:signature_a, :signature_b, :order_a, :order_b);
+
+    // Check premium was deducted from user_a's token balance
+    validate_balance(
+        token_state, user_a.address, (USER_INIT_BALANCE - premium_amount).try_into().unwrap(),
+    );
+
+    // Wait for timelock
+    let timelock = FORCED_ACTION_TIMELOCK;
+    start_cheat_block_timestamp_global(
+        block_timestamp: Time::now().add(delta: Time::seconds(timelock)).into(),
+    );
+
+    let mut spy = snforge_std::spy_events();
+
+    // Test: Execute forced trade after timelock
+    cheat_caller_address_once(contract_address: test_address(), caller_address: user_b.address);
+    state.forced_trade(:order_a, :order_b);
+
+    // Catch the event.
+    let events = spy.get_events().emitted_by(test_address()).events;
+    assert_forced_trade_event_with_expected(
+        // _execute_trade emits a Trade event first, then forced_trade emits ForcedTrade event
+        spied_event: events[1],
+        order_a_position_id: user_a.position_id,
+        order_a_base_asset_id: synthetic_id,
+        order_a_base_amount: -10,
+        order_a_quote_asset_id: collateral_id,
+        order_a_quote_amount: 5,
+        fee_a_asset_id: collateral_id,
+        fee_a_amount: 0,
+        order_b_position_id: user_b.position_id,
+        order_b_base_asset_id: synthetic_id,
+        order_b_base_amount: 10,
+        order_b_quote_asset_id: collateral_id,
+        order_b_quote_amount: -5,
+        fee_b_asset_id: collateral_id,
+        fee_b_amount: 0,
+        actual_amount_base_a: -10,
+        actual_amount_quote_a: 5,
+        order_a_hash: order_a.get_message_hash(user_a.get_public_key()),
+        order_b_hash: order_b.get_message_hash(user_b.get_public_key()),
+    );
+
+    // Check balances
+    let position_a = state.positions.get_position_snapshot(position_id: user_a.position_id);
+    let user_a_synthetic_balance = state
+        .positions
+        .get_synthetic_balance(position: position_a, :synthetic_id);
+    assert!(user_a_synthetic_balance == (SYNTHETIC_BALANCE_AMOUNT - 10).into());
+
+    let user_a_collateral_balance = state
+        .positions
+        .get_collateral_provisional_balance(position: position_a, provisional_delta: Option::None);
+    assert!(
+        user_a_collateral_balance == (COLLATERAL_BALANCE_AMOUNT.into()
+            + order_a.quote_amount.into()),
+    );
+
+    let position_b = state.positions.get_position_snapshot(position_id: user_b.position_id);
+    let user_b_synthetic_balance = state
+        .positions
+        .get_synthetic_balance(position: position_b, :synthetic_id);
+    assert!(user_b_synthetic_balance == BalanceTrait::new(value: 10));
+
+    let user_b_collateral_balance = state
+        .positions
+        .get_collateral_provisional_balance(position: position_b, provisional_delta: Option::None);
+    assert!(
+        user_b_collateral_balance == (COLLATERAL_BALANCE_AMOUNT.into()
+            + order_b.quote_amount.into()),
+    );
+}
+
+#[test]
+#[should_panic(expected: 'REQUEST_ALREADY_PROCESSED')]
+fn test_forced_trade_user_after_operator_executed() {
+    // Setup state, token and users:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+
+    let user_a = Default::default();
+    init_position(cfg: @cfg, ref :state, user: user_a);
+    add_synthetic_to_position(
+        ref :state,
+        synthetic_id: cfg.synthetic_cfg.synthetic_id,
+        position_id: user_a.position_id,
+        balance: SYNTHETIC_BALANCE_AMOUNT,
+    );
+
+    let user_b = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
+    init_position(cfg: @cfg, ref :state, user: user_b);
+
+    // Fund user_a for premium cost
+    let premium_cost: u64 = PREMIUM_COST;
+    let quantum: u64 = cfg.collateral_cfg.quantum;
+    let premium_amount: u128 = premium_cost.into() * quantum.into();
+    token_state.fund(recipient: user_a.address, amount: USER_INIT_BALANCE.try_into().unwrap());
+    token_state.approve(owner: user_a.address, spender: test_address(), amount: premium_amount);
+
+    // Setup parameters with long expiration so it remains valid after timelock.
+    let expiration = Time::now().add(delta: Time::days(FORCED_ACTION_TIMELOCK * 2));
+    let collateral_id = cfg.collateral_cfg.collateral_id;
+    let synthetic_id = cfg.synthetic_cfg.synthetic_id;
+
+    let order_a = Order {
+        position_id: user_a.position_id,
+        salt: user_a.salt_counter,
+        base_asset_id: synthetic_id,
+        base_amount: -10,
+        quote_asset_id: collateral_id,
+        quote_amount: 5,
+        fee_asset_id: collateral_id,
+        fee_amount: 0,
+        expiration,
+    };
+
+    let order_b = Order {
+        position_id: user_b.position_id,
+        base_asset_id: synthetic_id,
+        base_amount: 10,
+        quote_asset_id: collateral_id,
+        quote_amount: -5,
+        fee_asset_id: collateral_id,
+        fee_amount: 0,
+        expiration,
+        salt: user_b.salt_counter,
+    };
+
+    // Request forced trade
+    let forced_trade = ForcedTrade { order_a, order_b };
+    let hash_a = forced_trade.get_message_hash(user_a.get_public_key());
+    let signature_a = user_a.sign_message(hash_a);
+    let hash_b = forced_trade.get_message_hash(user_b.get_public_key());
+    let signature_b = user_b.sign_message(hash_b);
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: user_a.address);
+    state.forced_trade_request(:signature_a, :signature_b, :order_a, :order_b);
+
+    // Operator executes forced trade first (allowed before timelock).
+    cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.operator);
+    state.forced_trade(:order_a, :order_b);
+
+    // After timelock the user tries to execute the same forced trade again.
+    let timelock = FORCED_ACTION_TIMELOCK;
+    start_cheat_block_timestamp_global(
+        block_timestamp: Time::now().add(delta: Time::seconds(timelock)).into(),
+    );
+    cheat_caller_address_once(contract_address: test_address(), caller_address: user_b.address);
+    state.forced_trade(:order_a, :order_b);
+}
+
+#[test]
+fn test_successful_forced_trade_by_operator_before_timelock() {
+    // Setup state, token and users:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+
+    let user_a = Default::default();
+    init_position(cfg: @cfg, ref :state, user: user_a);
+    add_synthetic_to_position(
+        ref :state,
+        synthetic_id: cfg.synthetic_cfg.synthetic_id,
+        position_id: user_a.position_id,
+        balance: SYNTHETIC_BALANCE_AMOUNT,
+    );
+
+    let user_b = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
+    init_position(cfg: @cfg, ref :state, user: user_b);
+
+    // Fund user_a for premium cost
+    let premium_cost: u64 = PREMIUM_COST;
+    let quantum: u64 = cfg.collateral_cfg.quantum;
+    let premium_amount: u128 = premium_cost.into() * quantum.into();
+    token_state.fund(recipient: user_a.address, amount: USER_INIT_BALANCE.try_into().unwrap());
+    token_state.approve(owner: user_a.address, spender: test_address(), amount: premium_amount);
+
+    // Setup parameters:
+    let expiration = Time::now().add(delta: Time::days(1));
+    let collateral_id = cfg.collateral_cfg.collateral_id;
+    let synthetic_id = cfg.synthetic_cfg.synthetic_id;
+
+    let order_a = Order {
+        position_id: user_a.position_id,
+        salt: user_a.salt_counter,
+        base_asset_id: synthetic_id,
+        base_amount: -10,
+        quote_asset_id: collateral_id,
+        quote_amount: 5,
+        fee_asset_id: collateral_id,
+        fee_amount: 0,
+        expiration,
+    };
+
+    let order_b = Order {
+        position_id: user_b.position_id,
+        base_asset_id: synthetic_id,
+        base_amount: 10,
+        quote_asset_id: collateral_id,
+        quote_amount: -5,
+        fee_asset_id: collateral_id,
+        fee_amount: 0,
+        expiration,
+        salt: user_b.salt_counter,
+    };
+
+    // Request forced trade
+    let forced_trade = ForcedTrade { order_a, order_b };
+    let hash_a = forced_trade.get_message_hash(user_a.get_public_key());
+    let signature_a = user_a.sign_message(hash_a);
+    let hash_b = forced_trade.get_message_hash(user_b.get_public_key());
+    let signature_b = user_b.sign_message(hash_b);
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: user_a.address);
+    state.forced_trade_request(:signature_a, :signature_b, :order_a, :order_b);
+
+    // Test: Operator can execute before timelock
+    cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.operator);
+    state.forced_trade(:order_a, :order_b);
+}
+
+#[test]
+#[should_panic(expected: 'REQUEST_ALREADY_PROCESSED')]
+fn test_forced_trade_operator_after_user_executed() {
+    // Setup state, token and users:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+
+    let user_a = Default::default();
+    init_position(cfg: @cfg, ref :state, user: user_a);
+    add_synthetic_to_position(
+        ref :state,
+        synthetic_id: cfg.synthetic_cfg.synthetic_id,
+        position_id: user_a.position_id,
+        balance: SYNTHETIC_BALANCE_AMOUNT,
+    );
+
+    let user_b = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
+    init_position(cfg: @cfg, ref :state, user: user_b);
+
+    // Fund user_a for premium cost
+    let premium_cost: u64 = PREMIUM_COST;
+    let quantum: u64 = cfg.collateral_cfg.quantum;
+    let premium_amount: u128 = premium_cost.into() * quantum.into();
+    token_state.fund(recipient: user_a.address, amount: USER_INIT_BALANCE.try_into().unwrap());
+    token_state.approve(owner: user_a.address, spender: test_address(), amount: premium_amount);
+
+    // Setup parameters with long expiration so it remains valid after timelock.
+    let expiration = Time::now().add(delta: Time::days(FORCED_ACTION_TIMELOCK * 2));
+    let collateral_id = cfg.collateral_cfg.collateral_id;
+    let synthetic_id = cfg.synthetic_cfg.synthetic_id;
+
+    let order_a = Order {
+        position_id: user_a.position_id,
+        salt: user_a.salt_counter,
+        base_asset_id: synthetic_id,
+        base_amount: -10,
+        quote_asset_id: collateral_id,
+        quote_amount: 5,
+        fee_asset_id: collateral_id,
+        fee_amount: 0,
+        expiration,
+    };
+
+    let order_b = Order {
+        position_id: user_b.position_id,
+        base_asset_id: synthetic_id,
+        base_amount: 10,
+        quote_asset_id: collateral_id,
+        quote_amount: -5,
+        fee_asset_id: collateral_id,
+        fee_amount: 0,
+        expiration,
+        salt: user_b.salt_counter,
+    };
+
+    // Request forced trade
+    let forced_trade = ForcedTrade { order_a, order_b };
+    let hash_a = forced_trade.get_message_hash(user_a.get_public_key());
+    let signature_a = user_a.sign_message(hash_a);
+    let hash_b = forced_trade.get_message_hash(user_b.get_public_key());
+    let signature_b = user_b.sign_message(hash_b);
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: user_a.address);
+    state.forced_trade_request(:signature_a, :signature_b, :order_a, :order_b);
+
+    // Non-operator user executes forced trade after timelock.
+    let timelock = FORCED_ACTION_TIMELOCK;
+    start_cheat_block_timestamp_global(
+        block_timestamp: Time::now().add(delta: Time::seconds(timelock)).into(),
+    );
+    cheat_caller_address_once(contract_address: test_address(), caller_address: user_b.address);
+    state.forced_trade(:order_a, :order_b);
+
+    // Operator tries to execute the same forced trade again.
+    cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.operator);
+    state.forced_trade(:order_a, :order_b);
+}
+
+#[test]
+#[should_panic(expected: 'FORCED_WAIT_REQUIRED')]
+fn test_forced_trade_before_timelock_non_operator() {
+    // Setup state, token and users:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+
+    let user_a = Default::default();
+    init_position(cfg: @cfg, ref :state, user: user_a);
+
+    let user_b = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
+    init_position(cfg: @cfg, ref :state, user: user_b);
+
+    // Fund user_a for premium cost
+    let premium_cost: u64 = PREMIUM_COST;
+    let quantum: u64 = cfg.collateral_cfg.quantum;
+    let premium_amount: u128 = premium_cost.into() * quantum.into();
+    token_state.fund(recipient: user_a.address, amount: USER_INIT_BALANCE.try_into().unwrap());
+    token_state.approve(owner: user_a.address, spender: test_address(), amount: premium_amount);
+
+    // Setup parameters:
+    let expiration = Time::now().add(delta: Time::days(1));
+    let collateral_id = cfg.collateral_cfg.collateral_id;
+    let synthetic_id = cfg.synthetic_cfg.synthetic_id;
+
+    let order_a = Order {
+        position_id: user_a.position_id,
+        salt: user_a.salt_counter,
+        base_asset_id: synthetic_id,
+        base_amount: -10,
+        quote_asset_id: collateral_id,
+        quote_amount: 5,
+        fee_asset_id: collateral_id,
+        fee_amount: 0,
+        expiration,
+    };
+
+    let order_b = Order {
+        position_id: user_b.position_id,
+        base_asset_id: synthetic_id,
+        base_amount: 10,
+        quote_asset_id: collateral_id,
+        quote_amount: -5,
+        fee_asset_id: collateral_id,
+        fee_amount: 0,
+        expiration,
+        salt: user_b.salt_counter,
+    };
+
+    // Request forced trade
+    let forced_trade = ForcedTrade { order_a, order_b };
+    let hash_a = forced_trade.get_message_hash(user_a.get_public_key());
+    let signature_a = user_a.sign_message(hash_a);
+    let hash_b = forced_trade.get_message_hash(user_b.get_public_key());
+    let signature_b = user_b.sign_message(hash_b);
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: user_a.address);
+    state.forced_trade_request(:signature_a, :signature_b, :order_a, :order_b);
+
+    // Test: Try to execute before timelock (non-operator)
+    cheat_caller_address_once(contract_address: test_address(), caller_address: user_b.address);
+    state.forced_trade(:order_a, :order_b);
+}
+
+#[test]
+#[should_panic(expected: 'ERC20: insufficient balance')]
+fn test_forced_trade_request_insufficient_premium() {
+    // Setup state, token and users:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+
+    let user_a = Default::default();
+    init_position(cfg: @cfg, ref :state, user: user_a);
+
+    let user_b = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
+    init_position(cfg: @cfg, ref :state, user: user_b);
+
+    // Don't fund user_a or approve insufficient amount
+    let quantum = cfg.collateral_cfg.quantum;
+    let insufficient_amount = (PREMIUM_COST - 1).into() * quantum.into();
+    token_state.fund(recipient: user_a.address, amount: insufficient_amount);
+    token_state
+        .approve(
+            owner: user_a.address, spender: test_address(), amount: (PREMIUM_COST * quantum).into(),
+        );
+
+    // Setup parameters:
+    let expiration = Time::now().add(delta: Time::days(1));
+    let collateral_id = cfg.collateral_cfg.collateral_id;
+    let synthetic_id = cfg.synthetic_cfg.synthetic_id;
+
+    let order_a = Order {
+        position_id: user_a.position_id,
+        salt: user_a.salt_counter,
+        base_asset_id: synthetic_id,
+        base_amount: 10,
+        quote_asset_id: collateral_id,
+        quote_amount: -5,
+        fee_asset_id: collateral_id,
+        fee_amount: 0,
+        expiration,
+    };
+
+    let order_b = Order {
+        position_id: user_b.position_id,
+        base_asset_id: synthetic_id,
+        base_amount: -10,
+        quote_asset_id: collateral_id,
+        quote_amount: 5,
+        fee_asset_id: collateral_id,
+        fee_amount: 0,
+        expiration,
+        salt: user_b.salt_counter,
+    };
+
+    let forced_trade = ForcedTrade { order_a, order_b };
+    let hash_a = forced_trade.get_message_hash(user_a.get_public_key());
+    let signature_a = user_a.sign_message(hash_a);
+    let hash_b = forced_trade.get_message_hash(user_b.get_public_key());
+    let signature_b = user_b.sign_message(hash_b);
+
+    // Test:
+    cheat_caller_address_once(contract_address: test_address(), caller_address: user_a.address);
+    state.forced_trade_request(:signature_a, :signature_b, :order_a, :order_b);
 }

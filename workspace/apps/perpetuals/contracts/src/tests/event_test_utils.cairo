@@ -595,3 +595,97 @@ pub fn assert_update_asset_quorum_event_with_expected(
         expected_event_name: "AssetQuorumUpdated",
     );
 }
+
+pub fn assert_forced_trade_request_event_with_expected(
+    spied_event: @(ContractAddress, Event),
+    order_a_position_id: PositionId,
+    order_a_base_asset_id: AssetId,
+    order_a_base_amount: i64,
+    order_a_quote_asset_id: AssetId,
+    order_a_quote_amount: i64,
+    fee_a_asset_id: AssetId,
+    fee_a_amount: u64,
+    order_b_position_id: PositionId,
+    order_b_base_asset_id: AssetId,
+    order_b_base_amount: i64,
+    order_b_quote_asset_id: AssetId,
+    order_b_quote_amount: i64,
+    fee_b_asset_id: AssetId,
+    fee_b_amount: u64,
+    order_a_hash: felt252,
+    order_b_hash: felt252,
+) {
+    let expected_event = events::ForcedTradeRequest {
+        order_a_position_id,
+        order_a_base_asset_id,
+        order_a_base_amount,
+        order_a_quote_asset_id,
+        order_a_quote_amount,
+        fee_a_asset_id,
+        fee_a_amount,
+        order_b_position_id,
+        order_b_base_asset_id,
+        order_b_base_amount,
+        order_b_quote_asset_id,
+        order_b_quote_amount,
+        fee_b_asset_id,
+        fee_b_amount,
+        order_a_hash,
+        order_b_hash,
+    };
+    assert_expected_event_emitted(
+        :spied_event,
+        :expected_event,
+        expected_event_selector: @selector!("ForcedTradeRequest"),
+        expected_event_name: "ForcedTradeRequest",
+    );
+}
+
+pub fn assert_forced_trade_event_with_expected(
+    spied_event: @(ContractAddress, Event),
+    order_a_position_id: PositionId,
+    order_a_base_asset_id: AssetId,
+    order_a_base_amount: i64,
+    order_a_quote_asset_id: AssetId,
+    order_a_quote_amount: i64,
+    fee_a_asset_id: AssetId,
+    fee_a_amount: u64,
+    order_b_position_id: PositionId,
+    order_b_base_asset_id: AssetId,
+    order_b_base_amount: i64,
+    order_b_quote_asset_id: AssetId,
+    order_b_quote_amount: i64,
+    fee_b_asset_id: AssetId,
+    fee_b_amount: u64,
+    actual_amount_base_a: i64,
+    actual_amount_quote_a: i64,
+    order_a_hash: felt252,
+    order_b_hash: felt252,
+) {
+    let expected_event = events::ForcedTrade {
+        order_a_position_id,
+        order_a_base_asset_id,
+        order_a_base_amount,
+        order_a_quote_asset_id,
+        order_a_quote_amount,
+        fee_a_asset_id,
+        fee_a_amount,
+        order_b_position_id,
+        order_b_base_asset_id,
+        order_b_base_amount,
+        order_b_quote_asset_id,
+        order_b_quote_amount,
+        fee_b_asset_id,
+        fee_b_amount,
+        actual_amount_base_a,
+        actual_amount_quote_a,
+        order_a_hash,
+        order_b_hash,
+    };
+    assert_expected_event_emitted(
+        :spied_event,
+        :expected_event,
+        expected_event_selector: @selector!("ForcedTrade"),
+        expected_event_name: "ForcedTrade",
+    );
+}
