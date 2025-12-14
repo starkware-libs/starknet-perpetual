@@ -15,9 +15,8 @@ pub struct ConvertPositionToVault {
     pub expiration: Timestamp,
 }
 
-pub const CONVERT_POSITION_TO_VAULT_TYPE_HASH: HashType = selector!(
-    "\"ConvertPositionToVault\"(\"position_to_convert\":\"PositionId\",\"vault_asset_id\":\"AssetId\",\"expiration\":\"Timestamp\")\"PositionId\"(\"value\":\"u32\")\"AssetId\"(\"value\":\"felt\")\"Timestamp\"(\"seconds\":\"u64\")",
-);
+pub const CONVERT_POSITION_TO_VAULT_TYPE_HASH: HashType =
+    0x0396cc61261bfb7db643acb8cfabec346b46d4517649c10a2f6020b606bbc7f8;
 
 impl StructHashImpl of StructHash<ConvertPositionToVault> {
     fn hash_struct(self: @ConvertPositionToVault) -> HashType {

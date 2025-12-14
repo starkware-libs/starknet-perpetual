@@ -81,7 +81,7 @@ pub struct Liquidate {
 }
 
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
-pub struct InactiveAssetPositionReduced {
+pub struct AssetPositionReduced {
     #[key]
     pub position_id_a: PositionId,
     #[key]

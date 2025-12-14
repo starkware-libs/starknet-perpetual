@@ -1068,7 +1068,6 @@ fn test_withdraw_with_owner_fails_if_not_caller() {
 }
 
 #[test]
-#[should_panic(expected: 'ASSET_BALANCE_NEGATIVE')]
 fn test_transfer_withdraw_with_negative_collateral() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {
@@ -1227,7 +1226,7 @@ fn test_reduce_synthetic() {
     state.facade.deactivate_synthetic(synthetic_id: asset_id);
     state
         .facade
-        .reduce_inactive_asset_position(
+        .reduce_asset_position(
             position_id_a: user_1.position_id,
             position_id_b: user_2.position_id,
             base_asset_id: asset_id,

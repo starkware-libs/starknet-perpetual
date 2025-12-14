@@ -340,12 +340,6 @@ pub(crate) mod TransferManager {
             self
                 .positions
                 .apply_diff(position_id: recipient, position_diff: position_diff_recipient);
-
-            self
-                .positions
-                .validate_asset_balance_is_not_negative(
-                    position: sender_position, asset_id: collateral_id,
-                );
         }
     }
 }
