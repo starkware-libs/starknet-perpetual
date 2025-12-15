@@ -1,5 +1,7 @@
 #[starknet::component]
 pub mod AssetsComponent {
+    use core::dict::{Felt252Dict, Felt252DictTrait};
+    use core::nullable::{FromNullableResult, match_nullable};
     use RolesComponent::InternalTrait as RolesInternalTrait;
     use core::cmp::min;
     use core::num::traits::{Pow, Zero};
@@ -629,10 +631,25 @@ pub mod AssetsComponent {
         /// Returns both the stored price and funding index directly without checking their
         /// existence.
         fn get_price_and_funding_index(
-            self: @ComponentState<TContractState>, asset_id: AssetId,
+            self: @ComponentState<TContractState>,
+            asset_id: AssetId,
+            ref price_and_funding_cache: Felt252Dict<Nullable<(Price, FundingIndex)>>,
         ) -> (Price, FundingIndex) {
-            let entry = self.timely_data.pointer(asset_id);
-            (SyntheticTrait::at_price(entry), SyntheticTrait::at_funding_index(entry))
+            let cached_price_and_funding = price_and_funding_cache.get(asset_id.into());
+
+            match match_nullable(cached_price_and_funding) {
+                FromNullableResult::Null => {
+                    let entry = self.timely_data.pointer(asset_id);
+                    let (price, funding): (Price, FundingIndex) = (
+                        SyntheticTrait::at_price(entry), SyntheticTrait::at_funding_index(entry),
+                    );
+                    price_and_funding_cache
+                        .insert(asset_id.into(), NullableTrait::new((price, funding)));
+                    (price, funding)
+                    // update cache
+                },
+                FromNullableResult::NotNull(value) => value.unbox(),
+            }
         }
 
 

@@ -41,7 +41,10 @@ pub trait IVaultExternal<TContractState> {
 
 #[starknet::contract]
 pub(crate) mod VaultsManager {
-    use core::num::traits::{WideMul, Zero};
+    use crate::core::types::funding::FundingIndex;
+use crate::core::types::price::Price;
+use core::dict::Felt252Dict;
+use core::num::traits::{WideMul, Zero};
     use core::panics::panic_with_byte_array;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::interfaces::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
@@ -268,6 +271,8 @@ pub(crate) mod VaultsManager {
             let sending_position_diff = PositionDiff {
                 collateral_diff: order.quote_amount.into(), asset_diff: Option::None,
             };
+            let mut price_and_funding_cache: Felt252Dict<Nullable<(Price, FundingIndex)>> =
+                    Default::default();
 
             self
                 .positions
@@ -276,6 +281,7 @@ pub(crate) mod VaultsManager {
                     position: sending_position_snapshot,
                     position_diff: sending_position_diff,
                     tvtr_before: Default::default(),
+                    ref price_and_funding_cache: price_and_funding_cache,
                 );
 
             self
@@ -556,6 +562,7 @@ pub(crate) mod VaultsManager {
             };
 
             // vault health checks
+            let mut price_and_funding_cache: Felt252Dict<Nullable<(Price, FundingIndex)>> = Default::default();
             self
                 .positions
                 .validate_healthy_or_healthier_position(
@@ -563,6 +570,7 @@ pub(crate) mod VaultsManager {
                     position: vault_position,
                     position_diff: vault_position_diff,
                     tvtr_before: Default::default(),
+                    ref price_and_funding_cache: price_and_funding_cache,
                 );
 
             self
@@ -591,6 +599,7 @@ pub(crate) mod VaultsManager {
                     position: redeeming_position,
                     position_diff: redeeming_position_diff,
                     tvtr_before: Default::default(),
+                    ref price_and_funding_cache: price_and_funding_cache
                 );
 
             self

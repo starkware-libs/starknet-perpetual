@@ -100,7 +100,10 @@ pub trait IWithdrawalManager<TContractState> {
 
 #[starknet::contract]
 pub(crate) mod WithdrawalManager {
-    use core::num::traits::Zero;
+    use crate::core::types::funding::FundingIndex;
+use crate::core::types::price::Price;
+use core::dict::Felt252Dict;
+use core::num::traits::Zero;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::interfaces::erc20::IERC20DispatcherTrait;
     use openzeppelin::introspection::src5::SRC5Component;
@@ -448,11 +451,13 @@ pub(crate) mod WithdrawalManager {
             let position_diff = PositionDiff {
                 collateral_diff: -amount.into(), asset_diff: Option::None,
             };
+            let mut price_and_funding_cache: Felt252Dict<Nullable<(Price, FundingIndex)>> =
+                    Default::default();
 
             self
                 .positions
                 .validate_healthy_or_healthier_position(
-                    :position_id, :position, :position_diff, tvtr_before: Default::default(),
+                    :position_id, :position, :position_diff, tvtr_before: Default::default(), ref :price_and_funding_cache,
                 );
 
             self.positions.apply_diff(:position_id, :position_diff);
