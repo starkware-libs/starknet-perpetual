@@ -146,10 +146,9 @@ pub mod AssetsComponent {
             for funding_tick in funding_ticks {
                 let synthetic_id = *funding_tick.asset_id;
                 assert(synthetic_id > prev_synthetic_id, FUNDING_TICKS_NOT_SORTED);
-                assert(
-                    self._get_asset_config(:synthetic_id).status == AssetStatus::ACTIVE,
-                    SYNTHETIC_NOT_ACTIVE,
-                );
+                let asset_config = self._get_asset_config(:synthetic_id);
+                assert(asset_config.asset_type == AssetType::SYNTHETIC, NOT_SYNTHETIC);
+                assert(asset_config.status == AssetStatus::ACTIVE, SYNTHETIC_NOT_ACTIVE);
                 self
                     ._process_funding_tick(
                         :time_diff,
