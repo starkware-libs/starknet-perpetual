@@ -39,7 +39,7 @@ APP_GOVERNOR_DUMMY_KEY = 3
 RICH_USDC_HOLDER_DUMMY_KEY = 4
 
 # Random block number for the forked network
-FORK_BLOCK = 4095873
+FORK_BLOCK = 4415803
 
 
 def wait_for_devnet(port: int, timeout: int = 60) -> bool:
