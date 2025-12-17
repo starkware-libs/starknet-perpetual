@@ -39,7 +39,7 @@ APP_GOVERNOR_DUMMY_KEY = 3
 RICH_USDC_HOLDER_DUMMY_KEY = 4
 
 # Random block number for the forked network
-FORK_BLOCK = 4095873
+FORK_BLOCK = 4415803
 
 
 def wait_for_devnet(port: int, timeout: int = 60) -> bool:
@@ -132,7 +132,6 @@ def starknet_forked(
         fork_network="https://rpc.starknet.lava.build/",
         fork_block=FORK_BLOCK,
         starknet_chain_id=StarknetChainId.MAINNET,
-        request_body_size_limit=20_000_000,
     ) as val:
         yield val
 

@@ -206,7 +206,7 @@ class PerpetualsTestUtils:
         salt = random.randint(0, MAX_UINT32)
         invocation = (
             await self.account_contracts[account]
-            .functions["deposit"]
+            .functions["deposit_asset"]
             .invoke_v3(
                 formatted_asset_id(await self.get_collateral_asset_id()),
                 formatted_position_id(self.get_account_position_id(account)),
