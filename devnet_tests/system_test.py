@@ -75,7 +75,7 @@ async def test_deposit_withdraw(test_utils: PerpetualsTestUtils):
 
     # Test withdraw
     withdraw_amount = 5
-    expiration = 0x694011CD  # Some future timestamp
+    expiration = 3765971800  # Some future timestamp
     await test_utils.withdraw(account, withdraw_amount, expiration)
 
     # Verify position total value decreased by withdraw amount
