@@ -46,6 +46,7 @@ pub struct SpotAssetAdded {
     pub resolution_factor: u64,
     pub quorum: u8,
     pub contract_address: ContractAddress,
+    pub quantum: u64,
 }
 
 #[derive(Debug, Drop, PartialEq, starknet::Event)]

@@ -4927,6 +4927,7 @@ fn test_successful_add_vault_share_asset() {
         resolution_factor: cfg.vault_share_cfg.resolution_factor,
         quorum: 1_u8,
         contract_address: cfg.vault_share_cfg.contract_address,
+        quantum: 1,
     );
 
     let asset_config = state.assets.get_asset_config(cfg.vault_share_cfg.collateral_id);
@@ -4943,6 +4944,127 @@ fn test_successful_add_vault_share_asset() {
     assert!(asset_config.status == AssetStatus::PENDING);
 }
 
+#[test]
+fn test_successful_add_spot_asset() {
+    // Setup state, token:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut spy = snforge_std::spy_events();
+
+    // Setup test parameters:
+    let spot_asset_id = SYNTHETIC_ASSET_ID_2();
+    let risk_factor_first_tier_boundary = MAX_U128;
+    let risk_factor_tier_size = 1;
+    let risk_factor_tiers = array![10].span();
+    let quorum = 1_u8;
+    let resolution_factor = SYNTHETIC_RESOLUTION_FACTOR;
+    let quantum = 12_u64;
+    let erc20_contract_address = token_state.address;
+
+    // Test:
+    cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.app_governor);
+    state
+        .add_spot_asset(
+            asset_id: spot_asset_id,
+            :erc20_contract_address,
+            :quantum,
+            :resolution_factor,
+            :risk_factor_tiers,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+            :quorum,
+        );
+
+    // Catch the event.
+    let events = spy.get_events().emitted_by(test_address()).events;
+    assert_add_spot_event_with_expected(
+        spied_event: events[0],
+        asset_id: spot_asset_id,
+        risk_factor_tiers: risk_factor_tiers,
+        :risk_factor_first_tier_boundary,
+        :risk_factor_tier_size,
+        :resolution_factor,
+        :quorum,
+        contract_address: erc20_contract_address,
+        :quantum,
+    );
+
+    // Check:
+    let asset_config = state.assets.get_asset_config(spot_asset_id);
+    assert!(asset_config.resolution_factor == resolution_factor);
+    assert!(asset_config.risk_factor_first_tier_boundary == risk_factor_first_tier_boundary);
+    assert!(asset_config.risk_factor_tier_size == risk_factor_tier_size);
+    assert!(asset_config.quorum == quorum);
+    assert!(asset_config.quantum == quantum);
+    assert!(asset_config.status == AssetStatus::PENDING);
+}
+
+#[test]
+#[should_panic(expected: 'INVALID_SPOT_QUANTUM')]
+fn test_unsuccessful_add_spot_asset_zero_quantum() {
+    // Setup state, token:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+
+    // Setup test parameters:
+    let spot_asset_id = SYNTHETIC_ASSET_ID_2();
+    let risk_factor_first_tier_boundary = MAX_U128;
+    let risk_factor_tier_size = 1;
+    let risk_factor_tiers = array![10].span();
+    let quorum = 1_u8;
+    let resolution_factor = SYNTHETIC_RESOLUTION_FACTOR;
+    let quantum = 0_u64;
+    let erc20_contract_address = token_state.address;
+
+    // Test:
+    cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.app_governor);
+    state
+        .add_spot_asset(
+            asset_id: spot_asset_id,
+            :erc20_contract_address,
+            :quantum,
+            :resolution_factor,
+            :risk_factor_tiers,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+            :quorum,
+        );
+}
+
+#[test]
+#[should_panic(expected: 'ASSET_ALREADY_EXISTS')]
+fn test_unsuccessful_add_spot_asset_existing_asset() {
+    // Setup state, token:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+
+    // Use the existing synthetic asset id so that the asset is already registered.
+    let spot_asset_id = cfg.synthetic_cfg.synthetic_id;
+    let risk_factor_first_tier_boundary = MAX_U128;
+    let risk_factor_tier_size = 1;
+    let risk_factor_tiers = array![10].span();
+    let quorum = 1_u8;
+    let resolution_factor = SYNTHETIC_RESOLUTION_FACTOR;
+    let quantum = 1_u64;
+    let erc20_contract_address = token_state.address;
+
+    // Test:
+    cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.app_governor);
+    state
+        .add_spot_asset(
+            asset_id: spot_asset_id,
+            :erc20_contract_address,
+            :quantum,
+            :resolution_factor,
+            :risk_factor_tiers,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+            :quorum,
+        );
+}
 #[test]
 fn test_successful_vault_token_deposit() {
     // Setup state, token and user:

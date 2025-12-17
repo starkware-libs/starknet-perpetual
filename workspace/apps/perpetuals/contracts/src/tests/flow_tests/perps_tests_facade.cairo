@@ -682,6 +682,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             resolution_factor: asset_info.resolution_factor,
             quorum: asset_info.oracles.len().try_into().unwrap(),
             contract_address: vault.contract_address,
+            quantum: 1,
         );
 
         for oracle in asset_info.oracles {

@@ -521,6 +521,7 @@ pub fn assert_add_spot_event_with_expected(
     resolution_factor: u64,
     quorum: u8,
     contract_address: ContractAddress,
+    quantum: u64,
 ) {
     let expected_event = assets_events::SpotAssetAdded {
         asset_id,
@@ -530,6 +531,7 @@ pub fn assert_add_spot_event_with_expected(
         resolution_factor,
         quorum,
         contract_address,
+        quantum,
     };
     assert_expected_event_emitted(
         :spied_event,
