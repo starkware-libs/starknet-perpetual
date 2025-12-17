@@ -78,6 +78,17 @@ pub trait IAssetsManager<TContractState> {
         risk_factor_tier_size: u128,
         quorum: u8,
     );
+    fn add_spot_asset(
+        ref self: TContractState,
+        asset_id: AssetId,
+        erc20_contract_address: ContractAddress,
+        quantum: u64,
+        resolution_factor: u64,
+        risk_factor_tiers: Span<u16>,
+        risk_factor_first_tier_boundary: u128,
+        risk_factor_tier_size: u128,
+        quorum: u8,
+    );
     fn deactivate_synthetic(ref self: TContractState, synthetic_id: AssetId);
     fn remove_oracle_from_asset(
         ref self: TContractState, asset_id: AssetId, oracle_public_key: PublicKey,
