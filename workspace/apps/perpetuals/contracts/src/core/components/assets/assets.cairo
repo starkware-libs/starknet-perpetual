@@ -326,6 +326,33 @@ pub mod AssetsComponent {
                 );
         }
 
+        fn add_spot_asset(
+            ref self: ComponentState<TContractState>,
+            asset_id: AssetId,
+            erc20_contract_address: ContractAddress,
+            quantum: u64,
+            resolution_factor: u64,
+            risk_factor_tiers: Span<u16>,
+            risk_factor_first_tier_boundary: u128,
+            risk_factor_tier_size: u128,
+            quorum: u8,
+        ) {
+            get_dep_component!(@self, Roles).only_app_governor();
+            let external_components = get_dep_component!(@self, ExternalComponents);
+            external_components
+                ._get_assets_manager_dispatcher()
+                .add_spot_asset(
+                    :asset_id,
+                    :erc20_contract_address,
+                    :quantum,
+                    :resolution_factor,
+                    :risk_factor_tiers,
+                    :risk_factor_first_tier_boundary,
+                    :risk_factor_tier_size,
+                    :quorum,
+                );
+        }
+
         fn update_asset_risk_factor(
             ref self: ComponentState<TContractState>,
             operator_nonce: u64,
