@@ -402,7 +402,6 @@ pub fn setup_state_with_pending_vault_share(
             asset_id: *cfg.vault_share_cfg.collateral_id,
             erc20_contract_address: *cfg.vault_share_cfg.contract_address,
             quantum: *cfg.vault_share_cfg.quantum,
-            resolution_factor: *cfg.vault_share_cfg.resolution_factor,
             risk_factor_tiers: *cfg.vault_share_cfg.risk_factor_tiers,
             risk_factor_first_tier_boundary: *cfg.vault_share_cfg.risk_factor_first_tier_boundary,
             risk_factor_tier_size: *cfg.vault_share_cfg.risk_factor_tier_size,

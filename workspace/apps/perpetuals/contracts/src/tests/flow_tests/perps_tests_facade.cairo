@@ -667,7 +667,6 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 asset_id,
                 erc20_contract_address: vault.contract_address,
                 quantum: 1,
-                resolution_factor: asset_info.resolution_factor,
                 risk_factor_tiers: risk_factor_1,
                 :risk_factor_first_tier_boundary,
                 :risk_factor_tier_size,

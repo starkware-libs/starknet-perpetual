@@ -57,7 +57,7 @@ pub trait IAssetsManager<TContractState> {
         quorum: u8,
         resolution_factor: u64,
     );
-    fn update_synthetic_asset_risk_factor(
+    fn update_asset_risk_factor(
         ref self: TContractState,
         operator_nonce: u64,
         asset_id: AssetId,
@@ -70,7 +70,6 @@ pub trait IAssetsManager<TContractState> {
         asset_id: AssetId,
         erc20_contract_address: ContractAddress,
         quantum: u64,
-        resolution_factor: u64,
         risk_factor_tiers: Span<u16>,
         risk_factor_first_tier_boundary: u128,
         risk_factor_tier_size: u128,
@@ -80,7 +79,7 @@ pub trait IAssetsManager<TContractState> {
     fn remove_oracle_from_asset(
         ref self: TContractState, asset_id: AssetId, oracle_public_key: PublicKey,
     );
-    fn update_synthetic_quorum(ref self: TContractState, synthetic_id: AssetId, quorum: u8);
+    fn update_asset_quorum(ref self: TContractState, asset_id: AssetId, quorum: u8);
 
     // View functions.
     fn get_max_price_interval(self: @TContractState) -> TimeDelta;

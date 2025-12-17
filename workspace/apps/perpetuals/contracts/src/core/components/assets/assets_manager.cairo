@@ -28,13 +28,12 @@ pub trait IAssetsExternal<TContractState> {
         asset_id: AssetId,
         erc20_contract_address: ContractAddress,
         quantum: u64,
-        resolution_factor: u64,
         risk_factor_tiers: Span<u16>,
         risk_factor_first_tier_boundary: u128,
         risk_factor_tier_size: u128,
         quorum: u8,
     );
-    fn update_synthetic_asset_risk_factor(
+    fn update_asset_risk_factor(
         ref self: TContractState,
         operator_nonce: u64,
         asset_id: AssetId,
@@ -46,7 +45,7 @@ pub trait IAssetsExternal<TContractState> {
     fn remove_oracle_from_asset(
         ref self: TContractState, asset_id: AssetId, oracle_public_key: PublicKey,
     );
-    fn update_synthetic_quorum(ref self: TContractState, synthetic_id: AssetId, quorum: u8);
+    fn update_asset_quorum(ref self: TContractState, asset_id: AssetId, quorum: u8);
 
     // View functions
     fn get_max_price_interval(self: @TContractState) -> starkware_utils::time::time::TimeDelta;
@@ -260,7 +259,6 @@ pub(crate) mod AssetsManager {
             asset_id: AssetId,
             erc20_contract_address: ContractAddress,
             quantum: u64,
-            resolution_factor: u64,
             risk_factor_tiers: Span<u16>,
             risk_factor_first_tier_boundary: u128,
             risk_factor_tier_size: u128,
@@ -332,7 +330,7 @@ pub(crate) mod AssetsManager {
                 );
         }
 
-        /// Update synthetic asset risk factors.
+        /// Update asset risk factors.
         /// Validations:
         /// - Only the operator can call this function, cause it must be sequenced.
         /// (Liqudation may fail if submitted out of order)
@@ -340,7 +338,7 @@ pub(crate) mod AssetsManager {
         /// - After update postitions risk must be the same or lower.
         ///
         /// Execution:
-        fn update_synthetic_asset_risk_factor(
+        fn update_asset_risk_factor(
             ref self: ContractState,
             operator_nonce: u64,
             asset_id: AssetId,
@@ -441,24 +439,19 @@ pub(crate) mod AssetsManager {
             self.emit(events::OracleRemoved { asset_id, oracle_public_key });
         }
 
-        fn update_synthetic_quorum(ref self: ContractState, synthetic_id: AssetId, quorum: u8) {
+        fn update_asset_quorum(ref self: ContractState, asset_id: AssetId, quorum: u8) {
             let mut asset_config = self
                 .assets
                 .asset_config
-                .read(synthetic_id)
+                .read(asset_id)
                 .expect(SYNTHETIC_NOT_EXISTS);
             assert(asset_config.status != AssetStatus::INACTIVE, INACTIVE_ASSET);
             assert(quorum.is_non_zero(), INVALID_ZERO_QUORUM);
             let old_quorum = asset_config.quorum;
             assert(old_quorum != quorum, INVALID_SAME_QUORUM);
             asset_config.quorum = quorum;
-            self.assets.asset_config.write(synthetic_id, Option::Some(asset_config));
-            self
-                .emit(
-                    events::AssetQuorumUpdated {
-                        asset_id: synthetic_id, new_quorum: quorum, old_quorum,
-                    },
-                );
+            self.assets.asset_config.write(asset_id, Option::Some(asset_config));
+            self.emit(events::AssetQuorumUpdated { asset_id, new_quorum: quorum, old_quorum });
         }
 
         fn get_max_price_interval(self: @ContractState) -> TimeDelta {
