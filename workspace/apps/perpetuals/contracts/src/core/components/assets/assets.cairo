@@ -13,8 +13,8 @@ pub mod AssetsComponent {
         ALREADY_INITIALIZED, ASSET_NOT_EXISTS, COLLATERAL_NOT_REGISTERED, FUNDING_EXPIRED,
         FUNDING_TICKS_NOT_SORTED, INACTIVE_ASSET, INVALID_FUNDING_TICK_LEN, INVALID_MEDIAN,
         INVALID_PRICE_TIMESTAMP, INVALID_TIMESTAMP, INVALID_ZERO_ASSET_ID, INVALID_ZERO_QUANTUM,
-        INVALID_ZERO_TOKEN_ADDRESS, NOT_SYNTHETIC, QUORUM_NOT_REACHED, SIGNED_PRICES_UNSORTED,
-        SYNTHETIC_EXPIRED_PRICE, SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS,
+        INVALID_ZERO_TOKEN_ADDRESS, NOT_COLLATERAL, NOT_SYNTHETIC, QUORUM_NOT_REACHED,
+        SIGNED_PRICES_UNSORTED, SYNTHETIC_EXPIRED_PRICE, SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS,
         ZERO_MAX_FUNDING_INTERVAL, ZERO_MAX_FUNDING_RATE, ZERO_MAX_ORACLE_PRICE,
         ZERO_MAX_PRICE_INTERVAL, oracle_public_key_not_registered,
     };
@@ -191,7 +191,19 @@ pub mod AssetsComponent {
             self._set_price(:asset_id, :oracle_price);
         }
 
-        fn get_collateral_token_contract(
+        fn get_collateral_token_contract_address(
+            self: @ComponentState<TContractState>, asset_id: AssetId,
+        ) -> ContractAddress {
+            // Base collateral is not registered in `asset_config`.
+            if asset_id == self.get_collateral_id() {
+                self.get_base_collateral_token_contract().contract_address
+            } else {
+                let token_contract = self._get_asset_config(asset_id).token_contract;
+                token_contract.expect(NOT_COLLATERAL)
+            }
+        }
+
+        fn get_base_collateral_token_contract(
             self: @ComponentState<TContractState>,
         ) -> IERC20Dispatcher {
             self.collateral_token_contract.read()

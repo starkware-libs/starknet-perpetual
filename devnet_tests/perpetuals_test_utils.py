@@ -107,9 +107,9 @@ class PerpetualsTestUtils:
         (asset_id,) = await self.operator_contract.functions["get_collateral_id"].call()
         return asset_id["value"]
 
-    async def get_collateral_token_contract(self) -> int:
+    async def get_base_collateral_token_contract(self) -> int:
         (token_contract,) = await self.operator_contract.functions[
-            "get_collateral_token_contract"
+            "get_base_collateral_token_contract"
         ].call()
         return token_contract["contract_address"]
 
@@ -160,13 +160,13 @@ class PerpetualsTestUtils:
             """Fund an account with collateral tokens using the rich USDC holder account."""
             # Get the ERC20 contract
             abi, cairo_version = await ContractAbiResolver(
-                address=await self.get_collateral_token_contract(),
+                address=await self.get_base_collateral_token_contract(),
                 client=self.rich_usdc_holder_account.client,
                 proxy_config=ProxyConfig(),
             ).resolve()
 
             erc20_contract = Contract(
-                address=await self.get_collateral_token_contract(),
+                address=await self.get_base_collateral_token_contract(),
                 abi=abi,
                 provider=self.rich_usdc_holder_account,
                 cairo_version=cairo_version,
@@ -183,13 +183,13 @@ class PerpetualsTestUtils:
         # Approve deposit
         async def _approve_deposit(account: Account, amount: int):
             abi, cairo_version = await ContractAbiResolver(
-                address=await self.get_collateral_token_contract(),
+                address=await self.get_base_collateral_token_contract(),
                 client=account.client,
                 proxy_config=ProxyConfig(),
             ).resolve()
 
             erc20_contract = Contract(
-                address=await self.get_collateral_token_contract(),
+                address=await self.get_base_collateral_token_contract(),
                 abi=abi,
                 provider=account,
                 cairo_version=cairo_version,
