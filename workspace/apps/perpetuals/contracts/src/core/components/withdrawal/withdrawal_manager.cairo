@@ -342,7 +342,7 @@ pub(crate) mod WithdrawalManager {
             // Transfer premium_cost (forced fee) from the caller to the sequencer address.
             let premium_cost = self.premium_cost.read();
             let quantum = self.assets.get_collateral_quantum();
-            let token_contract = self.assets.get_collateral_token_contract();
+            let token_contract = self.assets.get_base_collateral_token_contract();
 
             assert(
                 token_contract
@@ -458,7 +458,7 @@ pub(crate) mod WithdrawalManager {
             self.positions.apply_diff(:position_id, :position_diff);
             let quantum = self.assets.get_collateral_quantum();
             let withdraw_unquantized_amount = quantum * amount;
-            let token_contract = self.assets.get_collateral_token_contract();
+            let token_contract = self.assets.get_base_collateral_token_contract();
             assert(
                 token_contract.transfer(:recipient, amount: withdraw_unquantized_amount.into()),
                 TRANSFER_FAILED,

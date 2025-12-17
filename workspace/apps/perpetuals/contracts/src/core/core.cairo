@@ -811,7 +811,7 @@ pub mod Core {
             // Transfer premium_cost (forced fee) from the caller to the sequencer address.
             let premium_cost = self.premium_cost.read();
             let quantum = self.assets.get_collateral_quantum();
-            let token_contract = self.assets.get_collateral_token_contract();
+            let token_contract = self.assets.get_base_collateral_token_contract();
             assert(
                 token_contract
                     .transfer_from(

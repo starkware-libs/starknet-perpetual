@@ -155,7 +155,7 @@ pub mod Vaults {
             assert(
                 erc4626_dispatcher
                     .asset() == assets
-                    .get_collateral_token_contract()
+                    .get_base_collateral_token_contract()
                     .contract_address,
                 'VAULT_ASSET_MISMATCH',
             );
