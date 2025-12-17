@@ -231,7 +231,7 @@ pub(crate) mod DepositManager {
             let (token_contract, quantum, position_diff) = if (self
                 .assets
                 .get_collateral_id() == asset_id) {
-                let token_contract = self.assets.get_collateral_token_contract();
+                let token_contract = self.assets.get_base_collateral_token_contract();
                 let quantum = self.assets.get_collateral_quantum();
                 let position_diff = PositionDiff {
                     collateral_diff: quantized_amount.into(), asset_diff: Option::None,
@@ -313,7 +313,7 @@ pub(crate) mod DepositManager {
             self.positions.get_position_snapshot(:position_id);
             assert(quantized_amount.is_non_zero(), errors::ZERO_AMOUNT);
             let (token_contract, quantum) = if (self.assets.get_collateral_id() == asset_id) {
-                let token_contract = self.assets.get_collateral_token_contract();
+                let token_contract = self.assets.get_base_collateral_token_contract();
                 let quantum = self.assets.get_collateral_quantum();
                 (token_contract, quantum)
             } else {
@@ -384,7 +384,7 @@ pub(crate) mod DepositManager {
             cancel_delay: TimeDelta,
         ) {
             let (token_contract, quantum) = if (self.assets.get_collateral_id() == asset_id) {
-                let token_contract = self.assets.get_collateral_token_contract();
+                let token_contract = self.assets.get_base_collateral_token_contract();
                 let quantum = self.assets.get_collateral_quantum();
                 (token_contract, quantum)
             } else {

@@ -85,7 +85,8 @@ classDiagram
         remove_oracle_from_asset()
         update_asset_id_quorum()
 
-        get_collateral_token_contract() -> IERC20Dispatcher
+        get_base_collateral_token_contract() -> IERC20Dispatcher
+        get_collateral_token_contract_address(asset_id: AssetId) -> ContractAddress
         get_collateral_quantum() -> u64
         get_last_funding_tick() -> Timestamp
         get_last_price_validation() -> Timestamp

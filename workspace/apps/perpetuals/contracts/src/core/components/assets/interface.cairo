@@ -27,7 +27,10 @@ pub trait IAssets<TContractState> {
     );
 
     // View functions.
-    fn get_collateral_token_contract(self: @TContractState) -> IERC20Dispatcher;
+    fn get_collateral_token_contract_address(
+        self: @TContractState, asset_id: AssetId,
+    ) -> ContractAddress;
+    fn get_base_collateral_token_contract(self: @TContractState) -> IERC20Dispatcher;
     fn get_collateral_quantum(self: @TContractState) -> u64;
     fn get_last_funding_tick(self: @TContractState) -> Timestamp;
     fn get_last_price_validation(self: @TContractState) -> Timestamp;

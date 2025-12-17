@@ -246,7 +246,7 @@ pub(crate) mod VaultsManager {
             let vault_dispatcher = IERC4626Dispatcher {
                 contract_address: vault_share_config.token_contract.expect('NOT_ERC4626'),
             };
-            let collateral_token_dispatcher = self.assets.get_collateral_token_contract();
+            let collateral_token_dispatcher = self.assets.get_base_collateral_token_contract();
             let current_collateral_balance = collateral_token_dispatcher
                 .balance_of(starknet::get_contract_address());
 
@@ -495,7 +495,7 @@ pub(crate) mod VaultsManager {
                 contract_address: vault_asset.token_contract.expect('NOT_ERC20'),
             };
 
-            let pnl_collateral_dispatcher = self.assets.get_collateral_token_contract();
+            let pnl_collateral_dispatcher = self.assets.get_base_collateral_token_contract();
             let perps_contract_balance_before = pnl_collateral_dispatcher
                 .balance_of(starknet::get_contract_address());
 
