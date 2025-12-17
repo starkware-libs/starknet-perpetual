@@ -78,12 +78,12 @@ classDiagram
         add_oracle_to_asset()
         add_synthetic_asset()
         add_vault_collateral_asset()
-        update_synthetic_asset_risk_factor()
+        update_asset_risk_factor()
         deactivate_synthetic()
         funding_tick()
         price_tick()
         remove_oracle_from_asset()
-        update_synthetic_quorum()
+        update_asset_id_quorum()
 
         get_collateral_token_contract() -> IERC20Dispatcher
         get_collateral_quantum() -> u64
@@ -1774,7 +1774,7 @@ Only APP\_GOVERNOR can execute.
 - INVALID_VAULT_RF_TIERS
 
 
-###### Update Synthetic Asset Risk Factor
+###### Update Asset Risk Factor
 
 Update asset risk factors. This function must be sequenced by the operator to prevent liquidation failures if submitted out of order.
 
@@ -1941,9 +1941,9 @@ Only APP\_GOVERNOR can execute.
 ###### Update Synthetic Quorum
 
 ```rust
-fn update_synthetic_quorum(
+fn update_asset_quorum(
     ref self: ContractState,
-    synthetic_id: AssetId,
+    asset_id: AssetId,
     quorum: u8
 )
 ```
@@ -1961,7 +1961,7 @@ Only APP\_GOVERNOR can execute.
 **Logic:**
 
 1. Run validations
-2. Update `quorum` of the `synthetic_id` config.
+2. Update `quorum` of the `asset_id` config.
 
 **Emits:**
 

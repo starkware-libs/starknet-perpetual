@@ -295,7 +295,6 @@ pub mod AssetsComponent {
             asset_id: AssetId,
             erc20_contract_address: ContractAddress,
             quantum: u64,
-            resolution_factor: u64,
             risk_factor_tiers: Span<u16>,
             risk_factor_first_tier_boundary: u128,
             risk_factor_tier_size: u128,
@@ -309,7 +308,6 @@ pub mod AssetsComponent {
                     asset_id: asset_id,
                     erc20_contract_address: erc20_contract_address,
                     quantum: quantum,
-                    resolution_factor: resolution_factor,
                     risk_factor_tiers: risk_factor_tiers,
                     risk_factor_first_tier_boundary: risk_factor_first_tier_boundary,
                     risk_factor_tier_size: risk_factor_tier_size,
@@ -317,7 +315,7 @@ pub mod AssetsComponent {
                 );
         }
 
-        fn update_synthetic_asset_risk_factor(
+        fn update_asset_risk_factor(
             ref self: ComponentState<TContractState>,
             operator_nonce: u64,
             asset_id: AssetId,
@@ -332,7 +330,7 @@ pub mod AssetsComponent {
             let external_components = get_dep_component!(@self, ExternalComponents);
             external_components
                 ._get_assets_manager_dispatcher()
-                .update_synthetic_asset_risk_factor(
+                .update_asset_risk_factor(
                     operator_nonce: operator_nonce,
                     asset_id: asset_id,
                     risk_factor_tiers: risk_factor_tiers,
@@ -361,14 +359,14 @@ pub mod AssetsComponent {
                 .remove_oracle_from_asset(asset_id: asset_id, oracle_public_key: oracle_public_key);
         }
 
-        fn update_synthetic_quorum(
-            ref self: ComponentState<TContractState>, synthetic_id: AssetId, quorum: u8,
+        fn update_asset_quorum(
+            ref self: ComponentState<TContractState>, asset_id: AssetId, quorum: u8,
         ) {
             get_dep_component!(@self, Roles).only_app_governor();
             let external_components = get_dep_component!(@self, ExternalComponents);
             external_components
                 ._get_assets_manager_dispatcher()
-                .update_synthetic_quorum(synthetic_id: synthetic_id, quorum: quorum);
+                .update_asset_quorum(:asset_id, :quorum);
         }
 
         // View functions for manager

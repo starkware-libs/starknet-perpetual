@@ -41,7 +41,7 @@ use perpetuals::tests::event_test_utils::{
     assert_set_owner_account_event_with_expected, assert_set_public_key_event_with_expected,
     assert_set_public_key_request_event_with_expected, assert_trade_event_with_expected,
     assert_transfer_event_with_expected, assert_transfer_request_event_with_expected,
-    assert_update_synthetic_quorum_event_with_expected,
+    assert_update_asset_quorum_event_with_expected,
 };
 use perpetuals::tests::test_utils::{
     Oracle, OracleTrait, PerpetualsInitConfig, User, UserTrait, add_synthetic_to_position,
@@ -904,7 +904,7 @@ fn test_rf_update_valid_same_array() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     // Test:
     asset_dispatcher
-        .update_synthetic_asset_risk_factor(
+        .update_asset_risk_factor(
             operator_nonce: 0,
             asset_id: synthetic_id_1,
             :risk_factor_tiers,
@@ -946,7 +946,7 @@ fn test_rf_update_valid_same_short_array() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     // Test:
     asset_dispatcher
-        .update_synthetic_asset_risk_factor(
+        .update_asset_risk_factor(
             operator_nonce: 0,
             asset_id: synthetic_id_1,
             :risk_factor_tiers,
@@ -991,7 +991,7 @@ fn test_rf_update_invalid_same_short_array() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     // Test:
     asset_dispatcher
-        .update_synthetic_asset_risk_factor(
+        .update_asset_risk_factor(
             operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
@@ -1035,7 +1035,7 @@ fn test_rf_update_invalid_super_short_array() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     // Test:
     asset_dispatcher
-        .update_synthetic_asset_risk_factor(
+        .update_asset_risk_factor(
             operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
@@ -1078,7 +1078,7 @@ fn test_rf_update_valid_super_short_array() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     // Test:
     asset_dispatcher
-        .update_synthetic_asset_risk_factor(
+        .update_asset_risk_factor(
             operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
@@ -1122,7 +1122,7 @@ fn test_rf_update_valid_same_super_short_array_increase() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     // Test:
     asset_dispatcher
-        .update_synthetic_asset_risk_factor(
+        .update_asset_risk_factor(
             operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
@@ -1166,7 +1166,7 @@ fn test_rf_update_invalid_same_short_array_increase() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     // Test:
     asset_dispatcher
-        .update_synthetic_asset_risk_factor(
+        .update_asset_risk_factor(
             operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
@@ -1210,7 +1210,7 @@ fn test_rf_update_valid_lower_array() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     // Test:
     assets_manager_dispatcher
-        .update_synthetic_asset_risk_factor(
+        .update_asset_risk_factor(
             operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
@@ -1262,7 +1262,7 @@ fn test_rf_update_invalid_higher_last_element_array() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     // Test:
     asset_dispatcher
-        .update_synthetic_asset_risk_factor(
+        .update_asset_risk_factor(
             operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
@@ -1306,7 +1306,7 @@ fn test_rf_update_invalid_median_last_element_array() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     // Test:
     asset_dispatcher
-        .update_synthetic_asset_risk_factor(
+        .update_asset_risk_factor(
             operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
@@ -1350,7 +1350,7 @@ fn test_rf_update_valid_more_frequent_array() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     // Test:
     asset_dispatcher
-        .update_synthetic_asset_risk_factor(
+        .update_asset_risk_factor(
             operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
@@ -1397,7 +1397,7 @@ fn test_rf_update_invalid_more_frequent_array() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     // Test:
     asset_dispatcher
-        .update_synthetic_asset_risk_factor(
+        .update_asset_risk_factor(
             operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
@@ -1451,7 +1451,7 @@ fn test_rf_update_valid_less_frequent_array() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     // Test:
     asset_dispatcher
-        .update_synthetic_asset_risk_factor(
+        .update_asset_risk_factor(
             operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
@@ -1496,7 +1496,7 @@ fn test_rf_update_invalid_less_frequent_array() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     // Test:
     asset_dispatcher
-        .update_synthetic_asset_risk_factor(
+        .update_asset_risk_factor(
             operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
@@ -1544,7 +1544,7 @@ fn test_rf_update_valid_different_step_size() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     // Test:
     assets_manager_dispatcher
-        .update_synthetic_asset_risk_factor(
+        .update_asset_risk_factor(
             operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
@@ -1610,7 +1610,7 @@ fn test_rf_update_invalid_different_step_size() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     // Test:
     asset_dispatcher
-        .update_synthetic_asset_risk_factor(
+        .update_asset_risk_factor(
             operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
@@ -3825,7 +3825,7 @@ fn test_successful_add_and_remove_oracle() {
             :asset_name,
         );
 
-    state.update_synthetic_quorum(:synthetic_id, quorum: 2);
+    state.update_asset_quorum(asset_id: synthetic_id, quorum: 2);
 
     // Add another oracle for the same asset id.
     let asset_name = 'ASSET_NAME';
@@ -3843,7 +3843,7 @@ fn test_successful_add_and_remove_oracle() {
     state.remove_oracle_from_asset(asset_id: synthetic_id, oracle_public_key: key_pair.public_key);
 
     let events = spy.get_events().emitted_by(test_address()).events;
-    assert_update_synthetic_quorum_event_with_expected(
+    assert_update_asset_quorum_event_with_expected(
         spied_event: events[1], asset_id: synthetic_id, new_quorum: 2, old_quorum: 1,
     );
     assert_add_oracle_event_with_expected(
@@ -4007,7 +4007,6 @@ fn test_unsuccessful_add_vault_share_asset_zero_quantum() {
             asset_id: cfg.vault_share_cfg.collateral_id,
             erc20_contract_address: vault_share_state.address,
             quantum: 0,
-            resolution_factor: 1_000_000_000,
             risk_factor_tiers: risk_factor_1,
             :risk_factor_first_tier_boundary,
             :risk_factor_tier_size,
@@ -4035,7 +4034,6 @@ fn test_unsuccessful_add_vault_share_asset_not_erc20() {
             asset_id: cfg.vault_share_cfg.collateral_id,
             erc20_contract_address: test_address(),
             quantum: 1,
-            resolution_factor: 1_000_000_000,
             risk_factor_tiers: risk_factor_1,
             :risk_factor_first_tier_boundary,
             :risk_factor_tier_size,
@@ -4062,7 +4060,6 @@ fn test_successful_add_vault_share_asset() {
             asset_id: cfg.vault_share_cfg.collateral_id,
             erc20_contract_address: cfg.vault_share_cfg.contract_address,
             quantum: cfg.vault_share_cfg.quantum,
-            resolution_factor: cfg.vault_share_cfg.resolution_factor,
             risk_factor_tiers: cfg.vault_share_cfg.risk_factor_tiers,
             risk_factor_first_tier_boundary: cfg.vault_share_cfg.risk_factor_first_tier_boundary,
             risk_factor_tier_size: cfg.vault_share_cfg.risk_factor_tier_size,
@@ -4113,7 +4110,6 @@ fn test_successful_vault_token_deposit() {
             asset_id: cfg.vault_share_cfg.collateral_id,
             erc20_contract_address: cfg.vault_share_cfg.contract_address,
             quantum: cfg.vault_share_cfg.quantum,
-            resolution_factor: cfg.vault_share_cfg.resolution_factor,
             risk_factor_tiers: cfg.vault_share_cfg.risk_factor_tiers,
             risk_factor_first_tier_boundary: cfg.vault_share_cfg.risk_factor_first_tier_boundary,
             risk_factor_tier_size: cfg.vault_share_cfg.risk_factor_tier_size,
@@ -4256,7 +4252,6 @@ fn test_successful_vault_token_cancel_deposit() {
             asset_id: cfg.vault_share_cfg.collateral_id,
             erc20_contract_address: cfg.vault_share_cfg.contract_address,
             quantum: cfg.vault_share_cfg.quantum,
-            resolution_factor: cfg.vault_share_cfg.resolution_factor,
             risk_factor_tiers: cfg.vault_share_cfg.risk_factor_tiers,
             risk_factor_first_tier_boundary: cfg.vault_share_cfg.risk_factor_first_tier_boundary,
             risk_factor_tier_size: cfg.vault_share_cfg.risk_factor_tier_size,
@@ -4363,7 +4358,6 @@ fn test_successful_vault_share_process_deposit() {
             asset_id: cfg.vault_share_cfg.collateral_id,
             erc20_contract_address: cfg.vault_share_cfg.contract_address,
             quantum: cfg.vault_share_cfg.quantum,
-            resolution_factor: cfg.vault_share_cfg.resolution_factor,
             risk_factor_tiers: cfg.vault_share_cfg.risk_factor_tiers,
             risk_factor_first_tier_boundary: cfg.vault_share_cfg.risk_factor_first_tier_boundary,
             risk_factor_tier_size: cfg.vault_share_cfg.risk_factor_tier_size,

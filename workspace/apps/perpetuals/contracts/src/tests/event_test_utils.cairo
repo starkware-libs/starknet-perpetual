@@ -525,7 +525,7 @@ pub fn assert_add_oracle_event_with_expected(
     );
 }
 
-pub fn assert_update_synthetic_quorum_event_with_expected(
+pub fn assert_update_asset_quorum_event_with_expected(
     spied_event: @(ContractAddress, Event), asset_id: AssetId, new_quorum: u8, old_quorum: u8,
 ) {
     let expected_event = assets_events::AssetQuorumUpdated { asset_id, new_quorum, old_quorum };
