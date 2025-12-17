@@ -4186,6 +4186,67 @@ fn test_invalid_funding_rate() {
 }
 
 #[test]
+#[should_panic(expected: 'SYNTHETIC_NOT_EXISTS')]
+fn test_funding_tick_collateral_asset() {
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+
+    let new_time = Time::now().add(Time::seconds(HOUR));
+    start_cheat_block_timestamp_global(block_timestamp: new_time.into());
+
+    let collateral_id = cfg.collateral_cfg.collateral_id;
+    let new_funding_index = FundingIndex { value: FUNDING_SCALE };
+    let funding_ticks: Span<FundingTick> = array![
+        FundingTick { asset_id: collateral_id, funding_index: new_funding_index },
+    ]
+        .span();
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.operator);
+    state
+        .funding_tick(
+            operator_nonce: state.get_operator_nonce(), :funding_ticks, timestamp: Time::now(),
+        );
+}
+
+#[test]
+#[should_panic(expected: 'NOT_SYNTHETIC')]
+fn test_funding_tick_vault_share_asset() {
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+
+    // Register a vault share collateral asset so that it exists in the assets config.
+    cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.app_governor);
+    state
+        .add_vault_collateral_asset(
+            asset_id: cfg.vault_share_cfg.collateral_id,
+            erc20_contract_address: cfg.vault_share_cfg.contract_address,
+            quantum: cfg.vault_share_cfg.quantum,
+            risk_factor_tiers: cfg.vault_share_cfg.risk_factor_tiers,
+            risk_factor_first_tier_boundary: cfg.vault_share_cfg.risk_factor_first_tier_boundary,
+            risk_factor_tier_size: cfg.vault_share_cfg.risk_factor_tier_size,
+            quorum: 1_u8,
+        );
+
+    let new_time = Time::now().add(Time::seconds(HOUR));
+    start_cheat_block_timestamp_global(block_timestamp: new_time.into());
+
+    let vault_share_id = cfg.vault_share_cfg.collateral_id;
+    let new_funding_index = FundingIndex { value: FUNDING_SCALE };
+    let funding_ticks: Span<FundingTick> = array![
+        FundingTick { asset_id: vault_share_id, funding_index: new_funding_index },
+    ]
+        .span();
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.operator);
+    state
+        .funding_tick(
+            operator_nonce: state.get_operator_nonce(), :funding_ticks, timestamp: Time::now(),
+        );
+}
+
+#[test]
 #[should_panic(expected: 'INVALID_FUNDING_TICK_LEN')]
 fn test_invalid_funding_len() {
     let cfg: PerpetualsInitConfig = Default::default();
