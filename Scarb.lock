@@ -2,6 +2,16 @@
 version = 1
 
 [[package]]
+name = "fulfillment"
+version = "0.2.0"
+dependencies = [
+ "openzeppelin",
+ "snforge_std",
+ "starkware_utils",
+ "starkware_utils_testing",
+]
+
+[[package]]
 name = "openzeppelin"
 version = "3.0.0-alpha.2"
 source = "git+https://github.com/OpenZeppelin/cairo-contracts?rev=0e51722f231c0913915945d3df89e43cbb5cfc38#0e51722f231c0913915945d3df89e43cbb5cfc38"
