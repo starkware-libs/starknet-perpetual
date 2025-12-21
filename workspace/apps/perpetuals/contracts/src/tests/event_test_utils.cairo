@@ -503,7 +503,7 @@ pub fn assert_add_synthetic_event_with_expected(
     );
 }
 
-pub fn assert_change_synthetic_event_with_expected(
+pub fn assert_change_asset_event_with_expected(
     spied_event: @(ContractAddress, Event),
     asset_id: AssetId,
     risk_factor_tiers: Span<u16>,
@@ -512,7 +512,7 @@ pub fn assert_change_synthetic_event_with_expected(
     resolution_factor: u64,
     quorum: u8,
 ) {
-    let expected_event = assets_events::SyntheticChanged {
+    let expected_event = assets_events::AssetChanged {
         asset_id,
         risk_factor_tiers,
         risk_factor_first_tier_boundary,
@@ -523,8 +523,8 @@ pub fn assert_change_synthetic_event_with_expected(
     assert_expected_event_emitted(
         :spied_event,
         :expected_event,
-        expected_event_selector: @selector!("SyntheticChanged"),
-        expected_event_name: "SyntheticChanged",
+        expected_event_selector: @selector!("AssetChanged"),
+        expected_event_name: "AssetChanged",
     );
 }
 

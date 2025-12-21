@@ -62,7 +62,6 @@ pub trait IAssetsManager<TContractState> {
     );
     fn update_asset_risk_factor(
         ref self: TContractState,
-        operator_nonce: u64,
         asset_id: AssetId,
         risk_factor_tiers: Span<u16>,
         risk_factor_first_tier_boundary: u128,
