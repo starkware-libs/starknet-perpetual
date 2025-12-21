@@ -266,6 +266,7 @@ pub mod Core {
         fn withdraw_request(
             ref self: ContractState,
             signature: Signature,
+            collateral_id: AssetId,
             recipient: ContractAddress,
             position_id: PositionId,
             amount: u64,
@@ -279,7 +280,13 @@ pub mod Core {
                 .external_components
                 ._get_withdrawal_manager_dispatcher()
                 .withdraw_request(
-                    :signature, :recipient, :position_id, :amount, :expiration, :salt,
+                    :signature,
+                    :collateral_id,
+                    :recipient,
+                    :position_id,
+                    :amount,
+                    :expiration,
+                    :salt,
                 );
         }
 
@@ -305,6 +312,7 @@ pub mod Core {
         fn withdraw(
             ref self: ContractState,
             operator_nonce: u64,
+            collateral_id: AssetId,
             recipient: ContractAddress,
             position_id: PositionId,
             amount: u64,
@@ -317,7 +325,7 @@ pub mod Core {
             self
                 .external_components
                 ._get_withdrawal_manager_dispatcher()
-                .withdraw(:recipient, :position_id, :amount, :expiration, :salt);
+                .withdraw(:collateral_id, :recipient, :position_id, :amount, :expiration, :salt);
         }
 
         fn transfer_request(
@@ -738,6 +746,7 @@ pub mod Core {
         fn forced_withdraw_request(
             ref self: ContractState,
             signature: Signature,
+            collateral_id: AssetId,
             recipient: ContractAddress,
             position_id: PositionId,
             amount: u64,
@@ -749,7 +758,13 @@ pub mod Core {
                 .external_components
                 ._get_withdrawal_manager_dispatcher()
                 .forced_withdraw_request(
-                    :signature, :recipient, :position_id, :amount, :expiration, :salt,
+                    :signature,
+                    :collateral_id,
+                    :recipient,
+                    :position_id,
+                    :amount,
+                    :expiration,
+                    :salt,
                 );
         }
 
@@ -767,6 +782,7 @@ pub mod Core {
         /// - Emits a `ForcedWithdraw` event.
         fn forced_withdraw(
             ref self: ContractState,
+            collateral_id: AssetId,
             recipient: ContractAddress,
             position_id: PositionId,
             amount: u64,
@@ -776,7 +792,9 @@ pub mod Core {
             self
                 .external_components
                 ._get_withdrawal_manager_dispatcher()
-                .forced_withdraw(:recipient, :position_id, :amount, :expiration, :salt);
+                .forced_withdraw(
+                    :collateral_id, :recipient, :position_id, :amount, :expiration, :salt,
+                );
         }
 
         /// Requests a forced trade - it enables withdrawal of synthetic amount from a position.

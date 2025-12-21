@@ -365,12 +365,14 @@ class PerpetualsTestUtils:
 
         message_hash = poseidon_hash_many(message)
         signature = message_signature(message_hash, self.new_account_key_pairs[account][1])
+        asset_id = await self.get_collateral_asset_id()
 
         invocation = (
             await self.new_account_contracts[account]
             .functions["withdraw_request"]
             .invoke_v3(
                 signature,
+                formatted_asset_id(asset_id),
                 self.get_account_address(account),
                 formatted_position_id(self.get_account_position_id(account)),
                 amount,
@@ -383,11 +385,14 @@ class PerpetualsTestUtils:
 
         # Process withdrawal request
         async def _process_withdraw(account: Account, amount: int, expiration: int, salt: int):
+            asset_id = await self.get_collateral_asset_id()
+
             invocation = (
                 await self.known_contracts["operator"]
                 .functions["withdraw"]
                 .invoke_v3(
                     await self.consume_operator_nonce(),
+                    formatted_asset_id(asset_id),
                     self.get_account_address(account),
                     formatted_position_id(self.get_account_position_id(account)),
                     amount,

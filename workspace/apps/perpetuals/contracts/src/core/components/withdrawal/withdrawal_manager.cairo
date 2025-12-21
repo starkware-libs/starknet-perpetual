@@ -65,6 +65,7 @@ pub trait IWithdrawalManager<TContractState> {
     fn withdraw_request(
         ref self: TContractState,
         signature: Signature,
+        collateral_id: AssetId,
         recipient: ContractAddress,
         position_id: PositionId,
         amount: u64,
@@ -73,6 +74,7 @@ pub trait IWithdrawalManager<TContractState> {
     );
     fn withdraw(
         ref self: TContractState,
+        collateral_id: AssetId,
         recipient: ContractAddress,
         position_id: PositionId,
         amount: u64,
@@ -82,6 +84,7 @@ pub trait IWithdrawalManager<TContractState> {
     fn forced_withdraw_request(
         ref self: TContractState,
         signature: Signature,
+        collateral_id: AssetId,
         recipient: ContractAddress,
         position_id: PositionId,
         amount: u64,
@@ -90,6 +93,7 @@ pub trait IWithdrawalManager<TContractState> {
     );
     fn forced_withdraw(
         ref self: TContractState,
+        collateral_id: AssetId,
         recipient: ContractAddress,
         position_id: PositionId,
         amount: u64,
@@ -102,10 +106,11 @@ pub trait IWithdrawalManager<TContractState> {
 pub(crate) mod WithdrawalManager {
     use core::num::traits::Zero;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
-    use openzeppelin::interfaces::erc20::IERC20DispatcherTrait;
+    use openzeppelin::interfaces::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::AssetsComponent::InternalImpl as AssetsInternal;
+    use perpetuals::core::components::assets::errors::{ASSET_NOT_EXISTS, INACTIVE_ASSET};
     use perpetuals::core::components::assets::interface::IAssets;
     use perpetuals::core::components::deposit::Deposit::InternalImpl as DepositInternal;
     use perpetuals::core::components::fulfillment::fulfillment::Fulfillement as FulfillmentComponent;
@@ -115,12 +120,18 @@ pub(crate) mod WithdrawalManager {
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
     use perpetuals::core::components::snip::SNIP12MetadataImpl;
     use perpetuals::core::errors::{
-        FORCED_WAIT_REQUIRED, INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED, TRANSFER_FAILED,
+        FORCED_WAIT_REQUIRED, INVALID_WITHDRAW_COLLATERAL, INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED,
+        TRANSFER_FAILED,
     };
     use perpetuals::core::types::asset::AssetId;
+    use perpetuals::core::types::asset::synthetic::SyntheticTrait;
+    use perpetuals::core::types::balance::BalanceImpl;
     use perpetuals::core::types::position::{Position, PositionDiff, PositionId, PositionTrait};
+    use perpetuals::core::types::price::PriceImpl;
     use perpetuals::core::types::withdraw::{ForcedWithdrawArgs, WithdrawArgs};
-    use starknet::storage::{StoragePath, StoragePointerReadAccess};
+    use starknet::storage::{
+        StorageAsPointer, StoragePath, StoragePathEntry, StoragePointerReadAccess,
+    };
     use starknet::{ContractAddress, get_block_info, get_caller_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalImpl as PausableInternal;
@@ -135,6 +146,8 @@ pub(crate) mod WithdrawalManager {
     use starkware_utils::time::time::{Time, TimeDelta, validate_expiration};
     use crate::core::components::external_components::interface::EXTERNAL_COMPONENT_WITHDRAWALS;
     use crate::core::components::external_components::named_component::ITypedComponent;
+    use crate::core::types::asset::AssetStatus;
+    use crate::core::types::asset::synthetic::AssetType;
     use super::{
         ForcedWithdraw, ForcedWithdrawRequest, IWithdrawalManager, Signature, Timestamp, Withdraw,
         WithdrawRequest,
@@ -220,6 +233,7 @@ pub(crate) mod WithdrawalManager {
         fn withdraw_request(
             ref self: ContractState,
             signature: Signature,
+            collateral_id: AssetId,
             recipient: ContractAddress,
             position_id: PositionId,
             amount: u64,
@@ -227,7 +241,6 @@ pub(crate) mod WithdrawalManager {
             salt: felt252,
         ) {
             let position = self.positions.get_position_snapshot(:position_id);
-            let collateral_id = self.assets.get_collateral_id();
             assert(amount.is_non_zero(), INVALID_ZERO_AMOUNT);
             let owner_account = if (position.owner_protection_enabled.read()) {
                 position.get_owner_account()
@@ -260,13 +273,13 @@ pub(crate) mod WithdrawalManager {
 
         fn withdraw(
             ref self: ContractState,
+            collateral_id: AssetId,
             recipient: starknet::ContractAddress,
             position_id: PositionId,
             amount: u64,
             expiration: super::Timestamp,
             salt: felt252,
         ) {
-            let collateral_id = self.assets.get_collateral_id();
             let position = self.positions.get_position_snapshot(:position_id);
 
             let hash = self
@@ -297,6 +310,7 @@ pub(crate) mod WithdrawalManager {
         fn forced_withdraw_request(
             ref self: ContractState,
             signature: Signature,
+            collateral_id: AssetId,
             recipient: ContractAddress,
             position_id: PositionId,
             amount: u64,
@@ -307,7 +321,6 @@ pub(crate) mod WithdrawalManager {
             ///
             // Validate position exists.
             let position = self.positions.get_position_snapshot(:position_id);
-            let collateral_id = self.assets.get_collateral_id();
             assert(amount.is_non_zero(), INVALID_ZERO_AMOUNT);
 
             let owner_account = if (position.owner_protection_enabled.read()) {
@@ -370,6 +383,7 @@ pub(crate) mod WithdrawalManager {
 
         fn forced_withdraw(
             ref self: ContractState,
+            collateral_id: AssetId,
             recipient: ContractAddress,
             position_id: PositionId,
             amount: u64,
@@ -378,7 +392,6 @@ pub(crate) mod WithdrawalManager {
         ) {
             let position = self.positions.get_position_snapshot(:position_id);
             let public_key = position.get_owner_public_key();
-            let collateral_id = self.assets.get_collateral_id();
 
             // Calculate forced withdraw hash
             let withdraw_args = WithdrawArgs {
@@ -435,6 +448,7 @@ pub(crate) mod WithdrawalManager {
             collateral_id: AssetId,
         ) -> HashType {
             validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
+
             let hash = self
                 .request_approvals
                 .consume_approved_request(
@@ -445,8 +459,32 @@ pub(crate) mod WithdrawalManager {
                 );
 
             /// Validations - Fundamentals:
-            let position_diff = PositionDiff {
-                collateral_diff: -amount.into(), asset_diff: Option::None,
+            let (position_diff, quantum, token_contract) = if collateral_id != self
+                .assets
+                .get_collateral_id() {
+                let entry = (@self).assets.asset_config.entry(collateral_id).as_ptr();
+                assert(SyntheticTrait::is_some_config(entry), ASSET_NOT_EXISTS);
+                assert(
+                    SyntheticTrait::at_asset_type(entry) == AssetType::SPOT_COLLATERAL,
+                    INVALID_WITHDRAW_COLLATERAL,
+                );
+                assert(
+                    SyntheticTrait::at_asset_status(entry) == AssetStatus::ACTIVE, INACTIVE_ASSET,
+                );
+                (
+                    PositionDiff {
+                        collateral_diff: Zero::zero(),
+                        asset_diff: Some((collateral_id, -amount.into())),
+                    },
+                    SyntheticTrait::at_quantum(entry),
+                    IERC20Dispatcher { contract_address: SyntheticTrait::at_token_contract(entry) },
+                )
+            } else {
+                (
+                    PositionDiff { collateral_diff: -amount.into(), asset_diff: Option::None },
+                    self.assets.get_collateral_quantum(),
+                    self.assets.get_base_collateral_token_contract(),
+                )
             };
 
             self
@@ -456,9 +494,7 @@ pub(crate) mod WithdrawalManager {
                 );
 
             self.positions.apply_diff(:position_id, :position_diff);
-            let quantum = self.assets.get_collateral_quantum();
             let withdraw_unquantized_amount = quantum * amount;
-            let token_contract = self.assets.get_base_collateral_token_contract();
             assert(
                 token_contract.transfer(:recipient, amount: withdraw_unquantized_amount.into()),
                 TRANSFER_FAILED,

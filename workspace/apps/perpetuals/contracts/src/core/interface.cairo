@@ -23,6 +23,7 @@ pub trait ICore<TContractState> {
     fn withdraw_request(
         ref self: TContractState,
         signature: Signature,
+        collateral_id: AssetId,
         recipient: ContractAddress,
         position_id: PositionId,
         amount: u64,
@@ -32,6 +33,7 @@ pub trait ICore<TContractState> {
     fn withdraw(
         ref self: TContractState,
         operator_nonce: u64,
+        collateral_id: AssetId,
         recipient: ContractAddress,
         position_id: PositionId,
         amount: u64,
@@ -140,6 +142,7 @@ pub trait ICore<TContractState> {
     fn forced_withdraw_request(
         ref self: TContractState,
         signature: Signature,
+        collateral_id: AssetId,
         recipient: ContractAddress,
         position_id: PositionId,
         amount: u64,
@@ -148,6 +151,7 @@ pub trait ICore<TContractState> {
     );
     fn forced_withdraw(
         ref self: TContractState,
+        collateral_id: AssetId,
         recipient: ContractAddress,
         position_id: PositionId,
         amount: u64,

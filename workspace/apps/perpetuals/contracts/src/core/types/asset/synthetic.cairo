@@ -239,6 +239,34 @@ pub impl SyntheticImpl of SyntheticTrait {
         asset_type.try_into().unwrap()
     }
 
+    /// Reads the asset type from the Option<AssetConfig>.
+    /// This function does not check if the Option is Some or None.
+    #[inline]
+    fn at_asset_status(entry: StoragePointer0Offset<Option<AssetConfig>>) -> AssetStatus {
+        let asset_status = Self::read_config(entry, OptionAssetConfigOffset::STATUS);
+        asset_status.try_into().unwrap()
+    }
+
+    /// Reads the asset type from the Option<AssetConfig>.
+    /// This function does not check if the Option is Some or None.
+    #[inline]
+    fn at_quantum(entry: StoragePointer0Offset<Option<AssetConfig>>) -> u64 {
+        let quantum = Self::read_config(entry, OptionAssetConfigOffset::QUANTUM);
+        quantum.try_into().unwrap()
+    }
+
+    /// Reads the asset type from the Option<AssetConfig>.
+    /// This function does not check if the Option is Some or None.
+    #[inline]
+    fn at_token_contract(entry: StoragePointer0Offset<Option<AssetConfig>>) -> ContractAddress {
+        assert(
+            Self::read_config(entry, OptionAssetConfigOffset::TOKEN_CONTRACT_VARIANT) == 1,
+            'EXPECTED_TOKEN_ADDRESS',
+        );
+        let token_contract = Self::read_config(entry, OptionAssetConfigOffset::TOKEN_CONTRACT);
+        token_contract.try_into().unwrap()
+    }
+
     /// Gets the price from the Option<TimelyData>.
     /// Returns None if the Option is None.
     fn get_price(entry: StoragePointer0Offset<Option<TimelyData>>) -> Option<Price> {

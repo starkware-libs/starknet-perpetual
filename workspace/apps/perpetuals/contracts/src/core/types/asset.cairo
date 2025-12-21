@@ -16,6 +16,17 @@ pub enum AssetStatus {
     INACTIVE,
 }
 
+pub impl Felt252TryIntoAssetType of TryInto<felt252, AssetStatus> {
+    fn try_into(self: felt252) -> Option<AssetStatus> {
+        match self {
+            0 => Option::Some(AssetStatus::PENDING),
+            1 => Option::Some(AssetStatus::ACTIVE),
+            2 => Option::Some(AssetStatus::INACTIVE),
+            _ => Option::None,
+        }
+    }
+}
+
 #[generate_trait]
 pub impl AssetIdImpl of AssetIdTrait {
     fn new(value: felt252) -> AssetId {
