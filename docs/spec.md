@@ -646,7 +646,7 @@ The public key is the position public key.
 pub struct WithdrawArgs {
     pub recipient: ContractAddress,
     pub position_id: PositionId,
-    pub collateral_id: AssetId,
+    pub asset_id: AssetId,
     pub amount: u64,
     pub expiration: Timestamp,
     pub salt: felt252,

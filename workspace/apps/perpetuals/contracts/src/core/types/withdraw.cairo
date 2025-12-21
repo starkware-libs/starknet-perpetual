@@ -11,7 +11,7 @@ use starkware_utils::time::time::Timestamp;
 pub struct WithdrawArgs {
     pub recipient: ContractAddress,
     pub position_id: PositionId,
-    pub collateral_id: AssetId,
+    pub asset_id: AssetId,
     pub amount: u64,
     pub expiration: Timestamp,
     pub salt: felt252,
@@ -21,7 +21,7 @@ pub struct WithdrawArgs {
 ///   "\"WithdrawArgs\"(
 ///    \"recipient\":\"ContractAddress\",
 ///    \"position_id\":\"PositionId\",
-///    \"collateral_id\":\"AssetId\",
+///    \"asset_id\":\"AssetId\",
 ///    \"amount\":\"u64\",
 ///    \"expiration\":\"Timestamp\"
 ///    \"salt\":\"felt\",
@@ -37,7 +37,7 @@ pub struct WithdrawArgs {
 ///    )
 /// );
 const WITHDRAW_ARGS_TYPE_HASH: HashType =
-    0x250a5fa378e8b771654bd43dcb34844534f9d1e29e16b14760d7936ea7f4b1d;
+    0x036195e985ae51bb7274543be4a98cd9f2ca66accf58baf1c19f8422e3c30030;
 
 impl WithdrawArgsStructHashImpl of StructHash<WithdrawArgs> {
     fn hash_struct(self: @WithdrawArgs) -> HashType {
@@ -76,7 +76,7 @@ mod tests {
     #[test]
     fn test_withdraw_type_hash() {
         let expected = selector!(
-            "\"WithdrawArgs\"(\"recipient\":\"ContractAddress\",\"position_id\":\"PositionId\",\"collateral_id\":\"AssetId\",\"amount\":\"u64\",\"expiration\":\"Timestamp\",\"salt\":\"felt\")\"PositionId\"(\"value\":\"u32\")\"AssetId\"(\"value\":\"felt\")\"Timestamp\"(\"seconds\":\"u64\")",
+            "\"WithdrawArgs\"(\"recipient\":\"ContractAddress\",\"position_id\":\"PositionId\",\"asset_id\":\"AssetId\",\"amount\":\"u64\",\"expiration\":\"Timestamp\",\"salt\":\"felt\")\"PositionId\"(\"value\":\"u32\")\"AssetId\"(\"value\":\"felt\")\"Timestamp\"(\"seconds\":\"u64\")",
         );
         assert_eq!(to_base_16_string(WITHDRAW_ARGS_TYPE_HASH), to_base_16_string(expected));
     }
@@ -93,7 +93,7 @@ mod tests {
             position_id: PositionId { value: 1_u32 },
             salt: 123,
             expiration: Timestamp { seconds: 5 },
-            collateral_id: AssetIdTrait::new(4),
+            asset_id: AssetIdTrait::new(4),
             amount: 1000,
             recipient: 0x019ec96d4aea6fdc6f0b5f393fec3f186aefa8f0b8356f43d07b921ff48aa5da
                 .try_into()
