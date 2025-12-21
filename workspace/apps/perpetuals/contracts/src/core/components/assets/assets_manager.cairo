@@ -46,7 +46,6 @@ pub trait IAssetsExternal<TContractState> {
     );
     fn update_asset_risk_factor(
         ref self: TContractState,
-        operator_nonce: u64,
         asset_id: AssetId,
         risk_factor_tiers: Span<u16>,
         risk_factor_first_tier_boundary: u128,
@@ -95,12 +94,13 @@ pub(crate) mod AssetsManager {
     use starkware_utils::time::time::TimeDelta;
     use crate::core::components::assets::AssetsComponent::InternalTrait as AssetsInternalTrait;
     use crate::core::components::assets::errors::{
-        ASSET_NAME_TOO_LONG, ASSET_REGISTERED_AS_COLLATERAL, INACTIVE_ASSET, INVALID_RF_VALUE,
-        INVALID_SAME_QUORUM, INVALID_ZERO_ASSET_ID, INVALID_ZERO_ASSET_NAME,
-        INVALID_ZERO_ORACLE_NAME, INVALID_ZERO_PUBLIC_KEY, INVALID_ZERO_QUORUM,
-        INVALID_ZERO_RF_FIRST_BOUNDRY, INVALID_ZERO_RF_TIERS_LEN, INVALID_ZERO_RF_TIER_SIZE,
-        NOT_SYNTHETIC, ORACLE_ALREADY_EXISTS, ORACLE_NAME_TOO_LONG, ORACLE_NOT_EXISTS,
-        SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS, UNSORTED_RISK_FACTOR_TIERS,
+        ASSET_NAME_TOO_LONG, ASSET_REGISTERED_AS_COLLATERAL, INACTIVE_ASSET,
+        INVALID_NON_SYNTHETIC_RF_TIERS, INVALID_RF_VALUE, INVALID_SAME_QUORUM,
+        INVALID_ZERO_ASSET_ID, INVALID_ZERO_ASSET_NAME, INVALID_ZERO_ORACLE_NAME,
+        INVALID_ZERO_PUBLIC_KEY, INVALID_ZERO_QUORUM, INVALID_ZERO_RF_FIRST_BOUNDRY,
+        INVALID_ZERO_RF_TIERS_LEN, INVALID_ZERO_RF_TIER_SIZE, NOT_SYNTHETIC, ORACLE_ALREADY_EXISTS,
+        ORACLE_NAME_TOO_LONG, ORACLE_NOT_EXISTS, SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS,
+        UNSORTED_RISK_FACTOR_TIERS,
     };
     use crate::core::components::assets::events;
     use crate::core::components::external_components::interface::EXTERNAL_COMPONENT_ASSETS;
@@ -413,67 +413,94 @@ pub(crate) mod AssetsManager {
         /// (Liqudation may fail if submitted out of order)
         /// - Each risk factor in risk_factor_tiers is less or equal to 1000.
         /// - After update postitions risk must be the same or lower.
+        /// - Non-synthetic assets must have exactly 1 risk factor tier.
         ///
         /// Execution:
         fn update_asset_risk_factor(
             ref self: ContractState,
-            operator_nonce: u64,
             asset_id: AssetId,
             risk_factor_tiers: Span<u16>,
             risk_factor_first_tier_boundary: u128,
             risk_factor_tier_size: u128,
         ) {
+            // Basic input validations
             assert(asset_id.is_non_zero(), INVALID_ZERO_ASSET_ID);
             assert(risk_factor_tiers.len().is_non_zero(), INVALID_ZERO_RF_TIERS_LEN);
             assert(risk_factor_first_tier_boundary.is_non_zero(), INVALID_ZERO_RF_FIRST_BOUNDRY);
             assert(risk_factor_tier_size.is_non_zero(), INVALID_ZERO_RF_TIER_SIZE);
+
+            // Ensure asset is not registered as collateral
             if let Option::Some(collateral_id) = self.assets.collateral_id.read() {
                 assert(collateral_id != asset_id, ASSET_REGISTERED_AS_COLLATERAL);
             }
 
-            let mut old_synthetic_config = self.assets.get_asset_config(asset_id);
-            let mut bound = risk_factor_first_tier_boundary;
+            // Get existing asset configuration
+            let mut asset_config = self.assets.get_asset_config(asset_id);
 
-            for i in 0..risk_factor_tiers.len() {
-                let mut old_factor = self
-                    .assets
-                    .get_synthetic_risk_factor_for_value(
-                        synthetic_id: asset_id, synthetic_value: bound - 1,
-                    );
-                assert(old_factor.value >= *risk_factor_tiers.at(i), INVALID_RF_VALUE);
-                old_factor = self
-                    .assets
-                    .get_synthetic_risk_factor_for_value(
-                        synthetic_id: asset_id, synthetic_value: bound,
-                    );
-                if i + 1 < risk_factor_tiers.len() {
-                    assert(old_factor.value >= *risk_factor_tiers.at(i + 1), INVALID_RF_VALUE);
-                }
-
-                bound += risk_factor_tier_size;
+            // Validate that non-synthetic assets have exactly 1 risk factor tier
+            if asset_config.asset_type != AssetType::SYNTHETIC {
+                assert(risk_factor_tiers.len() == 1, INVALID_NON_SYNTHETIC_RF_TIERS);
             }
 
-            old_synthetic_config.risk_factor_tier_size = risk_factor_tier_size;
-            old_synthetic_config.risk_factor_first_tier_boundary = risk_factor_first_tier_boundary;
-            let synthetic_entry = self.assets.asset_config.entry(asset_id);
-            synthetic_entry.write(Option::Some(old_synthetic_config));
+            // Validate that new risk factors don't increase position risk
+            // Check each tier boundary to ensure new risk factors are <= old ones
+            let mut tier_boundary = risk_factor_first_tier_boundary;
+            let tiers_len = risk_factor_tiers.len();
 
+            for i in 0..tiers_len {
+                // Validate at the start of the tier (boundary - 1)
+                let old_risk_factor_at_start = self
+                    .assets
+                    .get_synthetic_risk_factor_for_value(
+                        synthetic_id: asset_id, synthetic_value: tier_boundary - 1,
+                    );
+                assert(
+                    old_risk_factor_at_start.value >= *risk_factor_tiers.at(i), INVALID_RF_VALUE,
+                );
+
+                // Validate at the end of the tier (boundary)
+                let old_risk_factor_at_end = self
+                    .assets
+                    .get_synthetic_risk_factor_for_value(
+                        synthetic_id: asset_id, synthetic_value: tier_boundary,
+                    );
+
+                // If there's a next tier, validate the transition
+                if i + 1 < tiers_len {
+                    assert(
+                        old_risk_factor_at_end.value >= *risk_factor_tiers.at(i + 1),
+                        INVALID_RF_VALUE,
+                    );
+                }
+
+                tier_boundary += risk_factor_tier_size;
+            }
+
+            // Update asset configuration
+            asset_config.risk_factor_tier_size = risk_factor_tier_size;
+            asset_config.risk_factor_first_tier_boundary = risk_factor_first_tier_boundary;
+            self.assets.asset_config.write(asset_id, Option::Some(asset_config));
+
+            // Clear existing risk factor tiers
+            let risk_factor_tiers_entry = self.assets.risk_factor_tiers.entry(asset_id);
+            while risk_factor_tiers_entry
+                .pop()
+                .is_some() { // Continue clearing until all tiers are removed
+            }
+
+            // Add new risk factor tiers with validation
             let mut prev_risk_factor = 0_u16;
-            let entry = self.assets.risk_factor_tiers.entry(asset_id);
-            while true {
-                if entry.pop().is_none() {
-                    break;
-                }
-            }
             for risk_factor in risk_factor_tiers {
                 assert(prev_risk_factor < *risk_factor, UNSORTED_RISK_FACTOR_TIERS);
                 self
                     .assets
                     .risk_factor_tiers
-                    .entry(asset_id) // New function checks that `risk_factor` is lower than 100.
+                    .entry(asset_id)
                     .push(RiskFactorTrait::new(*risk_factor));
                 prev_risk_factor = *risk_factor;
             }
+
+            // Emit event
             self
                 .emit(
                     events::SyntheticChanged {
@@ -481,8 +508,8 @@ pub(crate) mod AssetsManager {
                         risk_factor_tiers: risk_factor_tiers,
                         risk_factor_first_tier_boundary: risk_factor_first_tier_boundary,
                         risk_factor_tier_size: risk_factor_tier_size,
-                        resolution_factor: old_synthetic_config.resolution_factor,
-                        quorum: old_synthetic_config.quorum,
+                        resolution_factor: asset_config.resolution_factor,
+                        quorum: asset_config.quorum,
                     },
                 );
         }
