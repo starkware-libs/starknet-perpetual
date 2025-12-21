@@ -1354,7 +1354,7 @@ pub struct Storage {
 pub enum Event {
     OracleAdded: events::OracleAdded,
     SyntheticAdded: events::SyntheticAdded,
-    SyntheticChanged: events::SyntheticChanged,
+    AssetChanged: events::AssetChanged,
     SpotAssetAdded: events::SpotAssetAdded,
     AssetActivated: events::AssetActivated,
     SyntheticAssetDeactivated: events::SyntheticAssetDeactivated,
@@ -1411,11 +1411,11 @@ pub struct SyntheticAdded {
 }
 ```
 
-###### SyntheticChanged
+###### AssetChanged
 
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
-pub struct SyntheticChanged {
+pub struct AssetChanged {
     #[key]
     pub asset_id: AssetId,
     pub risk_factor_tiers: Span<u16>,
@@ -1879,11 +1879,11 @@ Only the Operator can execute.
 3. Update `risk_factor_first_tier_boundary` and `risk_factor_tier_size` in asset config.
 4. Clear existing risk factor tiers.
 5. Add new risk factor tiers.
-6. Emit `SyntheticChanged` event.
+6. Emit `AssetChanged` event.
 
 **Emits:**
 
-[SyntheticChanged](#syntheticchanged)
+[AssetChanged](#assetchanged)
 
 **Errors:**
 

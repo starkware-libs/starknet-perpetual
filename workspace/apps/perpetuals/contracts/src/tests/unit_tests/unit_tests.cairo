@@ -35,7 +35,7 @@ use perpetuals::core::types::withdraw::{ForcedWithdrawArgs, WithdrawArgs};
 use perpetuals::tests::constants::*;
 use perpetuals::tests::event_test_utils::{
     assert_add_oracle_event_with_expected, assert_add_synthetic_event_with_expected,
-    assert_asset_activated_event_with_expected, assert_change_synthetic_event_with_expected,
+    assert_asset_activated_event_with_expected, assert_change_asset_event_with_expected,
     assert_deactivate_synthetic_asset_event_with_expected, assert_deleverage_event_with_expected,
     assert_deposit_canceled_event_with_expected, assert_deposit_event_with_expected,
     assert_deposit_processed_event_with_expected, assert_forced_withdraw_event_with_expected,
@@ -970,7 +970,6 @@ fn test_rf_update_valid_same_short_array() {
 
 
 #[test]
-#[feature("safe_dispatcher")]
 #[should_panic(expected: 'INVALID_RF_VALUE')]
 fn test_rf_update_invalid_same_short_array() {
     // Setup:
@@ -1014,7 +1013,6 @@ fn test_rf_update_invalid_same_short_array() {
 }
 
 #[test]
-#[feature("safe_dispatcher")]
 #[should_panic(expected: 'INVALID_RF_VALUE')]
 fn test_rf_update_invalid_super_short_array() {
     // Setup:
@@ -1145,7 +1143,6 @@ fn test_rf_update_valid_same_super_short_array_increase() {
 }
 
 #[test]
-#[feature("safe_dispatcher")]
 #[should_panic(expected: 'INVALID_RF_VALUE')]
 fn test_rf_update_invalid_same_short_array_increase() {
     // Setup:
@@ -1241,7 +1238,6 @@ fn test_rf_update_valid_lower_array() {
 }
 
 #[test]
-#[feature("safe_dispatcher")]
 #[should_panic(expected: 'INVALID_RF_VALUE')]
 fn test_rf_update_invalid_higher_last_element_array() {
     // Setup:
@@ -1285,7 +1281,6 @@ fn test_rf_update_invalid_higher_last_element_array() {
 }
 
 #[test]
-#[feature("safe_dispatcher")]
 #[should_panic(expected: 'INVALID_RF_VALUE')]
 fn test_rf_update_invalid_median_last_element_array() {
     // Setup:
@@ -1374,7 +1369,6 @@ fn test_rf_update_valid_more_frequent_array() {
 
 
 #[test]
-#[feature("safe_dispatcher")]
 #[should_panic(expected: 'INVALID_RF_VALUE')]
 fn test_rf_update_invalid_more_frequent_array() {
     // Setup:
@@ -1418,7 +1412,7 @@ fn test_rf_update_invalid_more_frequent_array() {
             risk_factor_tier_size: risk_factor_tier_size_2,
         );
     let events = spy.get_events().emitted_by(contract_address).events;
-    assert_change_synthetic_event_with_expected(
+    assert_change_asset_event_with_expected(
         spied_event: events[1],
         asset_id: synthetic_id_1,
         risk_factor_tiers: risk_factor_tiers_2,
@@ -1474,7 +1468,6 @@ fn test_rf_update_valid_less_frequent_array() {
 }
 
 #[test]
-#[feature("safe_dispatcher")]
 #[should_panic(expected: 'INVALID_RF_VALUE')]
 fn test_rf_update_invalid_less_frequent_array() {
     // Setup:
@@ -1575,7 +1568,7 @@ fn test_rf_update_valid_different_step_size() {
 
     let events = spy.get_events().emitted_by(contract_address).events;
 
-    assert_change_synthetic_event_with_expected(
+    assert_change_asset_event_with_expected(
         spied_event: events[1],
         asset_id: synthetic_id_1,
         risk_factor_tiers: risk_factor_tiers_2,
@@ -1588,7 +1581,6 @@ fn test_rf_update_valid_different_step_size() {
 
 
 #[test]
-#[feature("safe_dispatcher")]
 #[should_panic(expected: 'INVALID_RF_VALUE')]
 fn test_rf_update_invalid_different_step_size() {
     // Setup:

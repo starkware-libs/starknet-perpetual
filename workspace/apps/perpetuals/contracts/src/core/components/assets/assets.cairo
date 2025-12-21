@@ -367,7 +367,6 @@ pub mod AssetsComponent {
             external_components
                 ._get_assets_manager_dispatcher()
                 .update_asset_risk_factor(
-                    operator_nonce: operator_nonce,
                     asset_id: asset_id,
                     risk_factor_tiers: risk_factor_tiers,
                     risk_factor_first_tier_boundary: risk_factor_first_tier_boundary,

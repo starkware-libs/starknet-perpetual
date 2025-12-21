@@ -46,7 +46,6 @@ pub trait IAssetsExternal<TContractState> {
     );
     fn update_asset_risk_factor(
         ref self: TContractState,
-        operator_nonce: u64,
         asset_id: AssetId,
         risk_factor_tiers: Span<u16>,
         risk_factor_first_tier_boundary: u128,
@@ -95,12 +94,13 @@ pub(crate) mod AssetsManager {
     use starkware_utils::time::time::TimeDelta;
     use crate::core::components::assets::AssetsComponent::InternalTrait as AssetsInternalTrait;
     use crate::core::components::assets::errors::{
-        ASSET_NAME_TOO_LONG, ASSET_REGISTERED_AS_COLLATERAL, INACTIVE_ASSET, INVALID_RF_VALUE,
-        INVALID_SAME_QUORUM, INVALID_ZERO_ASSET_ID, INVALID_ZERO_ASSET_NAME,
-        INVALID_ZERO_ORACLE_NAME, INVALID_ZERO_PUBLIC_KEY, INVALID_ZERO_QUORUM,
-        INVALID_ZERO_RF_FIRST_BOUNDRY, INVALID_ZERO_RF_TIERS_LEN, INVALID_ZERO_RF_TIER_SIZE,
-        NOT_SYNTHETIC, ORACLE_ALREADY_EXISTS, ORACLE_NAME_TOO_LONG, ORACLE_NOT_EXISTS,
-        SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS, UNSORTED_RISK_FACTOR_TIERS,
+        ASSET_NAME_TOO_LONG, ASSET_REGISTERED_AS_COLLATERAL, INACTIVE_ASSET,
+        INVALID_NON_SYNTHETIC_RF_TIERS, INVALID_RF_VALUE, INVALID_SAME_QUORUM,
+        INVALID_ZERO_ASSET_ID, INVALID_ZERO_ASSET_NAME, INVALID_ZERO_ORACLE_NAME,
+        INVALID_ZERO_PUBLIC_KEY, INVALID_ZERO_QUORUM, INVALID_ZERO_RF_FIRST_BOUNDRY,
+        INVALID_ZERO_RF_TIERS_LEN, INVALID_ZERO_RF_TIER_SIZE, NOT_SYNTHETIC, ORACLE_ALREADY_EXISTS,
+        ORACLE_NAME_TOO_LONG, ORACLE_NOT_EXISTS, SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS,
+        UNSORTED_RISK_FACTOR_TIERS,
     };
     use crate::core::components::assets::events;
     use crate::core::components::external_components::interface::EXTERNAL_COMPONENT_ASSETS;
@@ -126,7 +126,7 @@ pub(crate) mod AssetsManager {
         AssetsEvent: AssetsComponent::Event,
         OracleAdded: events::OracleAdded,
         SyntheticAdded: events::SyntheticAdded,
-        SyntheticChanged: events::SyntheticChanged,
+        AssetChanged: events::AssetChanged,
         SpotAssetAdded: events::SpotAssetAdded,
         OracleRemoved: events::OracleRemoved,
         AssetQuorumUpdated: events::AssetQuorumUpdated,
@@ -413,26 +413,36 @@ pub(crate) mod AssetsManager {
         /// (Liqudation may fail if submitted out of order)
         /// - Each risk factor in risk_factor_tiers is less or equal to 1000.
         /// - After update postitions risk must be the same or lower.
+        /// - Non-synthetic assets must have exactly 1 risk factor tier.
         ///
         /// Execution:
+        /// - Clear existing risk factor tiers.
+        /// - Update the asset configuration.
+        /// - Emit event.
         fn update_asset_risk_factor(
             ref self: ContractState,
-            operator_nonce: u64,
             asset_id: AssetId,
             risk_factor_tiers: Span<u16>,
             risk_factor_first_tier_boundary: u128,
             risk_factor_tier_size: u128,
         ) {
+            // Basic input validations
             assert(asset_id.is_non_zero(), INVALID_ZERO_ASSET_ID);
             assert(risk_factor_tiers.len().is_non_zero(), INVALID_ZERO_RF_TIERS_LEN);
             assert(risk_factor_first_tier_boundary.is_non_zero(), INVALID_ZERO_RF_FIRST_BOUNDRY);
             assert(risk_factor_tier_size.is_non_zero(), INVALID_ZERO_RF_TIER_SIZE);
+
             if let Option::Some(collateral_id) = self.assets.collateral_id.read() {
                 assert(collateral_id != asset_id, ASSET_REGISTERED_AS_COLLATERAL);
             }
 
-            let mut old_synthetic_config = self.assets.get_asset_config(asset_id);
+            let mut old_asset_config = self.assets.get_asset_config(asset_id);
             let mut bound = risk_factor_first_tier_boundary;
+
+            // Validate that non-synthetic assets have exactly 1 risk factor tier
+            if old_asset_config.asset_type != AssetType::SYNTHETIC {
+                assert(risk_factor_tiers.len() == 1, INVALID_NON_SYNTHETIC_RF_TIERS);
+            }
 
             for i in 0..risk_factor_tiers.len() {
                 let mut old_factor = self
@@ -453,10 +463,10 @@ pub(crate) mod AssetsManager {
                 bound += risk_factor_tier_size;
             }
 
-            old_synthetic_config.risk_factor_tier_size = risk_factor_tier_size;
-            old_synthetic_config.risk_factor_first_tier_boundary = risk_factor_first_tier_boundary;
+            old_asset_config.risk_factor_tier_size = risk_factor_tier_size;
+            old_asset_config.risk_factor_first_tier_boundary = risk_factor_first_tier_boundary;
             let synthetic_entry = self.assets.asset_config.entry(asset_id);
-            synthetic_entry.write(Option::Some(old_synthetic_config));
+            synthetic_entry.write(Option::Some(old_asset_config));
 
             let mut prev_risk_factor = 0_u16;
             let entry = self.assets.risk_factor_tiers.entry(asset_id);
@@ -474,15 +484,17 @@ pub(crate) mod AssetsManager {
                     .push(RiskFactorTrait::new(*risk_factor));
                 prev_risk_factor = *risk_factor;
             }
+
+            // Emit event
             self
                 .emit(
-                    events::SyntheticChanged {
+                    events::AssetChanged {
                         asset_id: asset_id,
                         risk_factor_tiers: risk_factor_tiers,
                         risk_factor_first_tier_boundary: risk_factor_first_tier_boundary,
                         risk_factor_tier_size: risk_factor_tier_size,
-                        resolution_factor: old_synthetic_config.resolution_factor,
-                        quorum: old_synthetic_config.quorum,
+                        resolution_factor: old_asset_config.resolution_factor,
+                        quorum: old_asset_config.quorum,
                     },
                 );
         }
