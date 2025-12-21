@@ -45,11 +45,12 @@ fn test_process_deposit_only_operator() {
 #[test]
 #[should_panic(expected: 'POSITION_DOESNT_EXIST')]
 fn test_withdraw_request_position_doesnt_exist() {
-    let (_, contract_address) = setup();
+    let (cfg, contract_address) = setup();
     let dispatcher = ICoreDispatcher { contract_address };
     dispatcher
         .withdraw_request(
             signature: array![].span(),
+            collateral_id: cfg.collateral_cfg.collateral_id,
             recipient: test_address(),
             position_id: POSITION_ID_100,
             amount: WITHDRAW_AMOUNT.into(),
@@ -61,11 +62,12 @@ fn test_withdraw_request_position_doesnt_exist() {
 #[test]
 #[should_panic(expected: "ONLY_OPERATOR")]
 fn test_withdraw_only_operator() {
-    let (_, contract_address) = setup();
+    let (cfg, contract_address) = setup();
     let dispatcher = ICoreDispatcher { contract_address };
     dispatcher
         .withdraw(
             operator_nonce: Zero::zero(),
+            collateral_id: cfg.collateral_cfg.collateral_id,
             recipient: test_address(),
             position_id: POSITION_ID_100,
             amount: WITHDRAW_AMOUNT.into(),

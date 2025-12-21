@@ -36,8 +36,8 @@ pub trait IAssets<TContractState> {
     fn get_last_price_validation(self: @TContractState) -> Timestamp;
     fn get_num_of_active_synthetic_assets(self: @TContractState) -> usize;
     fn get_collateral_id(self: @TContractState) -> AssetId;
-    fn get_asset_config(self: @TContractState, synthetic_id: AssetId) -> AssetConfig;
-    fn get_timely_data(self: @TContractState, synthetic_id: AssetId) -> TimelyData;
+    fn get_asset_config(self: @TContractState, asset_id: AssetId) -> AssetConfig;
+    fn get_timely_data(self: @TContractState, asset_id: AssetId) -> TimelyData;
     fn get_risk_factor_tiers(self: @TContractState, asset_id: AssetId) -> Span<RiskFactor>;
 }
 
