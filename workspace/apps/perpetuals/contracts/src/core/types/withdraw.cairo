@@ -11,7 +11,7 @@ use starkware_utils::time::time::Timestamp;
 pub struct WithdrawArgs {
     pub recipient: ContractAddress,
     pub position_id: PositionId,
-    pub collateral_id: AssetId,
+    pub asset_id: AssetId,
     pub amount: u64,
     pub expiration: Timestamp,
     pub salt: felt252,
@@ -21,7 +21,7 @@ pub struct WithdrawArgs {
 ///   "\"WithdrawArgs\"(
 ///    \"recipient\":\"ContractAddress\",
 ///    \"position_id\":\"PositionId\",
-///    \"collateral_id\":\"AssetId\",
+///    \"asset_id\":\"AssetId\",
 ///    \"amount\":\"u64\",
 ///    \"expiration\":\"Timestamp\"
 ///    \"salt\":\"felt\",
@@ -37,7 +37,7 @@ pub struct WithdrawArgs {
 ///    )
 /// );
 const WITHDRAW_ARGS_TYPE_HASH: HashType =
-    0x250a5fa378e8b771654bd43dcb34844534f9d1e29e16b14760d7936ea7f4b1d;
+    0x036195e985ae51bb7274543be4a98cd9f2ca66accf58baf1c19f8422e3c30030;
 
 impl WithdrawArgsStructHashImpl of StructHash<WithdrawArgs> {
     fn hash_struct(self: @WithdrawArgs) -> HashType {
@@ -76,7 +76,7 @@ mod tests {
     #[test]
     fn test_withdraw_type_hash() {
         let expected = selector!(
-            "\"WithdrawArgs\"(\"recipient\":\"ContractAddress\",\"position_id\":\"PositionId\",\"collateral_id\":\"AssetId\",\"amount\":\"u64\",\"expiration\":\"Timestamp\",\"salt\":\"felt\")\"PositionId\"(\"value\":\"u32\")\"AssetId\"(\"value\":\"felt\")\"Timestamp\"(\"seconds\":\"u64\")",
+            "\"WithdrawArgs\"(\"recipient\":\"ContractAddress\",\"position_id\":\"PositionId\",\"asset_id\":\"AssetId\",\"amount\":\"u64\",\"expiration\":\"Timestamp\",\"salt\":\"felt\")\"PositionId\"(\"value\":\"u32\")\"AssetId\"(\"value\":\"felt\")\"Timestamp\"(\"seconds\":\"u64\")",
         );
         assert_eq!(to_base_16_string(WITHDRAW_ARGS_TYPE_HASH), to_base_16_string(expected));
     }
@@ -93,7 +93,7 @@ mod tests {
             position_id: PositionId { value: 1_u32 },
             salt: 123,
             expiration: Timestamp { seconds: 5 },
-            collateral_id: AssetIdTrait::new(4),
+            asset_id: AssetIdTrait::new(4),
             amount: 1000,
             recipient: 0x019ec96d4aea6fdc6f0b5f393fec3f186aefa8f0b8356f43d07b921ff48aa5da
                 .try_into()
@@ -102,13 +102,13 @@ mod tests {
         let withdraw_args_hash = withdraw_args.hash_struct();
         assert_eq!(
             to_base_16_string(withdraw_args_hash),
-            "0x04c22f625c59651e1219c60d03055f11f5dc23959929de35861548d86c0bc4ec",
+            "0x04dfddd6e9b9885160f479f400577fd2f24c72160f0f5801ce278d855cc3eb1a",
         );
 
         let forced_withdraw_args_hash = ForcedWithdrawArgs { withdraw_args_hash }.hash_struct();
         assert_eq!(
             to_base_16_string(forced_withdraw_args_hash),
-            "0x0731c220cc5dd5083cd9010e28d1bcf84061b1f86dffaf1406901cad99fa05a3",
+            "0x00faa1fafff058d9a37fb5d8c35ec4c607c2b6df2221d0531292c81c7f2874c7",
         );
     }
 }

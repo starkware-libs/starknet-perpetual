@@ -154,7 +154,7 @@ fn test_expiration_validation() {
         position_id,
         salt: user.salt_counter,
         expiration: Time::now(),
-        collateral_id: cfg.collateral_cfg.collateral_id,
+        asset_id: cfg.collateral_cfg.collateral_id,
         amount,
         recipient: user.address,
     };
@@ -167,6 +167,7 @@ fn test_expiration_validation() {
     dispatcher
         .withdraw_request(
             :signature,
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -179,6 +180,7 @@ fn test_expiration_validation() {
     dispatcher
         .withdraw(
             operator_nonce: 2,
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -200,6 +202,7 @@ fn test_expiration_validation() {
     dispatcher
         .withdraw_request(
             :signature,
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -211,6 +214,7 @@ fn test_expiration_validation() {
     let result = dispatcher
         .withdraw(
             operator_nonce: 3,
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -1222,7 +1226,7 @@ fn test_rf_update_valid_lower_array() {
             :risk_factor_tier_size,
         );
 
-    let synthetic_config = asset_dispatcher.get_asset_config(synthetic_id: synthetic_id_1);
+    let synthetic_config = asset_dispatcher.get_asset_config(asset_id: synthetic_id_1);
     let tiers = asset_dispatcher.get_risk_factor_tiers(asset_id: synthetic_id_1);
     for i in 0..risk_factor_tiers_2.len() {
         assert!(*tiers[i] == RiskFactorTrait::new(*risk_factor_tiers_2[i]));
@@ -1556,7 +1560,7 @@ fn test_rf_update_valid_different_step_size() {
             risk_factor_tier_size: risk_factor_tier_size_2,
         );
 
-    let synthetic_config = asset_dispatcher.get_asset_config(synthetic_id: synthetic_id_1);
+    let synthetic_config = asset_dispatcher.get_asset_config(asset_id: synthetic_id_1);
     let tiers = asset_dispatcher.get_risk_factor_tiers(asset_id: synthetic_id_1);
     for i in 0..risk_factor_tiers_2.len() {
         assert!(*tiers[i] == RiskFactorTrait::new(*risk_factor_tiers_2[i]));
@@ -2412,7 +2416,7 @@ fn test_successful_withdraw_request_with_public_key() {
         position_id: user.position_id,
         salt: user.salt_counter,
         expiration,
-        collateral_id: cfg.collateral_cfg.collateral_id,
+        asset_id: cfg.collateral_cfg.collateral_id,
         amount: WITHDRAW_AMOUNT,
         recipient: recipient.address,
     };
@@ -2424,6 +2428,7 @@ fn test_successful_withdraw_request_with_public_key() {
     state
         .withdraw_request(
             :signature,
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -2484,7 +2489,7 @@ fn test_successful_forced_withdraw_request() {
         position_id: user.position_id,
         salt: user.salt_counter,
         expiration,
-        collateral_id: cfg.collateral_cfg.collateral_id,
+        asset_id: cfg.collateral_cfg.collateral_id,
         amount: WITHDRAW_AMOUNT,
         recipient: recipient.address,
     };
@@ -2500,6 +2505,7 @@ fn test_successful_forced_withdraw_request() {
     dispatcher
         .forced_withdraw_request(
             :signature,
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -2513,7 +2519,7 @@ fn test_successful_forced_withdraw_request() {
         :spied_event,
         position_id: withdraw_args.position_id,
         recipient: withdraw_args.recipient,
-        collateral_id: cfg.collateral_cfg.collateral_id,
+        asset_id: cfg.collateral_cfg.collateral_id,
         amount: withdraw_args.amount,
         expiration: withdraw_args.expiration,
         forced_withdraw_request_hash: forced_msg_hash,
@@ -2615,7 +2621,7 @@ fn test_successful_forced_withdraw_operator_executes() {
         position_id: user.position_id,
         salt: user.salt_counter + 1,
         expiration,
-        collateral_id: cfg.collateral_cfg.collateral_id,
+        asset_id: cfg.collateral_cfg.collateral_id,
         amount: WITHDRAW_AMOUNT,
         recipient: recipient.address,
     };
@@ -2629,6 +2635,7 @@ fn test_successful_forced_withdraw_operator_executes() {
     dispatcher
         .forced_withdraw_request(
             :signature,
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -2662,6 +2669,7 @@ fn test_successful_forced_withdraw_operator_executes() {
     dispatcher
         .withdraw(
             operator_nonce: 2,
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -2763,7 +2771,7 @@ fn test_successful_forced_withdraw_user_executes() {
         position_id: user.position_id,
         salt: user.salt_counter + 1,
         expiration,
-        collateral_id: cfg.collateral_cfg.collateral_id,
+        asset_id: cfg.collateral_cfg.collateral_id,
         amount: WITHDRAW_AMOUNT,
         recipient: recipient.address,
     };
@@ -2777,6 +2785,7 @@ fn test_successful_forced_withdraw_user_executes() {
     dispatcher
         .forced_withdraw_request(
             :signature,
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -2811,6 +2820,7 @@ fn test_successful_forced_withdraw_user_executes() {
     cheat_caller_address_once(:contract_address, caller_address: user.address);
     dispatcher
         .forced_withdraw(
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -2824,7 +2834,7 @@ fn test_successful_forced_withdraw_user_executes() {
         :spied_event,
         position_id: withdraw_args.position_id,
         recipient: withdraw_args.recipient,
-        collateral_id: cfg.collateral_cfg.collateral_id,
+        asset_id: cfg.collateral_cfg.collateral_id,
         amount: withdraw_args.amount,
         expiration: withdraw_args.expiration,
         forced_withdraw_request_hash: forced_msg_hash,
@@ -2890,7 +2900,7 @@ fn test_forced_withdraw_before_timeout() {
         position_id: user.position_id,
         salt: user.salt_counter,
         expiration,
-        collateral_id: cfg.collateral_cfg.collateral_id,
+        asset_id: cfg.collateral_cfg.collateral_id,
         amount: WITHDRAW_AMOUNT,
         recipient: recipient.address,
     };
@@ -2904,6 +2914,7 @@ fn test_forced_withdraw_before_timeout() {
     dispatcher
         .forced_withdraw_request(
             :signature,
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -2929,6 +2940,7 @@ fn test_forced_withdraw_before_timeout() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     dispatcher
         .forced_withdraw(
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -3008,7 +3020,7 @@ fn test_forced_withdraw_after_operator_processed_withdraw() {
         position_id: user.position_id,
         salt: user.salt_counter + 1,
         expiration,
-        collateral_id: cfg.collateral_cfg.collateral_id,
+        asset_id: cfg.collateral_cfg.collateral_id,
         amount: WITHDRAW_AMOUNT,
         recipient: recipient.address,
     };
@@ -3022,6 +3034,7 @@ fn test_forced_withdraw_after_operator_processed_withdraw() {
     dispatcher
         .forced_withdraw_request(
             :signature,
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -3034,6 +3047,7 @@ fn test_forced_withdraw_after_operator_processed_withdraw() {
     dispatcher
         .withdraw(
             operator_nonce: 2,
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -3047,6 +3061,7 @@ fn test_forced_withdraw_after_operator_processed_withdraw() {
     cheat_caller_address_once(:contract_address, caller_address: user.address);
     dispatcher
         .forced_withdraw(
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -3127,7 +3142,7 @@ fn test_withdraw_after_user_forced_withdraw_executed() {
         position_id: user.position_id,
         salt: user.salt_counter + 1,
         expiration,
-        collateral_id: cfg.collateral_cfg.collateral_id,
+        asset_id: cfg.collateral_cfg.collateral_id,
         amount: WITHDRAW_AMOUNT,
         recipient: recipient.address,
     };
@@ -3141,6 +3156,7 @@ fn test_withdraw_after_user_forced_withdraw_executed() {
     dispatcher
         .forced_withdraw_request(
             :signature,
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -3154,6 +3170,7 @@ fn test_withdraw_after_user_forced_withdraw_executed() {
     cheat_caller_address_once(:contract_address, caller_address: user.address);
     dispatcher
         .forced_withdraw(
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -3173,6 +3190,7 @@ fn test_withdraw_after_user_forced_withdraw_executed() {
     dispatcher
         .withdraw(
             operator_nonce: 3,
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -3199,7 +3217,7 @@ fn test_forced_withdraw_request_zero_amount() {
         position_id: user.position_id,
         salt: user.salt_counter,
         expiration,
-        collateral_id: cfg.collateral_cfg.collateral_id,
+        asset_id: cfg.collateral_cfg.collateral_id,
         amount: 0,
         recipient: recipient.address,
     };
@@ -3213,6 +3231,7 @@ fn test_forced_withdraw_request_zero_amount() {
     state
         .forced_withdraw_request(
             :signature,
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -3897,7 +3916,7 @@ fn test_validate_asset_prices_expired() {
         position_id: user.position_id,
         salt: user.salt_counter,
         expiration,
-        collateral_id: cfg.collateral_cfg.collateral_id,
+        asset_id: cfg.collateral_cfg.collateral_id,
         amount: WITHDRAW_AMOUNT,
         recipient: user.address,
     };
@@ -3908,6 +3927,7 @@ fn test_validate_asset_prices_expired() {
     state
         .withdraw_request(
             :signature,
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -3918,6 +3938,7 @@ fn test_validate_asset_prices_expired() {
     state
         .withdraw(
             operator_nonce: state.get_operator_nonce(),
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -4017,7 +4038,7 @@ fn test_validate_prices() {
         position_id: user.position_id,
         salt: user.salt_counter,
         expiration,
-        collateral_id: cfg.collateral_cfg.collateral_id,
+        asset_id: cfg.collateral_cfg.collateral_id,
         amount: WITHDRAW_AMOUNT,
         recipient: user.address,
     };
@@ -4048,6 +4069,7 @@ fn test_validate_prices() {
     state
         .withdraw_request(
             :signature,
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -4058,6 +4080,7 @@ fn test_validate_prices() {
     state
         .withdraw(
             operator_nonce: state.get_operator_nonce(),
+            asset_id: cfg.collateral_cfg.collateral_id,
             recipient: withdraw_args.recipient,
             position_id: withdraw_args.position_id,
             amount: withdraw_args.amount,
@@ -4186,7 +4209,7 @@ fn test_invalid_funding_rate() {
 }
 
 #[test]
-#[should_panic(expected: 'SYNTHETIC_NOT_EXISTS')]
+#[should_panic(expected: 'ASSET_NOT_EXISTS')]
 fn test_funding_tick_collateral_asset() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
@@ -5151,7 +5174,7 @@ fn test_successful_vault_token_deposit() {
 
 
 #[test]
-#[should_panic(expected: 'SYNTHETIC_NOT_EXISTS')]
+#[should_panic(expected: 'ASSET_NOT_EXISTS')]
 fn test_unsuccessful_vault_token_deposit_unregistered_asset() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();

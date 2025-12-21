@@ -9,7 +9,7 @@ pub struct WithdrawRequest {
     pub position_id: PositionId,
     #[key]
     pub recipient: ContractAddress,
-    pub collateral_id: AssetId,
+    pub asset_id: AssetId,
     pub amount: u64,
     pub expiration: Timestamp,
     #[key]
@@ -23,7 +23,7 @@ pub struct Withdraw {
     pub position_id: PositionId,
     #[key]
     pub recipient: ContractAddress,
-    pub collateral_id: AssetId,
+    pub asset_id: AssetId,
     pub amount: u64,
     pub expiration: Timestamp,
     #[key]

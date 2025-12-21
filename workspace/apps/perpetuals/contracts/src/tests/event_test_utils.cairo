@@ -123,14 +123,14 @@ pub fn assert_withdraw_request_event_with_expected(
     spied_event: @(ContractAddress, Event),
     position_id: PositionId,
     recipient: ContractAddress,
-    collateral_id: AssetId,
+    asset_id: AssetId,
     amount: u64,
     expiration: Timestamp,
     withdraw_request_hash: felt252,
     salt: felt252,
 ) {
     let expected_event = events::WithdrawRequest {
-        position_id, recipient, collateral_id, amount, expiration, withdraw_request_hash, salt,
+        position_id, recipient, asset_id, amount, expiration, withdraw_request_hash, salt,
     };
     assert_expected_event_emitted(
         :spied_event,
@@ -144,14 +144,14 @@ pub fn assert_withdraw_event_with_expected(
     spied_event: @(ContractAddress, Event),
     position_id: PositionId,
     recipient: ContractAddress,
-    collateral_id: AssetId,
+    asset_id: AssetId,
     amount: u64,
     expiration: Timestamp,
     withdraw_request_hash: felt252,
     salt: felt252,
 ) {
     let expected_event = events::Withdraw {
-        position_id, recipient, collateral_id, amount, expiration, withdraw_request_hash, salt,
+        position_id, recipient, asset_id, amount, expiration, withdraw_request_hash, salt,
     };
     assert_expected_event_emitted(
         :spied_event,
@@ -165,20 +165,14 @@ pub fn assert_forced_withdraw_request_event_with_expected(
     spied_event: @(ContractAddress, Event),
     position_id: PositionId,
     recipient: ContractAddress,
-    collateral_id: AssetId,
+    asset_id: AssetId,
     amount: u64,
     expiration: Timestamp,
     forced_withdraw_request_hash: felt252,
     salt: felt252,
 ) {
     let expected_event = ForcedWithdrawRequest {
-        position_id,
-        recipient,
-        collateral_id,
-        amount,
-        expiration,
-        forced_withdraw_request_hash,
-        salt,
+        position_id, recipient, asset_id, amount, expiration, forced_withdraw_request_hash, salt,
     };
     assert_expected_event_emitted(
         :spied_event,
@@ -192,20 +186,14 @@ pub fn assert_forced_withdraw_event_with_expected(
     spied_event: @(ContractAddress, Event),
     position_id: PositionId,
     recipient: ContractAddress,
-    collateral_id: AssetId,
+    asset_id: AssetId,
     amount: u64,
     expiration: Timestamp,
     forced_withdraw_request_hash: felt252,
     salt: felt252,
 ) {
     let expected_event = ForcedWithdraw {
-        position_id,
-        recipient,
-        collateral_id,
-        amount,
-        expiration,
-        forced_withdraw_request_hash,
-        salt,
+        position_id, recipient, asset_id, amount, expiration, forced_withdraw_request_hash, salt,
     };
     assert_expected_event_emitted(
         :spied_event,
