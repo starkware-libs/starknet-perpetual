@@ -957,16 +957,19 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         let recipient = account.address;
         let expiration = Time::now().add(Time::seconds(10));
         let salt = self.generate_salt();
+        let collateral_id = self.collateral_id;
 
         let request_hash = WithdrawArgs {
-            recipient, position_id, collateral_id: self.collateral_id, amount, expiration, salt,
+            recipient, position_id, collateral_id, amount, expiration, salt,
         }
             .get_message_hash(public_key: account.key_pair.public_key);
         let signature = account.sign_message(message: request_hash);
 
         caller.account.set_as_caller(self.perpetuals_contract);
         ICoreDispatcher { contract_address: self.perpetuals_contract }
-            .withdraw_request(:signature, :recipient, :position_id, :amount, :expiration, :salt);
+            .withdraw_request(
+                :signature, :collateral_id, :recipient, :position_id, :amount, :expiration, :salt,
+            );
 
         self.validate_request_approval(:request_hash, expected_status: RequestStatus::PENDING);
 
@@ -974,7 +977,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             spied_event: self.get_last_event(contract_address: self.perpetuals_contract),
             :position_id,
             :recipient,
-            collateral_id: self.collateral_id,
+            :collateral_id,
             :amount,
             expiration: expiration,
             withdraw_request_hash: request_hash,
@@ -988,6 +991,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         let RequestInfo {
             recipient, position_id, amount, expiration, salt, request_hash,
         } = withdraw_info;
+        let collateral_id = self.collateral_id;
         let address = recipient.account.address;
         let user_balance_before = self.token_state.balance_of(account: address);
         let contract_balance_before = self.token_state.balance_of(self.perpetuals_contract);
@@ -1001,7 +1005,13 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         self.operator.set_as_caller(self.perpetuals_contract);
         ICoreDispatcher { contract_address: self.perpetuals_contract }
             .withdraw(
-                :operator_nonce, recipient: address, :position_id, :amount, :expiration, :salt,
+                :operator_nonce,
+                :collateral_id,
+                recipient: address,
+                :position_id,
+                :amount,
+                :expiration,
+                :salt,
             );
 
         self
@@ -1027,7 +1037,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             spied_event: self.get_last_event(contract_address: self.perpetuals_contract),
             :position_id,
             recipient: address,
-            collateral_id: self.collateral_id,
+            :collateral_id,
             :amount,
             :expiration,
             withdraw_request_hash: request_hash,
@@ -1635,7 +1645,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         );
 
         assert_eq!(
-            dispatcher.get_asset_config(synthetic_id: *synthetic_info.asset_id).status,
+            dispatcher.get_asset_config(asset_id: *synthetic_info.asset_id).status,
             AssetStatus::PENDING,
         );
 
@@ -1664,7 +1674,10 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             spied_event: self.get_last_event(contract_address: self.perpetuals_contract),
             asset_id: synthetic_id,
         );
-        assert_eq!(assets_dispatcher.get_asset_config(:synthetic_id).status, AssetStatus::INACTIVE);
+        assert_eq!(
+            assets_dispatcher.get_asset_config(asset_id: synthetic_id).status,
+            AssetStatus::INACTIVE,
+        );
     }
 
     fn reduce_asset_position(
@@ -1707,7 +1720,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
 
     fn get_asset_price(self: @PerpsTestsFacade, synthetic_id: AssetId) -> Price {
         IAssetsDispatcher { contract_address: *self.perpetuals_contract }
-            .get_timely_data(synthetic_id: synthetic_id)
+            .get_timely_data(asset_id: synthetic_id)
             .price
     }
 
