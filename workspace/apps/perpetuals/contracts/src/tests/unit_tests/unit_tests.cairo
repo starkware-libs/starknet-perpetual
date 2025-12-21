@@ -35,7 +35,7 @@ use perpetuals::core::types::withdraw::{ForcedWithdrawArgs, WithdrawArgs};
 use perpetuals::tests::constants::*;
 use perpetuals::tests::event_test_utils::{
     assert_add_oracle_event_with_expected, assert_add_synthetic_event_with_expected,
-    assert_asset_activated_event_with_expected, assert_change_synthetic_event_with_expected,
+    assert_asset_activated_event_with_expected, assert_change_asset_event_with_expected,
     assert_deactivate_synthetic_asset_event_with_expected, assert_deleverage_event_with_expected,
     assert_deposit_canceled_event_with_expected, assert_deposit_event_with_expected,
     assert_deposit_processed_event_with_expected, assert_forced_withdraw_event_with_expected,
@@ -910,11 +910,10 @@ fn test_rf_update_valid_same_array() {
             :resolution_factor,
         );
 
-    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
     // Test:
     asset_dispatcher
         .update_asset_risk_factor(
-            operator_nonce: 0,
             asset_id: synthetic_id_1,
             :risk_factor_tiers,
             :risk_factor_first_tier_boundary,
@@ -952,11 +951,10 @@ fn test_rf_update_valid_same_short_array() {
             :resolution_factor,
         );
 
-    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
     // Test:
     asset_dispatcher
         .update_asset_risk_factor(
-            operator_nonce: 0,
             asset_id: synthetic_id_1,
             :risk_factor_tiers,
             :risk_factor_first_tier_boundary,
@@ -966,9 +964,7 @@ fn test_rf_update_valid_same_short_array() {
 
 
 #[test]
-#[feature("safe_dispatcher")]
-#[should_panic(expected: 'INVALID_RF_VALUE')]
-fn test_rf_update_invalid_same_short_array() {
+fn test_rf_update_same_short_array() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
@@ -997,11 +993,10 @@ fn test_rf_update_invalid_same_short_array() {
             :resolution_factor,
         );
 
-    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
     // Test:
     asset_dispatcher
         .update_asset_risk_factor(
-            operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
             :risk_factor_first_tier_boundary,
@@ -1010,9 +1005,7 @@ fn test_rf_update_invalid_same_short_array() {
 }
 
 #[test]
-#[feature("safe_dispatcher")]
-#[should_panic(expected: 'INVALID_RF_VALUE')]
-fn test_rf_update_invalid_super_short_array() {
+fn test_rf_update_super_short_array() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
@@ -1041,11 +1034,10 @@ fn test_rf_update_invalid_super_short_array() {
             :resolution_factor,
         );
 
-    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
     // Test:
     asset_dispatcher
         .update_asset_risk_factor(
-            operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
             :risk_factor_first_tier_boundary,
@@ -1084,11 +1076,10 @@ fn test_rf_update_valid_super_short_array() {
             :resolution_factor,
         );
 
-    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
     // Test:
     asset_dispatcher
         .update_asset_risk_factor(
-            operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
             :risk_factor_first_tier_boundary,
@@ -1128,11 +1119,10 @@ fn test_rf_update_valid_same_super_short_array_increase() {
             :resolution_factor,
         );
 
-    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
     // Test:
     asset_dispatcher
         .update_asset_risk_factor(
-            operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
             :risk_factor_first_tier_boundary,
@@ -1141,9 +1131,7 @@ fn test_rf_update_valid_same_super_short_array_increase() {
 }
 
 #[test]
-#[feature("safe_dispatcher")]
-#[should_panic(expected: 'INVALID_RF_VALUE')]
-fn test_rf_update_invalid_same_short_array_increase() {
+fn test_rf_update_same_short_array_increase() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
@@ -1172,11 +1160,10 @@ fn test_rf_update_invalid_same_short_array_increase() {
             :resolution_factor,
         );
 
-    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
     // Test:
     asset_dispatcher
         .update_asset_risk_factor(
-            operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
             :risk_factor_first_tier_boundary,
@@ -1216,11 +1203,10 @@ fn test_rf_update_valid_lower_array() {
             :resolution_factor,
         );
 
-    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
     // Test:
     assets_manager_dispatcher
         .update_asset_risk_factor(
-            operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
             :risk_factor_first_tier_boundary,
@@ -1237,9 +1223,7 @@ fn test_rf_update_valid_lower_array() {
 }
 
 #[test]
-#[feature("safe_dispatcher")]
-#[should_panic(expected: 'INVALID_RF_VALUE')]
-fn test_rf_update_invalid_higher_last_element_array() {
+fn test_rf_update_higher_last_element_array() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
@@ -1252,7 +1236,7 @@ fn test_rf_update_invalid_higher_last_element_array() {
     let risk_factor_first_tier_boundary = 10_000;
     let risk_factor_tier_size = 20_000;
     let risk_factor_tiers = array![1, 2, 3, 5, 10, 20, 40].span();
-    let risk_factor_tiers_2 = array![1, 1, 1, 1, 5, 10, 41].span();
+    let risk_factor_tiers_2 = array![1, 2, 3, 5, 11, 21, 41].span();
     let quorum = 1_u8;
     let resolution_factor = 2_000_000_000;
 
@@ -1268,11 +1252,10 @@ fn test_rf_update_invalid_higher_last_element_array() {
             :resolution_factor,
         );
 
-    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
     // Test:
     asset_dispatcher
         .update_asset_risk_factor(
-            operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
             :risk_factor_first_tier_boundary,
@@ -1281,9 +1264,7 @@ fn test_rf_update_invalid_higher_last_element_array() {
 }
 
 #[test]
-#[feature("safe_dispatcher")]
-#[should_panic(expected: 'INVALID_RF_VALUE')]
-fn test_rf_update_invalid_median_last_element_array() {
+fn test_rf_update_higher_median_last_element_array() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
@@ -1312,11 +1293,10 @@ fn test_rf_update_invalid_median_last_element_array() {
             :resolution_factor,
         );
 
-    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
     // Test:
     asset_dispatcher
         .update_asset_risk_factor(
-            operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
             :risk_factor_first_tier_boundary,
@@ -1356,11 +1336,10 @@ fn test_rf_update_valid_more_frequent_array() {
             :resolution_factor,
         );
 
-    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
     // Test:
     asset_dispatcher
         .update_asset_risk_factor(
-            operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
             :risk_factor_first_tier_boundary,
@@ -1370,9 +1349,7 @@ fn test_rf_update_valid_more_frequent_array() {
 
 
 #[test]
-#[feature("safe_dispatcher")]
-#[should_panic(expected: 'INVALID_RF_VALUE')]
-fn test_rf_update_invalid_more_frequent_array() {
+fn test_rf_update_more_frequent_array() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
@@ -1403,18 +1380,17 @@ fn test_rf_update_invalid_more_frequent_array() {
             :resolution_factor,
         );
 
-    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
     // Test:
     asset_dispatcher
         .update_asset_risk_factor(
-            operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
             :risk_factor_first_tier_boundary,
             risk_factor_tier_size: risk_factor_tier_size_2,
         );
     let events = spy.get_events().emitted_by(contract_address).events;
-    assert_change_synthetic_event_with_expected(
+    assert_change_asset_event_with_expected(
         spied_event: events[1],
         asset_id: synthetic_id_1,
         risk_factor_tiers: risk_factor_tiers_2,
@@ -1457,11 +1433,10 @@ fn test_rf_update_valid_less_frequent_array() {
             :resolution_factor,
         );
 
-    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
     // Test:
     asset_dispatcher
         .update_asset_risk_factor(
-            operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
             :risk_factor_first_tier_boundary,
@@ -1470,9 +1445,7 @@ fn test_rf_update_valid_less_frequent_array() {
 }
 
 #[test]
-#[feature("safe_dispatcher")]
-#[should_panic(expected: 'INVALID_RF_VALUE')]
-fn test_rf_update_invalid_less_frequent_array() {
+fn test_rf_update_less_frequent_array() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
@@ -1502,11 +1475,10 @@ fn test_rf_update_invalid_less_frequent_array() {
             :resolution_factor,
         );
 
-    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
     // Test:
     asset_dispatcher
         .update_asset_risk_factor(
-            operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
             :risk_factor_first_tier_boundary,
@@ -1550,11 +1522,10 @@ fn test_rf_update_valid_different_step_size() {
             :resolution_factor,
         );
 
-    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
     // Test:
     assets_manager_dispatcher
         .update_asset_risk_factor(
-            operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
             risk_factor_first_tier_boundary: risk_factor_first_tier_boundary2,
@@ -1571,7 +1542,7 @@ fn test_rf_update_valid_different_step_size() {
 
     let events = spy.get_events().emitted_by(contract_address).events;
 
-    assert_change_synthetic_event_with_expected(
+    assert_change_asset_event_with_expected(
         spied_event: events[1],
         asset_id: synthetic_id_1,
         risk_factor_tiers: risk_factor_tiers_2,
@@ -1584,9 +1555,7 @@ fn test_rf_update_valid_different_step_size() {
 
 
 #[test]
-#[feature("safe_dispatcher")]
-#[should_panic(expected: 'INVALID_RF_VALUE')]
-fn test_rf_update_invalid_different_step_size() {
+fn test_rf_update_different_step_size() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
@@ -1616,11 +1585,10 @@ fn test_rf_update_invalid_different_step_size() {
             :resolution_factor,
         );
 
-    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
     // Test:
     asset_dispatcher
         .update_asset_risk_factor(
-            operator_nonce: 0,
             asset_id: synthetic_id_1,
             risk_factor_tiers: risk_factor_tiers_2,
             :risk_factor_first_tier_boundary,
