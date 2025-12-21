@@ -26,7 +26,7 @@ pub struct SyntheticAdded {
 }
 
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
-pub struct SyntheticChanged {
+pub struct AssetChanged {
     #[key]
     pub asset_id: AssetId,
     pub risk_factor_tiers: Span<u16>,

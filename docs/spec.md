@@ -1354,7 +1354,7 @@ pub struct Storage {
 pub enum Event {
     OracleAdded: events::OracleAdded,
     SyntheticAdded: events::SyntheticAdded,
-    SyntheticChanged: events::SyntheticChanged,
+    AssetChanged: events::AssetChanged,
     SpotAssetAdded: events::SpotAssetAdded,
     AssetActivated: events::AssetActivated,
     SyntheticAssetDeactivated: events::SyntheticAssetDeactivated,
@@ -1411,11 +1411,11 @@ pub struct SyntheticAdded {
 }
 ```
 
-###### SyntheticChanged
+###### AssetChanged
 
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
-pub struct SyntheticChanged {
+pub struct AssetChanged {
     #[key]
     pub asset_id: AssetId,
     pub risk_factor_tiers: Span<u16>,
@@ -1859,18 +1859,16 @@ fn update_asset_risk_factor(
 
 **Access Control:**
 
-Only the Operator can execute.
+Only the App governor can execute.
 
 **Validations:**
 
-1. [Pausable check](#pausable)
-2. [Operator Nonce check](#operator-nonce)
-3. `asset_id` is not zero.
-4. `risk_factor_tiers` length is non zero.
-5. `risk_factor_first_tier_boundary` and `risk_factor_tier_size` are non zero.
-6. `asset_id` is not the collateral asset.
-7. For each tier boundary, the new risk factor must be less than or equal to the old risk factor (risk can only decrease).
-8. `risk_factor_tiers` is sorted.
+1. [Operator Nonce check](#operator-nonce)
+2. `asset_id` is not zero.
+3. `risk_factor_tiers` length is non zero.
+4. `risk_factor_first_tier_boundary` and `risk_factor_tier_size` are non zero.
+5. `asset_id` is not the collateral asset.
+6. `risk_factor_tiers` is sorted.
 
 **Logic:**
 
@@ -1879,16 +1877,15 @@ Only the Operator can execute.
 3. Update `risk_factor_first_tier_boundary` and `risk_factor_tier_size` in asset config.
 4. Clear existing risk factor tiers.
 5. Add new risk factor tiers.
-6. Emit `SyntheticChanged` event.
+6. Emit `AssetChanged` event.
 
 **Emits:**
 
-[SyntheticChanged](#syntheticchanged)
+[AssetChanged](#assetchanged)
 
 **Errors:**
 
-- PAUSED
-- ONLY_OPERATOR
+- ONLY_APP_GOVERNOR
 - INVALID_NONCE
 - INVALID_ZERO_ASSET_ID
 - INVALID_ZERO_RF_TIERS_LEN
