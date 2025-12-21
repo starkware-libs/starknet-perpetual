@@ -355,21 +355,19 @@ pub mod AssetsComponent {
 
         fn update_asset_risk_factor(
             ref self: ComponentState<TContractState>,
-            operator_nonce: u64,
             asset_id: AssetId,
             risk_factor_tiers: Span<u16>,
             risk_factor_first_tier_boundary: u128,
             risk_factor_tier_size: u128,
         ) {
             // Validations:
-            get_dep_component!(@self, Pausable).assert_not_paused();
-            let mut nonce = get_dep_component_mut!(ref self, OperatorNonce);
-            nonce.use_checked_nonce(:operator_nonce);
+            // TODO(Stefano): Need to make sure that the trades of the relevant asset are blocked
+            // for a short while.
+            get_dep_component!(@self, Roles).only_app_governor();
             let external_components = get_dep_component!(@self, ExternalComponents);
             external_components
                 ._get_assets_manager_dispatcher()
                 .update_asset_risk_factor(
-                    operator_nonce: operator_nonce,
                     asset_id: asset_id,
                     risk_factor_tiers: risk_factor_tiers,
                     risk_factor_first_tier_boundary: risk_factor_first_tier_boundary,
