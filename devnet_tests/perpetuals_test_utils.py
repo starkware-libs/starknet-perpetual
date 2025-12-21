@@ -368,6 +368,7 @@ class PerpetualsTestUtils:
             .functions["withdraw_request"]
             .invoke_v3(
                 signature,
+                formatted_asset_id(collateral_asset_id),
                 self.get_account_address(account),
                 formatted_position_id(self.get_account_position_id(account)),
                 amount,
@@ -385,6 +386,7 @@ class PerpetualsTestUtils:
                 .functions["withdraw"]
                 .invoke_v3(
                     await self.consume_operator_nonce(),
+                    formatted_asset_id(await self.get_collateral_asset_id()),
                     self.get_account_address(account),
                     formatted_position_id(self.get_account_position_id(account)),
                     amount,

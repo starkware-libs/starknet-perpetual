@@ -14,7 +14,7 @@ pub mod AssetsComponent {
         FUNDING_TICKS_NOT_SORTED, INACTIVE_ASSET, INVALID_FUNDING_TICK_LEN, INVALID_MEDIAN,
         INVALID_PRICE_TIMESTAMP, INVALID_TIMESTAMP, INVALID_ZERO_ASSET_ID, INVALID_ZERO_QUANTUM,
         INVALID_ZERO_TOKEN_ADDRESS, NOT_COLLATERAL, NOT_SYNTHETIC, QUORUM_NOT_REACHED,
-        SIGNED_PRICES_UNSORTED, SYNTHETIC_EXPIRED_PRICE, SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS,
+        SIGNED_PRICES_UNSORTED, SYNTHETIC_EXPIRED_PRICE, SYNTHETIC_NOT_ACTIVE,
         ZERO_MAX_FUNDING_INTERVAL, ZERO_MAX_FUNDING_RATE, ZERO_MAX_ORACLE_PRICE,
         ZERO_MAX_PRICE_INTERVAL, oracle_public_key_not_registered,
     };
@@ -146,7 +146,7 @@ pub mod AssetsComponent {
             for funding_tick in funding_ticks {
                 let synthetic_id = *funding_tick.asset_id;
                 assert(synthetic_id > prev_synthetic_id, FUNDING_TICKS_NOT_SORTED);
-                let asset_config = self._get_asset_config(:synthetic_id);
+                let asset_config = self._get_asset_config(asset_id: synthetic_id);
                 assert(asset_config.asset_type == AssetType::SYNTHETIC, NOT_SYNTHETIC);
                 assert(asset_config.status == AssetStatus::ACTIVE, SYNTHETIC_NOT_ACTIVE);
                 self
@@ -225,14 +225,12 @@ pub mod AssetsComponent {
             self.collateral_id.read().expect(COLLATERAL_NOT_REGISTERED)
         }
         fn get_asset_config(
-            self: @ComponentState<TContractState>, synthetic_id: AssetId,
+            self: @ComponentState<TContractState>, asset_id: AssetId,
         ) -> AssetConfig {
-            self._get_asset_config(:synthetic_id)
+            self._get_asset_config(:asset_id)
         }
-        fn get_timely_data(
-            self: @ComponentState<TContractState>, synthetic_id: AssetId,
-        ) -> TimelyData {
-            self._get_timely_data(:synthetic_id)
+        fn get_timely_data(self: @ComponentState<TContractState>, asset_id: AssetId) -> TimelyData {
+            self._get_timely_data(:asset_id)
         }
 
         fn get_risk_factor_tiers(
@@ -622,15 +620,15 @@ pub mod AssetsComponent {
         impl Roles: RolesComponent::HasComponent<TContractState>,
     > of PrivateTrait<TContractState> {
         fn _get_asset_config(
-            self: @ComponentState<TContractState>, synthetic_id: AssetId,
+            self: @ComponentState<TContractState>, asset_id: AssetId,
         ) -> AssetConfig {
-            self.asset_config.read(synthetic_id).expect(SYNTHETIC_NOT_EXISTS)
+            self.asset_config.read(asset_id).expect(ASSET_NOT_EXISTS)
         }
 
         fn _get_timely_data(
-            self: @ComponentState<TContractState>, synthetic_id: AssetId,
+            self: @ComponentState<TContractState>, asset_id: AssetId,
         ) -> TimelyData {
-            self.timely_data.read(synthetic_id).expect(SYNTHETIC_NOT_EXISTS)
+            self.timely_data.read(asset_id).expect(ASSET_NOT_EXISTS)
         }
 
         fn _process_funding_tick(
@@ -640,7 +638,7 @@ pub mod AssetsComponent {
             new_funding_index: FundingIndex,
             synthetic_id: AssetId,
         ) {
-            let mut timely_data = self._get_timely_data(:synthetic_id);
+            let mut timely_data = self._get_timely_data(asset_id: synthetic_id);
             let last_funding_index = timely_data.funding_index;
             let index_diff: i64 = (new_funding_index - last_funding_index).into();
             validate_funding_rate(
@@ -674,7 +672,7 @@ pub mod AssetsComponent {
             oracle_price: u128,
             signed_prices: Span<SignedPrice>,
         ) {
-            let asset_config = self._get_asset_config(synthetic_id: asset_id);
+            let asset_config = self._get_asset_config(:asset_id);
             assert(asset_config.status != AssetStatus::INACTIVE, INACTIVE_ASSET);
             let signed_prices_len = signed_prices.len();
             assert(signed_prices_len >= asset_config.quorum.into(), QUORUM_NOT_REACHED);
@@ -725,12 +723,12 @@ pub mod AssetsComponent {
         fn _set_price(
             ref self: ComponentState<TContractState>, asset_id: AssetId, oracle_price: u128,
         ) {
-            let mut asset_config = self._get_asset_config(synthetic_id: asset_id);
+            let mut asset_config = self._get_asset_config(:asset_id);
             let price = convert_oracle_to_perps_price(
                 :oracle_price, resolution_factor: asset_config.resolution_factor,
             );
 
-            let mut timely_data = self._get_timely_data(synthetic_id: asset_id);
+            let mut timely_data = self._get_timely_data(:asset_id);
             timely_data.price = price;
             timely_data.last_price_update = Time::now();
             self.timely_data.write(asset_id, timely_data);
@@ -777,9 +775,9 @@ pub mod AssetsComponent {
             current_time: Timestamp,
             max_price_interval: TimeDelta,
         ) {
-            for (synthetic_id, timely_data) in self.timely_data {
+            for (asset_id, timely_data) in self.timely_data {
                 // Validate only active asset
-                if self._get_asset_config(:synthetic_id).status == AssetStatus::ACTIVE {
+                if self._get_asset_config(:asset_id).status == AssetStatus::ACTIVE {
                     assert(
                         max_price_interval >= current_time.sub(timely_data.last_price_update),
                         SYNTHETIC_EXPIRED_PRICE,
