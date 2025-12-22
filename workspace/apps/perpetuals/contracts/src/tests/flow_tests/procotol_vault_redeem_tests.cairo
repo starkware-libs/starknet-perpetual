@@ -624,7 +624,7 @@ fn test_redeem_from_protocol_vault_allows_redeem_when_improving_tv_tr() {
         tiers: array![300].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
-    let synthetic_info = SyntheticInfoTrait::new(
+    let synthetic_info = AssetInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
     );
     let asset_id = synthetic_info.asset_id;
@@ -752,7 +752,7 @@ fn test_redeem_from_protocol_vault_fails_redeem_when_worsening_tv_tr() {
         tiers: array![300].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
-    let synthetic_info = SyntheticInfoTrait::new(
+    let synthetic_info = AssetInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
     );
     let asset_id = synthetic_info.asset_id;
@@ -878,7 +878,7 @@ fn test_liquidate_vault_shares_succeeds_when_improving_tv_tr() {
         tiers: array![300].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
-    let synthetic_info = SyntheticInfoTrait::new(
+    let synthetic_info = AssetInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
     );
     let asset_id = synthetic_info.asset_id;
@@ -999,7 +999,7 @@ fn test_liquidate_vault_shares_succeeds_when_improving_tv_tr_starting_with_negat
         tiers: array![300].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
-    let synthetic_info = SyntheticInfoTrait::new(
+    let synthetic_info = AssetInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
     );
     let asset_id = synthetic_info.asset_id;
@@ -1123,7 +1123,7 @@ fn test_liquidate_vault_shares_fails_when_not_improving_tv_tr_starting_with_nega
         tiers: array![300].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
-    let synthetic_info = SyntheticInfoTrait::new(
+    let synthetic_info = AssetInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
     );
     let asset_id = synthetic_info.asset_id;
@@ -1248,7 +1248,7 @@ fn test_liquidate_vault_shares_fails_when_worsening_tv_tr() {
         tiers: array![300].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
-    let synthetic_info = SyntheticInfoTrait::new(
+    let synthetic_info = AssetInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
     );
     let asset_id = synthetic_info.asset_id;
