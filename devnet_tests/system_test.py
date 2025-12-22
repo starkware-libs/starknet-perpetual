@@ -9,8 +9,8 @@ async def test_helper_functions(test_utils: PerpetualsTestUtils):
     """Test helper functions in PerpetualsTestUtils."""
 
     # Test that we can access the contracts
-    assert test_utils.operator_contract is not None
-    assert test_utils.app_governor_contract is not None
+    assert test_utils.known_contracts["operator"] is not None
+    assert test_utils.known_contracts["app_governor"] is not None
 
     # Test new_account
     account = await test_utils.new_account()
