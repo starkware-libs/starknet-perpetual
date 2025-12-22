@@ -935,8 +935,8 @@ fn test_multi_trade_with_price_and_funding_ticks() {
     test.validate_total_value(user_b, 1_903_437);
     test.validate_total_risk(user_b, 44_172);
 
-    test.withdraw(test.withdraw_request(user_a, 1_000_000));
-    test.withdraw(test.withdraw_request(user_b, 1_000_000));
+    test.withdraw(test.withdraw_request(user: user_a, amount: 1_000_000));
+    test.withdraw(test.withdraw_request(user: user_b, amount: 1_000_000));
 
     test.transfer(test.transfer_request(sender: user_a, recipient: user_b, amount: 1_000_000));
 

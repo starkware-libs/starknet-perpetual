@@ -2,7 +2,9 @@ use perpetuals::core::types::funding::{FUNDING_SCALE, FundingIndex, FundingTick}
 use perpetuals::tests::constants::*;
 use perpetuals::tests::flow_tests::infra::*;
 use perpetuals::tests::flow_tests::perps_tests_facade::*;
+use snforge_std::TokenTrait;
 use starkware_utils::constants::MAX_U128;
+use super::perps_tests_facade::PerpsTestsFacadeTrait;
 
 #[test]
 fn test_deleverage_after_funding_tick() {
@@ -11,7 +13,7 @@ fn test_deleverage_after_funding_tick() {
         tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
-    let synthetic_info = SyntheticInfoTrait::new(
+    let synthetic_info = AssetInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
     );
     let asset_id = synthetic_info.asset_id;
@@ -185,7 +187,7 @@ fn test_deleverage_after_price_tick() {
         tiers: array![100].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
-    let synthetic_info = SyntheticInfoTrait::new(
+    let synthetic_info = AssetInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
     );
     let asset_id = synthetic_info.asset_id;
@@ -252,7 +254,7 @@ fn test_deleverage_after_price_tick() {
         .facade
         .validate_total_risk(position_id: deleveraged_user.position_id, expected_total_risk: 4);
 
-    state.facade.price_tick(synthetic_info: @synthetic_info, price: 10);
+    state.facade.price_tick(asset_info: @synthetic_info, price: 10);
 
     //                            TV                                  TR                    TV/TR
     //                COLLATERAL*1 + SYNTHETIC*PRICE        |SYNTHETIC*PRICE*RISK|
@@ -315,7 +317,7 @@ fn test_deleverage_by_recieving_asset() {
     let risk_factor_data = RiskFactorTiers {
         tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
-    let synthetic_info = SyntheticInfoTrait::new(
+    let synthetic_info = AssetInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
     );
     let asset_id = synthetic_info.asset_id;
@@ -460,7 +462,7 @@ fn test_liquidate_after_funding_tick() {
         tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
-    let synthetic_info = SyntheticInfoTrait::new(
+    let synthetic_info = AssetInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
     );
     let asset_id = synthetic_info.asset_id;
@@ -659,7 +661,7 @@ fn test_liquidate_after_price_tick() {
         tiers: array![100].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
-    let synthetic_info = SyntheticInfoTrait::new(
+    let synthetic_info = AssetInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
     );
     let asset_id = synthetic_info.asset_id;
@@ -759,7 +761,7 @@ fn test_liquidate_after_price_tick() {
         .facade
         .validate_total_risk(position_id: liquidated_user.position_id, expected_total_risk: 3);
 
-    state.facade.price_tick(synthetic_info: @synthetic_info, price: 20);
+    state.facade.price_tick(asset_info: @synthetic_info, price: 20);
 
     //                            TV                                  TR                 TV / TR
     //                COLLATERAL*1 + SYNTHETIC*PRICE        |SYNTHETIC*PRICE*RISK|
@@ -849,9 +851,7 @@ fn test_flow_get_risk_factor() {
         tiers: array![10, 500, 1000].span(), first_tier_boundary: 2001, tier_size: 1000,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
-    let synthetic_info = SyntheticInfoTrait::new(
-        asset_name: 'BTC', :risk_factor_data, oracles_len: 1,
-    );
+    let synthetic_info = AssetInfoTrait::new(asset_name: 'BTC', :risk_factor_data, oracles_len: 1);
     let asset_id = synthetic_info.asset_id;
 
     let mut state: FlowTestBase = FlowTestBaseTrait::new();
@@ -1063,7 +1063,9 @@ fn test_withdraw_with_owner_fails_if_not_caller() {
     // Withdraw.
     let mut withdraw_info = state
         .facade
-        .withdraw_request_with_caller(user: user_1, amount: 15000, caller: user_2);
+        .withdraw_request_with_caller(
+            user: user_1, asset_id: state.facade.collateral_id, amount: 15000, caller: user_2,
+        );
     state.facade.withdraw(:withdraw_info);
 }
 
@@ -1074,7 +1076,7 @@ fn test_transfer_withdraw_with_negative_collateral() {
         tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
-    let synthetic_info = SyntheticInfoTrait::new(
+    let synthetic_info = AssetInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
     );
     let asset_id = synthetic_info.asset_id;
@@ -1144,13 +1146,50 @@ fn test_transfer_withdraw_with_negative_collateral() {
 }
 
 #[test]
+fn test_withdraw_spot_collateral() {
+    // Setup.
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+
+    // Create a custom asset configuration.
+    let token = snforge_std::Token::STRK;
+    let erc20_contract_address = token.contract_address();
+    let asset_info = AssetInfoTrait::new_collateral(
+        asset_name: 'COL', :risk_factor_data, oracles_len: 1, :erc20_contract_address,
+    );
+    let asset_id = asset_info.asset_id;
+    state.facade.add_active_collateral(asset_info: @asset_info, initial_price: 100);
+
+    // Create users.
+    let user = state.new_user_with_position();
+    snforge_std::set_balance(target: user.account.address, new_balance: 5000000, :token);
+
+    // Deposit to users.
+    let deposit_info_user = state
+        .facade
+        .deposit_spot(
+            depositor: user.account,
+            :asset_id,
+            position_id: user.position_id,
+            quantized_amount: 100000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_info_user);
+
+    // Withdraw.
+    let mut withdraw_info = state.facade.withdraw_spot_request(:user, :asset_id, amount: 15000);
+    state.facade.withdraw(:withdraw_info);
+}
+
+#[test]
 fn test_reduce_synthetic() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {
         tiers: array![30].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
-    let synthetic_info = SyntheticInfoTrait::new(
+    let synthetic_info = AssetInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
     );
     let asset_id = synthetic_info.asset_id;
@@ -1253,7 +1292,7 @@ fn test_status_change_healthy_liquidatable_deleveragable() {
         tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
-    let synthetic_info = SyntheticInfoTrait::new(
+    let synthetic_info = AssetInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
     );
     let asset_id = synthetic_info.asset_id;
@@ -1365,7 +1404,7 @@ fn test_status_change_healthy_liquidatable_deleveragable() {
         'user is not deleveragable',
     );
 
-    state.facade.price_tick(synthetic_info: @synthetic_info, price: 102);
+    state.facade.price_tick(asset_info: @synthetic_info, price: 102);
     //                            TV                                  TR                 TV / TR
     //                COLLATERAL*1 + SYNTHETIC*PRICE        |SYNTHETIC*PRICE*RISK|
     // deleveraged User:   -203 + 2 * 102 = 1                 2 * 102 * 0.01 = 2           0.5
@@ -1379,7 +1418,7 @@ fn test_status_change_healthy_liquidatable_deleveragable() {
         'user is not liquidatable',
     );
 
-    state.facade.price_tick(synthetic_info: @synthetic_info, price: 103);
+    state.facade.price_tick(asset_info: @synthetic_info, price: 103);
     //                            TV                                  TR                 TV / TR
     //                COLLATERAL*1 + SYNTHETIC*PRICE        |SYNTHETIC*PRICE*RISK|
     // deleveraged User:   -203 + 2 * 103 = 3                 2 * 103 * 0.01 = 2           1.5
@@ -1429,7 +1468,7 @@ fn test_status_change_healthy_liquidatable_deleveragable() {
         .validate_total_value(position_id: primary_user.position_id, expected_total_value: 6);
     state.facade.validate_total_risk(position_id: primary_user.position_id, expected_total_risk: 3);
 
-    state.facade.price_tick(synthetic_info: @synthetic_info, price: 100);
+    state.facade.price_tick(asset_info: @synthetic_info, price: 100);
     //                            TV                                  TR                 TV / TR
     //                COLLATERAL*1 + SYNTHETIC*PRICE        |SYNTHETIC*PRICE*RISK|
     // deleveraged User:   -303 + 3 * 100 = -3                 3 * 100 * 0.01 = 3          -1
@@ -1502,7 +1541,7 @@ fn test_status_change_by_deposit() {
     let risk_factor_data = RiskFactorTiers {
         tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
-    let synthetic_info = SyntheticInfoTrait::new(
+    let synthetic_info = AssetInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
     );
     let asset_id = synthetic_info.asset_id;
@@ -1678,7 +1717,7 @@ fn test_status_change_by_transfer() {
     let risk_factor_data = RiskFactorTiers {
         tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
-    let synthetic_info = SyntheticInfoTrait::new(
+    let synthetic_info = AssetInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
     );
     let asset_id = synthetic_info.asset_id;
@@ -1834,7 +1873,7 @@ fn test_status_change_by_trade() {
     let risk_factor_data = RiskFactorTiers {
         tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
-    let synthetic_info = SyntheticInfoTrait::new(
+    let synthetic_info = AssetInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
     );
     let asset_id = synthetic_info.asset_id;
@@ -2120,7 +2159,7 @@ fn test_late_funding() {
         tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
-    let synthetic_info = SyntheticInfoTrait::new(
+    let synthetic_info = AssetInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
     );
     let asset_id = synthetic_info.asset_id;
@@ -2148,7 +2187,7 @@ fn test_liquidate_change_sign() {
     let risk_factor_data = RiskFactorTiers {
         tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
-    let synthetic_info = SyntheticInfoTrait::new(
+    let synthetic_info = AssetInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
     );
     let asset_id = synthetic_info.asset_id;
@@ -2209,7 +2248,7 @@ fn test_liquidate_change_sign() {
     state.facade.validate_total_risk(position_id: user_1.position_id, expected_total_risk: 3);
 
     // Price tick.
-    state.facade.price_tick(synthetic_info: @synthetic_info, price: 100);
+    state.facade.price_tick(asset_info: @synthetic_info, price: 100);
 
     //                            TV                                  TR                 TV / TR
     //                COLLATERAL*1 + SYNTHETIC*PRICE        |SYNTHETIC*PRICE*RISK|
@@ -2245,9 +2284,7 @@ fn test_funding_index_rounding() {
     let risk_factor_data = RiskFactorTiers {
         tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
-    let synthetic_info = SyntheticInfoTrait::new(
-        asset_name: 'BTC', :risk_factor_data, oracles_len: 1,
-    );
+    let synthetic_info = AssetInfoTrait::new(asset_name: 'BTC', :risk_factor_data, oracles_len: 1);
     let asset_id = synthetic_info.asset_id;
 
     let mut state: FlowTestBase = FlowTestBaseTrait::new();
@@ -2340,7 +2377,7 @@ fn test_unfair_deleverage() {
         tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
     };
     // Create a custom asset configuration to test interesting risk factor scenarios.
-    let synthetic_info = SyntheticInfoTrait::new(
+    let synthetic_info = AssetInfoTrait::new(
         asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
     );
     let asset_id = synthetic_info.asset_id;
