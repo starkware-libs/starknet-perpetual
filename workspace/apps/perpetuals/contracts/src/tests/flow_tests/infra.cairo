@@ -5,6 +5,7 @@ use perpetuals::core::components::positions::interface::{
     IPositionsDispatcher, IPositionsDispatcherTrait,
 };
 use perpetuals::core::interface::Settlement;
+use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::balance::Balance;
 use perpetuals::core::types::funding::FundingTick;
 use perpetuals::core::types::position::{PositionData, PositionId};
@@ -14,6 +15,7 @@ use starkware_utils::math::abs::Abs;
 use crate::core::types::funding::{FUNDING_SCALE, FundingIndex};
 use crate::core::types::price::PriceMulTrait;
 use crate::tests::test_utils::create_token_state;
+use super::perps_tests_facade::PerpsTestsFacadeTrait;
 
 
 #[derive(Drop)]
@@ -101,7 +103,7 @@ pub struct OrderRequest {
 
 pub struct FlowTestExtended {
     pub flow_test_base: FlowTestBase,
-    pub synthetics: Felt252Dict<Nullable<SyntheticInfo>>,
+    pub synthetics: Felt252Dict<Nullable<AssetInfo>>,
     pub fee_percentage: u8,
 }
 
@@ -137,7 +139,7 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
             BTC_ASSET, ETH_ASSET, STRK_ASSET, SOL_ASSET, DOGE_ASSET, PEPE_ASSET, ETC_ASSET,
             TAO_ASSET, XRP_ASSET, ADA_ASSET,
         ] {
-            let synthetic_info = SyntheticInfoTrait::new(
+            let synthetic_info = AssetInfoTrait::new(
                 :asset_name, risk_factor_data: risk_factor_tiers, oracles_len: 1,
             );
             flow_test_base.facade.add_active_synthetic(@synthetic_info, :initial_price);
@@ -160,6 +162,19 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
                 depositor: user.account, position_id: user.position_id, quantized_amount: amount,
             )
     }
+    fn deposit_spot(
+        ref self: FlowTestExtended, user: User, asset_id: AssetId, amount: u64,
+    ) -> DepositInfo {
+        self
+            .flow_test_base
+            .facade
+            .deposit_spot(
+                depositor: user.account,
+                :asset_id,
+                position_id: user.position_id,
+                quantized_amount: amount,
+            )
+    }
     fn process_deposit(ref self: FlowTestExtended, deposit_info: DepositInfo) {
         self.flow_test_base.facade.process_deposit(:deposit_info)
     }
@@ -169,6 +184,11 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
     fn withdraw_request(ref self: FlowTestExtended, user: User, amount: u64) -> RequestInfo {
         self.flow_test_base.facade.withdraw_request(:user, :amount)
     }
+    fn withdraw_spot_request(
+        ref self: FlowTestExtended, user: User, asset_id: AssetId, amount: u64,
+    ) -> RequestInfo {
+        self.flow_test_base.facade.withdraw_spot_request(:user, :asset_id, :amount)
+    }
     fn withdraw(ref self: FlowTestExtended, withdraw_info: RequestInfo) {
         self.flow_test_base.facade.withdraw(:withdraw_info)
     }
@@ -176,6 +196,11 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
         ref self: FlowTestExtended, sender: User, recipient: User, amount: u64,
     ) -> RequestInfo {
         self.flow_test_base.facade.transfer_request(:sender, :recipient, :amount)
+    }
+    fn transfer_spot_request(
+        ref self: FlowTestExtended, sender: User, recipient: User, asset_id: AssetId, amount: u64,
+    ) -> RequestInfo {
+        self.flow_test_base.facade.transfer_spot_request(:sender, :recipient, :asset_id, :amount)
     }
     fn transfer(ref self: FlowTestExtended, transfer_info: RequestInfo) {
         self.flow_test_base.facade.transfer(:transfer_info)

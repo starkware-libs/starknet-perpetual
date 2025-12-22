@@ -28,7 +28,7 @@ fn test_registering_vault_shares_with_more_than_one_risk_tier_fails() {
     let risk_factor_tier_size = 1;
     let risk_factor_1 = array![100, 200].span();
 
-    let asset_info = SyntheticInfoTrait::new_with_resolution(
+    let asset_info = AssetInfoTrait::new_with_resolution(
         asset_name: 'VS_1',
         risk_factor_data: RiskFactorTiers {
             tiers: risk_factor_1,
