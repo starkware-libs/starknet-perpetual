@@ -147,6 +147,7 @@ pub struct DepositInfo {
 
 #[derive(Copy, Drop)]
 pub struct RequestInfo {
+    asset_id: AssetId,
     recipient: User,
     position_id: PositionId,
     amount: u64,
@@ -946,21 +947,29 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
     }
 
     fn withdraw_request(ref self: PerpsTestsFacade, user: User, amount: u64) -> RequestInfo {
-        self.withdraw_request_with_caller(:user, :amount, caller: user)
+        self
+            .withdraw_request_with_caller(
+                :user, asset_id: self.collateral_id, :amount, caller: user,
+            )
+    }
+
+    fn withdraw_spot_request(
+        ref self: PerpsTestsFacade, user: User, asset_id: AssetId, amount: u64,
+    ) -> RequestInfo {
+        self.withdraw_request_with_caller(:user, :asset_id, :amount, caller: user)
     }
 
     fn withdraw_request_with_caller(
-        ref self: PerpsTestsFacade, user: User, amount: u64, caller: User,
+        ref self: PerpsTestsFacade, user: User, asset_id: AssetId, amount: u64, caller: User,
     ) -> RequestInfo {
         let account = user.account;
         let position_id = user.position_id;
         let recipient = account.address;
         let expiration = Time::now().add(Time::seconds(10));
         let salt = self.generate_salt();
-        let collateral_id = self.collateral_id;
 
         let request_hash = WithdrawArgs {
-            recipient, position_id, collateral_id, amount, expiration, salt,
+            recipient, position_id, collateral_id: asset_id, amount, expiration, salt,
         }
             .get_message_hash(public_key: account.key_pair.public_key);
         let signature = account.sign_message(message: request_hash);
@@ -968,7 +977,13 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         caller.account.set_as_caller(self.perpetuals_contract);
         ICoreDispatcher { contract_address: self.perpetuals_contract }
             .withdraw_request(
-                :signature, :collateral_id, :recipient, :position_id, :amount, :expiration, :salt,
+                :signature,
+                collateral_id: asset_id,
+                :recipient,
+                :position_id,
+                :amount,
+                :expiration,
+                :salt,
             );
 
         self.validate_request_approval(:request_hash, expected_status: RequestStatus::PENDING);
@@ -977,21 +992,22 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             spied_event: self.get_last_event(contract_address: self.perpetuals_contract),
             :position_id,
             :recipient,
-            :collateral_id,
+            collateral_id: asset_id,
             :amount,
             expiration: expiration,
             withdraw_request_hash: request_hash,
             :salt,
         );
 
-        RequestInfo { recipient: user, position_id, amount, expiration, salt, request_hash }
+        RequestInfo {
+            asset_id, recipient: user, position_id, amount, expiration, salt, request_hash,
+        }
     }
 
     fn withdraw(ref self: PerpsTestsFacade, withdraw_info: RequestInfo) {
         let RequestInfo {
-            recipient, position_id, amount, expiration, salt, request_hash,
+            asset_id, recipient, position_id, amount, expiration, salt, request_hash,
         } = withdraw_info;
-        let collateral_id = self.collateral_id;
         let address = recipient.account.address;
         let user_balance_before = self.token_state.balance_of(account: address);
         let contract_balance_before = self.token_state.balance_of(self.perpetuals_contract);
@@ -1006,7 +1022,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         ICoreDispatcher { contract_address: self.perpetuals_contract }
             .withdraw(
                 :operator_nonce,
-                :collateral_id,
+                collateral_id: asset_id,
                 recipient: address,
                 :position_id,
                 :amount,
@@ -1037,7 +1053,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             spied_event: self.get_last_event(contract_address: self.perpetuals_contract),
             :position_id,
             recipient: address,
-            :collateral_id,
+            collateral_id: asset_id,
             :amount,
             :expiration,
             withdraw_request_hash: request_hash,
@@ -1089,13 +1105,73 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         );
 
         RequestInfo {
-            recipient, position_id: sender.position_id, amount, expiration, salt, request_hash,
+            asset_id: self.collateral_id,
+            recipient,
+            position_id: sender.position_id,
+            amount,
+            expiration,
+            salt,
+            request_hash,
+        }
+    }
+
+    fn transfer_spot_request(
+        ref self: PerpsTestsFacade, sender: User, recipient: User, asset_id: AssetId, amount: u64,
+    ) -> RequestInfo {
+        let expiration = Time::now().add(delta: Time::weeks(1));
+
+        let salt = self.generate_salt();
+        let transfer_args = TransferArgs {
+            position_id: sender.position_id,
+            salt,
+            expiration,
+            collateral_id: asset_id,
+            amount,
+            recipient: recipient.position_id,
+        };
+        let request_hash = transfer_args
+            .get_message_hash(public_key: sender.account.key_pair.public_key);
+        let signature = sender.account.sign_message(message: request_hash);
+
+        sender.account.set_as_caller(self.perpetuals_contract);
+        ICoreDispatcher { contract_address: self.perpetuals_contract }
+            .transfer_request(
+                signature,
+                :asset_id,
+                recipient: recipient.position_id,
+                position_id: sender.position_id,
+                :amount,
+                :expiration,
+                :salt,
+            );
+
+        self.validate_request_approval(:request_hash, expected_status: RequestStatus::PENDING);
+
+        assert_transfer_request_event_with_expected(
+            spied_event: self.get_last_event(contract_address: self.perpetuals_contract),
+            position_id: sender.position_id,
+            recipient: recipient.position_id,
+            collateral_id: asset_id,
+            :amount,
+            :expiration,
+            transfer_request_hash: request_hash,
+            :salt,
+        );
+
+        RequestInfo {
+            asset_id,
+            recipient,
+            position_id: sender.position_id,
+            amount,
+            expiration,
+            salt,
+            request_hash,
         }
     }
 
     fn transfer(ref self: PerpsTestsFacade, transfer_info: RequestInfo) {
         let RequestInfo {
-            recipient, position_id, amount, expiration, salt, request_hash,
+            asset_id, recipient, position_id, amount, expiration, salt, request_hash,
         } = transfer_info;
         let dispatcher = IPositionsDispatcher { contract_address: self.perpetuals_contract };
         let sender_balance_before = dispatcher
@@ -1110,7 +1186,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         ICoreDispatcher { contract_address: self.perpetuals_contract }
             .transfer(
                 :operator_nonce,
-                asset_id: self.collateral_id,
+                :asset_id,
                 recipient: recipient.position_id,
                 position_id: position_id,
                 amount: amount,
@@ -1138,7 +1214,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             spied_event: self.get_last_event(contract_address: self.perpetuals_contract),
             position_id: position_id,
             recipient: recipient.position_id,
-            collateral_id: self.collateral_id,
+            collateral_id: asset_id,
             :amount,
             expiration: expiration,
             transfer_request_hash: request_hash,

@@ -5,6 +5,7 @@ use perpetuals::core::components::positions::interface::{
     IPositionsDispatcher, IPositionsDispatcherTrait,
 };
 use perpetuals::core::interface::Settlement;
+use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::balance::Balance;
 use perpetuals::core::types::funding::FundingTick;
 use perpetuals::core::types::position::{PositionData, PositionId};
@@ -160,6 +161,19 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
                 depositor: user.account, position_id: user.position_id, quantized_amount: amount,
             )
     }
+    fn deposit_spot(
+        ref self: FlowTestExtended, user: User, asset_id: AssetId, amount: u64,
+    ) -> DepositInfo {
+        self
+            .flow_test_base
+            .facade
+            .deposit_spot(
+                depositor: user.account,
+                :asset_id,
+                position_id: user.position_id,
+                quantized_amount: amount,
+            )
+    }
     fn process_deposit(ref self: FlowTestExtended, deposit_info: DepositInfo) {
         self.flow_test_base.facade.process_deposit(:deposit_info)
     }
@@ -169,6 +183,11 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
     fn withdraw_request(ref self: FlowTestExtended, user: User, amount: u64) -> RequestInfo {
         self.flow_test_base.facade.withdraw_request(:user, :amount)
     }
+    fn withdraw_spot_request(
+        ref self: FlowTestExtended, user: User, collateral_id: AssetId, amount: u64,
+    ) -> RequestInfo {
+        self.flow_test_base.facade.withdraw_request(:user, :amount)
+    }
     fn withdraw(ref self: FlowTestExtended, withdraw_info: RequestInfo) {
         self.flow_test_base.facade.withdraw(:withdraw_info)
     }
@@ -176,6 +195,11 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
         ref self: FlowTestExtended, sender: User, recipient: User, amount: u64,
     ) -> RequestInfo {
         self.flow_test_base.facade.transfer_request(:sender, :recipient, :amount)
+    }
+    fn transfer_spot_request(
+        ref self: FlowTestExtended, sender: User, recipient: User, asset_id: AssetId, amount: u64,
+    ) -> RequestInfo {
+        self.flow_test_base.facade.transfer_spot_request(:sender, :recipient, :asset_id, :amount)
     }
     fn transfer(ref self: FlowTestExtended, transfer_info: RequestInfo) {
         self.flow_test_base.facade.transfer(:transfer_info)

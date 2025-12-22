@@ -1063,7 +1063,9 @@ fn test_withdraw_with_owner_fails_if_not_caller() {
     // Withdraw.
     let mut withdraw_info = state
         .facade
-        .withdraw_request_with_caller(user: user_1, amount: 15000, caller: user_2);
+        .withdraw_request_with_caller(
+            user: user_1, asset_id: state.facade.collateral_id, amount: 15000, caller: user_2,
+        );
     state.facade.withdraw(:withdraw_info);
 }
 
