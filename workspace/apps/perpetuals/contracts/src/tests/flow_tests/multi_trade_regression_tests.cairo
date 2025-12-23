@@ -241,7 +241,7 @@ fn replace_to_new_implementation() {
 }
 
 #[test]
-#[fork(url: "https://rpc.starknet.lava.build/", block_number: 1978107)]
+#[fork(url: "https://rpc.pathfinder.equilibrium.co/mainnet/rpc/v0_8", block_number: 1978107)]
 fn test_mainnet_data_three_trades_original_code() {
     // Setup:
     let core_dispatcher = ICoreDispatcher { contract_address: CONTRACT_ADDRESS };
@@ -333,7 +333,7 @@ fn test_mainnet_data_three_trades_original_code() {
 
 
 #[test]
-#[fork(url: "https://rpc.starknet.lava.build/", block_number: 1978107)]
+#[fork(url: "https://rpc.pathfinder.equilibrium.co/mainnet/rpc/v0_8", block_number: 1978107)]
 fn test_mainnet_data_three_trades_upgraded_code() {
     // Setup:
     let core_dispatcher = ICoreDispatcher { contract_address: CONTRACT_ADDRESS };
@@ -427,7 +427,7 @@ fn test_mainnet_data_three_trades_upgraded_code() {
 }
 
 #[test]
-#[fork(url: "https://rpc.starknet.lava.build/", block_number: 1978107)]
+#[fork(url: "https://rpc.pathfinder.equilibrium.co/mainnet/rpc/v0_8", block_number: 1978107)]
 fn test_mainnet_data_multi_trade_upgraded_code() {
     // Setup:
     let core_dispatcher = ICoreDispatcher { contract_address: CONTRACT_ADDRESS };
