@@ -1,7 +1,6 @@
 import pytest
 from starknet_py.cairo.felt import encode_shortstring
 from devnet_tests.perpetuals_test_utils import PerpetualsTestUtils
-from conftest import NOW
 
 
 @pytest.mark.asyncio
@@ -9,8 +8,8 @@ async def test_helper_functions(test_utils: PerpetualsTestUtils):
     """Test helper functions in PerpetualsTestUtils."""
 
     # Test that we can access the contracts
-    assert test_utils.operator_contract is not None
-    assert test_utils.app_governor_contract is not None
+    assert test_utils.known_contracts["operator"] is not None
+    assert test_utils.known_contracts["app_governor"] is not None
 
     # Test new_account
     account = await test_utils.new_account()
@@ -117,7 +116,7 @@ async def test_asset_management(test_utils: PerpetualsTestUtils):
 
     # Test price_tick
     oracle_price = 100000000
-    timestamp = NOW + 90
+    timestamp = test_utils.now_timestamp + 90
     signed_price = test_utils.create_signed_price(
         oracle_account,
         oracle_price,
@@ -166,7 +165,7 @@ async def test_trade(test_utils: PerpetualsTestUtils):
     base_amount_a = 37
     quote_amount_a = -5303580
     fee_amount = 0
-    expiration = NOW + 1000000000
+    expiration = test_utils.now_timestamp + 1000000000
     order_a = await test_utils.create_order(
         position_id_a, base_asset_id, base_amount_a, quote_amount_a, fee_amount, expiration
     )
