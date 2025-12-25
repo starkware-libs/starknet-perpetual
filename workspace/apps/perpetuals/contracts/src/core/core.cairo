@@ -18,8 +18,8 @@ pub mod Core {
         FEE_POSITION, InternalTrait as PositionsInternalTrait,
     };
     use perpetuals::core::errors::{
-        AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_ZERO_TIMEOUT, TRADE_ASSET_NOT_SYNTHETIC,
-        TRANSFER_FAILED,
+        AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_ZERO_TIMEOUT, LENGTH_MISMATCH,
+        ORDER_IS_NOT_EXPIRED, TRADE_ASSET_NOT_SYNTHETIC, TRANSFER_FAILED,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
@@ -399,6 +399,24 @@ pub mod Core {
                 tvtr_cache.insert(position_id_a, NullableTrait::new(updated_a));
                 tvtr_cache.insert(position_id_b, NullableTrait::new(updated_b));
             }
+        }
+
+        fn clean_fulfillments(
+            ref self: ContractState, orders: Span<Order>, public_keys: Span<felt252>,
+        ) {
+            assert(orders.len() == public_keys.len(), LENGTH_MISMATCH);
+            let now = Time::now();
+            let mut hashes = array![];
+            let mut i: usize = 0;
+
+            for order in orders {
+                assert(*order.expiration < now, ORDER_IS_NOT_EXPIRED);
+                let public_key = *public_keys[i];
+                let hash = order.get_message_hash(:public_key);
+                hashes.append(hash);
+                i += 1;
+            }
+            self.fulfillment_tracking.clean_fulfillment(hashes.span());
         }
 
 

@@ -71,6 +71,9 @@ pub trait ICore<TContractState> {
         actual_fee_b: u64,
     );
     fn multi_trade(ref self: TContractState, operator_nonce: u64, trades: Span<Settlement>);
+    fn clean_fulfillments(
+        ref self: TContractState, orders: Span<Order>, public_keys: Span<felt252>,
+    );
     fn liquidate(
         ref self: TContractState,
         operator_nonce: u64,

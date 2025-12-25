@@ -22,6 +22,8 @@ pub const SYNTHETIC_IS_ACTIVE: felt252 = 'SYNTHETIC_IS_ACTIVE';
 pub const TRADE_ASSET_NOT_SYNTHETIC: felt252 = 'TRADE_ASSET_NOT_SYNTHETIC';
 pub const TRANSFER_FAILED: felt252 = 'TRANSFER_FAILED';
 pub const SAME_BASE_QUOTE_ASSET_IDS: felt252 = 'SAME_BASE_QUOTE_ASSET_IDS';
+pub const ORDER_IS_NOT_EXPIRED: felt252 = 'ORDER_IS_NOT_EXPIRED';
+pub const LENGTH_MISMATCH: felt252 = 'LENGTH_MISMATCH';
 
 pub fn fulfillment_exceeded_err(position_id: PositionId) -> ByteArray {
     format!("FULFILLMENT_EXCEEDED position_id: {:?}", position_id)

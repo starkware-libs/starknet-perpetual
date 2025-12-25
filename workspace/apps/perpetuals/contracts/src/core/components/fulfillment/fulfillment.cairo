@@ -38,5 +38,10 @@ pub mod Fulfillement {
             }
             fulfillment_entry.write(total_amount);
         }
+        fn clean_fulfillment(ref self: ComponentState<TContractState>, hashes: Span<felt252>) {
+            for hash in hashes {
+                self.fulfillment.entry(*hash).write(Default::default());
+            }
+        }
     }
 }
