@@ -173,9 +173,10 @@ def starknet_forked(
     starknet_test_utils_factory: Callable[..., Iterator[StarknetTestUtils]]
 ) -> Iterator[StarknetTestUtils]:
     with starknet_test_utils_factory(
-        fork_network="https://rpc.pathfinder.equilibrium.co/mainnet/rpc/v0_8",
+        fork_network="https://rpc.pathfinder.equilibrium.co/mainnet/rpc/v0_10",
         fork_block=FORK_BLOCK,
         starknet_chain_id=StarknetChainId.MAINNET,
+        start_time=NOW_TIMESTAMP,
     ) as val:
         yield val
 

@@ -3,6 +3,7 @@ import bisect
 import os
 from pathlib import Path
 import random
+import requests
 from test_utils.starknet_test_utils import load_contract
 from scripts.script_utils import get_project_root
 from poseidon_py.poseidon_hash import poseidon_hash_many
@@ -185,7 +186,9 @@ class PerpetualsTestUtils:
 
     async def get_base_collateral_token_contract(self) -> int:
         (token_contract,) = (
-            await self.known_contracts["operator"].functions["get_collateral_token_contract"].call()
+            await self.known_contracts["operator"]
+            .functions["get_base_collateral_token_contract"]
+            .call()
         )
         return token_contract["contract_address"]
 
@@ -678,6 +681,91 @@ class PerpetualsTestUtils:
             )
         )
         await invocation.wait_for_acceptance(check_interval=0.1)
+
+    ### JSON-RPC requests ###
+    async def fund_account(self, address: Union[str, int], amount: int, unit: str = "FRI") -> dict:
+        """
+        Fund an account on devnet using the devnet_mint JSON-RPC method.
+
+        Args:
+            address: The account address to fund (hex string, e.g., "0x6e3205f...")
+            amount: The amount to mint
+            unit: The unit of the amount ("WEI" or "FRI")
+
+        Returns:
+            The JSON-RPC response as a dictionary
+
+        Raises:
+            requests.HTTPError: If the request fails
+            ValueError: If the JSON-RPC response contains an error
+        """
+        if isinstance(address, int):
+            address = hex(address)
+        port = self.starknet_test_utils.starknet.port
+        response = requests.post(
+            f"http://localhost:{port}",
+            json={
+                "jsonrpc": "2.0",
+                "id": "1",
+                "method": "devnet_mint",
+                "params": {
+                    "address": address,
+                    "amount": amount,
+                    "unit": unit,
+                },
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        result = response.json()
+        if "error" in result:
+            print(f"Error funding account: {result['error']}")
+            raise ValueError(f"devnet_mint failed: {result['error']}")
+        print(f"Successfully funded account {address}: {result}")
+        return result
+
+    def get_account_balance(
+        self,
+        address: Union[str, int],
+        unit: str = "FRI",
+    ) -> int:
+        """
+        Get an account's balance on devnet using the devnet_getAccountBalance JSON-RPC method.
+
+        Args:
+            address: The account address (hex string or int)
+            unit: The unit of the balance ("WEI" or "FRI")
+
+        Returns:
+            The JSON-RPC response as a dictionary
+
+        Raises:
+            requests.HTTPError: If the request fails
+            ValueError: If the JSON-RPC response contains an error
+        """
+        if isinstance(address, int):
+            address = hex(address)
+        port = self.starknet_test_utils.starknet.port
+        response = requests.post(
+            f"http://localhost:{port}",
+            json={
+                "jsonrpc": "2.0",
+                "id": "1",
+                "method": "devnet_getAccountBalance",
+                "params": {
+                    "address": address,
+                    "unit": unit,
+                    "block_id": "latest",
+                },
+            },
+            timeout=10,
+        )
+        response.raise_for_status()
+        result = response.json()
+        if "error" in result:
+            print(f"Error getting account balance: {result['error']}")
+            raise ValueError(f"devnet_getAccountBalance failed: {result['error']}")
+        return int(result["result"]["amount"])
 
 
 ### Utility functions ###

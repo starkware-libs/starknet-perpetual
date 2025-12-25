@@ -1,6 +1,39 @@
 import pytest
+import pytest_asyncio
 from starknet_py.cairo.felt import encode_shortstring
 from devnet_tests.perpetuals_test_utils import PerpetualsTestUtils
+
+
+@pytest_asyncio.fixture(scope="session", autouse=True)
+async def upgade_test_utils(test_utils: PerpetualsTestUtils):
+    """Upgrade the perpetuals contract to the latest version and register the external components."""
+
+    # Fund the accounts
+    await test_utils.fund_account(
+        test_utils.known_accounts["upgrade_governor"].address, 10_000_000_000 * 10**18
+    )
+
+    # Upgrade the perpetuals contract to the latest version
+    await test_utils.upgrade_perpetuals_contract()
+
+    # Register and activate the external components
+    await test_utils.register_and_activate_external_component("perpetuals_VaultsManager", "VAULTS")
+    await test_utils.register_and_activate_external_component(
+        "perpetuals_WithdrawalManager", "WITHDRAWALS"
+    )
+    await test_utils.register_and_activate_external_component(
+        "perpetuals_TransferManager", "TRANSFERS"
+    )
+    await test_utils.register_and_activate_external_component(
+        "perpetuals_LiquidationManager", "LIQUIDATIONS"
+    )
+    await test_utils.register_and_activate_external_component(
+        "perpetuals_DeleverageManager", "DELEVERAGES"
+    )
+    await test_utils.register_and_activate_external_component(
+        "perpetuals_DepositManager", "DEPOSITS"
+    )
+    await test_utils.register_and_activate_external_component("perpetuals_AssetsManager", "ASSETS")
 
 
 @pytest.mark.asyncio
@@ -116,7 +149,7 @@ async def test_asset_management(test_utils: PerpetualsTestUtils):
 
     # Test price_tick
     oracle_price = 100000000
-    timestamp = test_utils.now_timestamp + 90
+    timestamp = test_utils.now_timestamp
     signed_price = test_utils.create_signed_price(
         oracle_account,
         oracle_price,
