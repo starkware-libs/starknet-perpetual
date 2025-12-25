@@ -682,6 +682,29 @@ impl StructHashImpl of StructHash<WithdrawArgs> {
 }
 ```
 
+##### ForcedWithdrawArgs
+
+```rust
+pub struct ForcedWithdrawArgs {
+    pub withdraw_args_hash: HashType,
+}
+
+/// selector!(
+///   "\"ForcedWithdrawArgs\"(
+///    \"withdraw_args_hash\":\"HashType\",
+///    )
+/// );
+const FORCED_WITHDRAW_ARGS_TYPE_HASH: HashType =
+    0x9178e6792dcaaa6e712c83d5a34ff15f5c6a8158887dfb66d7f0956f557b0e;
+
+impl StructHashImpl of StructHash<ForcedWithdrawArgs> {
+    fn hash_struct(self: @ForcedWithdrawArgs) -> HashType {
+        let hash_state = PoseidonTrait::new();
+        hash_state.update_with(FORCED_WITHDRAW_ARGS_TYPE_HASH).update_with(*self).finalize()
+    }
+}
+```
+
 ##### TransferArgs
 
 ```rust
@@ -847,6 +870,49 @@ impl StructHashImpl of StructHash<Order> {
 
 ```
 
+##### ForcedTrade
+
+```rust
+pub struct ForcedTrade {
+    pub order_a: Order,
+    pub order_b: Order,
+}
+
+/// selector!(
+///   "\"ForcedTrade\"(
+///    \"order_a\":\"Order\",
+///    \"order_b\":\"Order\",
+///    )
+///   "\"Order\"(
+///    \"position_id\":\"PositionId\",
+///    \"base_asset_id\":\"AssetId\",
+///    \"base_amount\":\"i64\",
+///    \"quote_asset_id\":\"AssetId\",
+///    \"quote_amount\":\"i64\",
+///    \"fee_asset_id\":\"AssetId\",
+///    \"fee_amount\":\"u64\",
+///    \"expiration\":\"Timestamp\",
+///    \"salt\":\"felt\"
+///    )
+///    \"PositionId\"(
+///    \"value\":\"u32\"
+///    )"
+///    \"AssetId\"(
+///    \"value\":\"felt\"
+///    )"
+/// );
+
+const FORCED_TRADE_TYPE_HASH: HashType =
+    0x172f9174139c4be3f21b0cd36200c84be2f8e782f181422a6ca51370756dac5;
+
+impl ForcedTradeStructHashImpl of StructHash<ForcedTrade> {
+    fn hash_struct(self: @ForcedTrade) -> HashType {
+        let hash_state = PoseidonTrait::new();
+        hash_state.update_with(FORCED_TRADE_TYPE_HASH).update_with(*self).finalize()
+    }
+}
+```
+
 ##### ConvertPositionToVault
 
 ```rust
@@ -980,6 +1046,7 @@ pub const INVALID_NON_SYNTHETIC_ASSET: felt252 = 'INVALID_NON_SYNTHETIC_ASSET';
 pub const INVALID_QUOTE_AMOUNT_SIGN: felt252 = 'INVALID_QUOTE_AMOUNT_SIGN';
 pub const INVALID_SAME_POSITIONS: felt252 = 'INVALID_SAME_POSITIONS';
 pub const INVALID_ZERO_AMOUNT: felt252 = 'INVALID_ZERO_AMOUNT';
+pub const FORCED_WAIT_REQUIRED: felt252 = 'FORCED_WAIT_REQUIRED';
 pub const TRANSFER_EXPIRED: felt252 = 'TRANSFER_EXPIRED';
 pub const WITHDRAW_EXPIRED: felt252 = 'WITHDRAW_EXPIRED';
 
@@ -2848,6 +2915,10 @@ struct Storage {
     pub external_components: ExternalComponentsComponent::Storage,
     #[substorage(v0)]
     pub vaults: VaultsComponent::Storage,
+    // Timelock before forced actions can be executed.
+    forced_action_timelock: TimeDelta,
+    // Cost for executing forced actions (in quantized units).
+    premium_cost: u64,
 }
 ```
 
@@ -2883,8 +2954,12 @@ pub enum Event {
     AssetPositionReduced: events::AssetPositionReduced,
     Liquidate: events::Liquidate,
     Trade: events::Trade,
+    ForcedTrade: events::ForcedTrade,
+    ForcedTradeRequest: events::ForcedTradeRequest,
     Withdraw: events::Withdraw,
     WithdrawRequest: events::WithdrawRequest,
+    ForcedWithdraw: events::ForcedWithdraw,
+    ForcedWithdrawRequest: events::ForcedWithdrawRequest,
     #[flat]
     FulfillmentEvent: Fulfillement::Event,
     #[flat]
@@ -2929,6 +3004,42 @@ pub struct Withdraw {
 }
 ```
 
+#### ForcedWithdrawRequest
+
+```rust
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct ForcedWithdrawRequest {
+    #[key]
+    pub position_id: PositionId,
+    #[key]
+    pub recipient: ContractAddress,
+    pub collateral_id: AssetId,
+    pub amount: u64,
+    pub expiration: Timestamp,
+    #[key]
+    pub forced_withdraw_request_hash: felt252,
+    pub salt: felt252,
+}
+```
+
+#### ForcedWithdraw
+
+```rust
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct ForcedWithdraw {
+    #[key]
+    pub position_id: PositionId,
+    #[key]
+    pub recipient: ContractAddress,
+    pub collateral_id: AssetId,
+    pub amount: u64,
+    pub expiration: Timestamp,
+    #[key]
+    pub forced_withdraw_request_hash: felt252,
+    pub salt: felt252,
+}
+```
+
 #### Trade
 
 ```rust
@@ -2960,6 +3071,64 @@ pub struct Trade {
     pub order_b_hash: felt252,
     pub interest_amount_a: i64,
     pub interest_amount_b: i64,
+}
+```
+
+#### ForcedTradeRequest
+
+```rust
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct ForcedTradeRequest {
+    #[key]
+    pub order_a_position_id: PositionId,
+    pub order_a_base_asset_id: AssetId,
+    pub order_a_base_amount: i64,
+    pub order_a_quote_asset_id: AssetId,
+    pub order_a_quote_amount: i64,
+    pub fee_a_asset_id: AssetId,
+    pub fee_a_amount: u64,
+    #[key]
+    pub order_b_position_id: PositionId,
+    pub order_b_base_asset_id: AssetId,
+    pub order_b_base_amount: i64,
+    pub order_b_quote_asset_id: AssetId,
+    pub order_b_quote_amount: i64,
+    pub fee_b_asset_id: AssetId,
+    pub fee_b_amount: u64,
+    #[key]
+    pub order_a_hash: felt252,
+    #[key]
+    pub order_b_hash: felt252,
+}
+```
+
+#### ForcedTrade
+
+```rust
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct ForcedTrade {
+    #[key]
+    pub order_a_position_id: PositionId,
+    pub order_a_base_asset_id: AssetId,
+    pub order_a_base_amount: i64,
+    pub order_a_quote_asset_id: AssetId,
+    pub order_a_quote_amount: i64,
+    pub fee_a_asset_id: AssetId,
+    pub fee_a_amount: u64,
+    #[key]
+    pub order_b_position_id: PositionId,
+    pub order_b_base_asset_id: AssetId,
+    pub order_b_base_amount: i64,
+    pub order_b_quote_asset_id: AssetId,
+    pub order_b_quote_amount: i64,
+    pub fee_b_asset_id: AssetId,
+    pub fee_b_amount: u64,
+    pub actual_amount_base_a: i64,
+    pub actual_amount_quote_a: i64,
+    #[key]
+    pub order_a_hash: felt252,
+    #[key]
+    pub order_b_hash: felt252,
 }
 ```
 
@@ -3141,6 +3310,8 @@ pub fn constructor(
     cancel_delay: TimeDelta,
     fee_position_owner_public_key: PublicKey,
     insurance_fund_position_owner_public_key: PublicKey,
+    forced_action_timelock: u64,
+    premium_cost: u64,
 )
 ```
 
@@ -3148,6 +3319,7 @@ pub fn constructor(
 
 1. all inputs are non zero (except upgrade_delay)
 2. all component havn't been initilized before.
+3. `forced_action_timelock` is non zero.
 
 **Logic:**
 
@@ -3156,6 +3328,8 @@ pub fn constructor(
 3. Initialize assets with: `collateral_id`, `collateral_token_address`, `collateral_quantum`, `max_price_interval`, `max_funding_interval`, `max_funding_rate`, `max_oracle_price_validity`.
 4. Initialize deposits with `cancel_delay`.
 5. Initialize positions: create fee position with `fee_position_owner_public_key` and insurance fund position with `insurance_fund_position_owner_public_key`.
+6. Initialize forced action timelock with `forced_action_timelock`.
+7. Initialize premium cost with `premium_cost`.
 
 ### Public Functions
 
@@ -3276,6 +3450,118 @@ Only the Operator can execute.
 **Emits:**
 
 [withdraw](#withdraw)
+
+#### Forced Withdraw Request
+
+A forced withdraw request allows a user to initiate a withdrawal without operator approval, but requires a timelock period before execution. This mechanism provides users with an exit option if the operator becomes unresponsive.
+
+```rust
+fn forced_withdraw_request(
+    ref self: ContractState,
+    signature: Signature,
+    recipient: ContractAddress,
+    position_id: PositionId,
+    amount: u64,
+    expiration: Timestamp,
+    salt: felt252,
+)
+```
+
+**Access Control:**
+
+Anyone can execute.
+
+**Hash:**
+
+1. Calculate the hash of [WithdrawArgs](#withdrawargs) with position `public_key`:
+   [get\_message\_hash](#get-message-hash).
+
+2. Calculate the hash of [ForcedWithdrawArgs](#forcedwithdrawargs) with position `public_key`:
+   [get\_message\_hash](#get-message-hash).
+
+**Validations:**
+
+1. [signature validation](#signature) on the `ForcedWithdrawArgs` hash with position `public_key`.
+2. Amount is non zero.
+3. Position exists.
+4. The underlying withdraw request was not registered nor processed yet.
+5. The forced request signature is valid.
+
+**Logic:**
+
+1. Run validations.
+2. Store the underlying withdraw request hash.
+3. Register the forced approval request with the current timestamp.
+4. Transfer `premium_cost * quantum` from the caller to the sequencer address as a forced action fee.
+5. Emit `ForcedWithdrawRequest` event.
+
+**Errors:**
+
+- INVALID\_POSITION
+- INVALID\_ZERO\_AMOUNT
+- REQUEST_ALREADY_REGISTERED
+- INVALID\_STARK\_KEY\_SIGNATURE
+- TRANSFER_FAILED
+
+**Emits:**
+
+[ForcedWithdrawRequest](#forcedwithdrawrequest)
+
+#### Forced Withdraw
+
+Executes a forced withdraw after the timelock period has elapsed. This allows users to withdraw their funds without operator approval if the operator is unresponsive.
+
+```rust
+fn forced_withdraw(
+    ref self: ContractState,
+    recipient: ContractAddress,
+    position_id: PositionId,
+    amount: u64,
+    expiration: Timestamp,
+    salt: felt252,
+)
+```
+
+**Access Control:**
+
+Anyone can execute (after timelock period).
+
+**Hash:**
+
+1. Calculate the hash of [WithdrawArgs](#withdrawargs) with position `public_key`:
+   [get\_message\_hash](#get-message-hash).
+
+2. The forced withdraw request must have been registered via [forced_withdraw_request](#forced-withdraw-request).
+
+**Validations:**
+
+1. Position exists.
+2. The forced withdraw request exists and is not consumed.
+3. The timelock period has elapsed: `request_time + forced_action_timelock <= now`.
+4. [Expiration validation](#expiration)
+5. [Fundamental validation](#fundamental) - position must be healthy or healthier after the withdrawal.
+
+**Logic:**
+
+1. Run validations.
+2. Consume the forced approved request (marks it as processed).
+3. Execute the withdrawal using the same logic as [withdraw](#withdraw):
+   - Subtract the amount from the position collateral.
+   - Transfer `amount * collateral.quantum` from the contract to the recipient.
+4. Emit `ForcedWithdraw` event.
+
+**Errors:**
+
+- INVALID\_POSITION
+- FORCED_WAIT_REQUIRED
+- SIGNED_TX_EXPIRED
+- REQUEST_NOT_REGISTERED
+- POSITION_NOT_HEALTHY_NOR_HEALTHIER
+- TRANSFER_FAILED
+
+**Emits:**
+
+[ForcedWithdraw](#forcedwithdraw)
 
 #### Transfer Request
 
@@ -3490,6 +3776,108 @@ Only the Operator can execute.
 - ILLEGAL_BASE_TO_QUOTE_RATIO
 - ILLEGAL_FEE_TO_QUOTE_RATIO
 - POSITION_NOT_HEALTHY_NOR_HEALTHIER
+
+#### Forced Trade Request
+
+A forced trade request allows users to initiate a trade without operator approval, but requires a timelock period before execution (unless executed by the operator). This mechanism provides users with an exit option if the operator becomes unresponsive.
+
+```rust
+fn forced_trade_request(
+    ref self: ContractState,
+    signature_a: Signature,
+    signature_b: Signature,
+    order_a: Order,
+    order_b: Order,
+)
+```
+
+**Access Control:**
+
+- The caller must be the owner account of position A (if owner protection is enabled).
+
+**Hash:**
+
+1. Calculate the hash of [ForcedTrade](#forcedtrade) with position A `public_key`:
+   [get\_message\_hash](#get-message-hash).
+2. Calculate the hash of [ForcedTrade](#forcedtrade) with position B `public_key`:
+   [get\_message\_hash](#get-message-hash).
+
+**Validations:**
+
+1. Position A exists.
+2. Position B exists.
+3. [signature validation](#signature) on the `ForcedTrade` hash with position A `public_key` using `signature_a`.
+4. [signature validation](#signature) on the `ForcedTrade` hash with position B `public_key` using `signature_b`.
+5. The caller is the position A owner account (if owner protection is enabled).
+
+**Logic:**
+
+1. Run validations.
+2. Register the forced approval request for position A with the current timestamp.
+3. Transfer `premium_cost * quantum` (forced fee) from the caller to the sequencer address.
+4. Emit `ForcedTradeRequest` event.
+
+**Errors:**
+
+- INVALID\_POSITION
+- INVALID\_STARK\_KEY\_SIGNATURE
+- TRANSFER_FAILED
+- CALLER_IS_NOT_OWNER_ACCOUNT
+
+**Emits:**
+
+[ForcedTradeRequest](#forcedtraderequest)
+
+#### Forced Trade
+
+Executes a forced trade after the timelock period has elapsed (or immediately if executed by the operator). This allows users to execute trades without operator approval if the operator is unresponsive.
+
+```rust
+fn forced_trade(
+    ref self: ContractState,
+    order_a: Order,
+    order_b: Order,
+)
+```
+
+**Access Control:**
+
+- Anyone can execute after the timelock period has elapsed.
+- Only the operator can execute before the timelock period has elapsed.
+
+**Validations:**
+
+1. Position A exists.
+2. Position B exists.
+3. The forced trade request exists and is not consumed.
+4. If the caller is not the operator, the timelock period has elapsed: `request_time + forced_action_timelock <= now`.
+5. Execute regular trade validations (same as [Trade](#trade)) with the following differences:
+   - No operator nonce check.
+   - No signature validation (signatures were validated during request).
+   - Actual amounts are set to order amounts: `actual_amount_base_a = order_a.base_amount`, `actual_amount_quote_a = order_a.quote_amount`.
+   - Fees are set to zero: `actual_fee_a = 0`, `actual_fee_b = 0`.
+
+**Logic:**
+
+1. Run validations.
+2. Consume the forced approved request (marks it as processed).
+3. Execute the trade using the same logic as [Trade](#trade) with the modifications above.
+4. Emit `ForcedTrade` event.
+
+**Errors:**
+
+- INVALID\_POSITION
+- FORCED_WAIT_REQUIRED
+- REQUEST_NOT_REGISTERED
+- All errors from [Trade](#trade) except:
+  - PAUSED (forced trades can execute even if paused)
+  - ONLY\_OPERATOR
+  - INVALID\_NONCE
+  - INVALID_STARK_KEY_SIGNATURE
+
+**Emits:**
+
+[ForcedTrade](#forcedtrade)
 
 #### Multi Trade
 
