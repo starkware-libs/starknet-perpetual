@@ -38,5 +38,11 @@ pub mod Fulfillement {
             }
             fulfillment_entry.write(total_amount);
         }
+        fn clean_fulfillment(ref self: ComponentState<TContractState>, hashes: Span<felt252>) {
+            for hash in hashes {
+                let mut fulfillment_entry = self.fulfillment.entry(*hash);
+                fulfillment_entry.write(0_u64);
+            }
+        }
     }
 }

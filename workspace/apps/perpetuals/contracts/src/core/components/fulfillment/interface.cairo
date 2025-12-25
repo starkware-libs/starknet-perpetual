@@ -10,5 +10,6 @@ pub trait IFulfillment<TContractState> {
         order_base_amount: i64,
         actual_base_amount: i64,
     );
+    fn clean_fulfillment(ref self: TContractState, hashes: Span<felt252>);
 }
 
