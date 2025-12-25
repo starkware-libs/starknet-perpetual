@@ -173,9 +173,10 @@ def starknet_forked(
     starknet_test_utils_factory: Callable[..., Iterator[StarknetTestUtils]]
 ) -> Iterator[StarknetTestUtils]:
     with starknet_test_utils_factory(
-        fork_network="https://rpc.pathfinder.equilibrium.co/mainnet/rpc/v0_8",
+        fork_network="https://rpc.pathfinder.equilibrium.co/mainnet/rpc/v0_10",
         fork_block=FORK_BLOCK,
         starknet_chain_id=StarknetChainId.MAINNET,
+        start_time=NOW_TIMESTAMP,
     ) as val:
         yield val
 
@@ -259,8 +260,8 @@ async def contracts_inner_fixture(
     return result
 
 
-@pytest.fixture(scope="session")
-def test_utils(
+@pytest_asyncio.fixture(scope="session")
+async def test_utils(
     starknet_forked_with_impersonated_accounts: StarknetTestUtils,
     accounts: dict[str, Account],
     contracts: dict[str, Contract],
