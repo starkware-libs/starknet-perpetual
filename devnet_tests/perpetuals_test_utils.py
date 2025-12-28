@@ -15,7 +15,7 @@ from starknet_py.net.models.chains import StarknetChainId
 from starknet_py.proxy.contract_abi_resolver import ContractAbiResolver, ProxyConfig
 from test_utils.starknet_test_utils import StarknetTestUtils
 from typing import Dict, Tuple, Optional
-from conftest import contracts_inner_fixture, resource_bounds
+from devnet_tests.conftest import contracts_inner_fixture, resource_bounds
 from typing import Union
 from starknet_py.contract import DeclareResult, DeployResult
 from starknet_py.net.account.account import Account
@@ -27,15 +27,20 @@ from starknet_py.net.models.chains import StarknetChainId
 # Required for hash computations.
 ORDER_ARGS_HASH = 0x36DA8D51815527CABFAA9C982F564C80FA7429616739306036F1F9B608DD112
 WITHDEAW_ARGS_HASH = 0x250A5FA378E8B771654BD43DCB34844534F9D1E29E16B14760D7936EA7F4B1D
+INVEST_REDEEM_VAULT_ARGS_HASH = 0x03C79B3B5997E78A29AB2FB5E8BC8244F222C5E01AE914C10F956BD0F805199A
 STARKNET_DOMAIN_HASH = 0x1FF2F602E42168014D405A94F75E8A93D640751D71D16311266E140D8B0A210
 PERPETUALS_NAME = "Perpetuals"
 PERPETUALS_VERSION = "v0"
 STARKNET_CHAIN_ID = StarknetChainId.MAINNET
 REVISION = 1
 
+VAULT_ASSET_ID = 0x7DB365513DF1EE2EB8FC2D157D4D1CBA3D4A2EF59B44DD3D61124C88B4F6084
+VAULT_POSITION_ID = 0x7
+
 MAX_UINT32 = 2**32 - 1  # Maximum value for a 32-bit unsigned integer
 TWO_POW_40 = 2**40  # 2^40
 TWO_POW_32 = 2**32  # 2^32
+WEEK_IN_SECONDS = 7 * 24 * 60 * 60
 
 POSITION_ID_STR = "position_id"
 BASE_ASSET_ID_STR = "base_asset_id"
@@ -52,6 +57,8 @@ SIGNATURE_STR = "signature"
 SIGNER_PUBLIC_KEY_STR = "signer_public_key"
 TIMESTAMP_STR = "timestamp"
 ORACLE_PRICE_STR = "oracle_price"
+SOURCE_POSITION_STR = "source_position"
+RECEIVE_POSITION_STR = "receive_position"
 
 
 class PerpetualsTestUtils:
@@ -88,6 +95,8 @@ class PerpetualsTestUtils:
         random_seed = int(os.getenv("RANDOM_SEED", "0"))
         random.seed(random_seed)
 
+        self.vault_manager_account = None
+
     ### Helper functions ###
 
     def get_account_public_key(self, account: Account) -> int:
@@ -114,6 +123,47 @@ class PerpetualsTestUtils:
             ORACLE_PRICE_STR: oracle_price,
         }
 
+    def sign_message(
+        self, account: Account, args_hash_constant: int, args_values: list[int]
+    ) -> tuple[int, int]:
+        """
+        Sign a message following the Starknet typed data signing pattern.
+
+        Args:
+            account: The account to sign with
+            args_hash_constant: The type hash constant for the struct being signed
+            args_values: List of field values to hash (in order)
+
+        Returns:
+            A tuple (r, s) representing the signature
+        """
+        # Create the args hash: hash of [constant, ...field_values]
+        args_hash = poseidon_hash_many([args_hash_constant] + args_values)
+
+        # Create the Starknet domain hash
+        starknet_domain_hash = poseidon_hash_many(
+            [
+                STARKNET_DOMAIN_HASH,
+                encode_shortstring(PERPETUALS_NAME),
+                encode_shortstring(PERPETUALS_VERSION),
+                STARKNET_CHAIN_ID,
+                REVISION,
+            ]
+        )
+
+        # Create the full message
+        message = [
+            encode_shortstring("StarkNet Message"),
+            starknet_domain_hash,
+            self.get_account_public_key(account),
+            args_hash,
+        ]
+
+        # Hash and sign
+        message_hash = poseidon_hash_many(message)
+        signature = message_signature(message_hash, self.new_account_key_pairs[account][1])
+        return signature
+
     async def create_order(
         self,
         position_id: int,
@@ -136,6 +186,40 @@ class PerpetualsTestUtils:
             EXPIRATION_STR: formatted_timestamp(expiration),
             SALT_STR: salt,
         }
+
+    async def create_limit_order(
+        self, source_position_id: int, receive_position_id: int, base_amount: int, quote_amount: int
+    ):
+        collateral_asset_id = await self.get_collateral_asset_id()
+        expiration = self.now_timestamp + WEEK_IN_SECONDS
+        salt = random.randint(0, MAX_UINT32)
+        return {
+            SOURCE_POSITION_STR: formatted_position_id(source_position_id),
+            RECEIVE_POSITION_STR: formatted_position_id(receive_position_id),
+            BASE_ASSET_ID_STR: formatted_asset_id(VAULT_ASSET_ID),
+            BASE_AMOUNT_STR: base_amount,
+            QUOTE_ASSET_ID_STR: formatted_asset_id(collateral_asset_id),
+            QUOTE_AMOUNT_STR: quote_amount,
+            FEE_ASSET_ID_STR: formatted_asset_id(collateral_asset_id),
+            FEE_AMOUNT_STR: 0,
+            EXPIRATION_STR: formatted_timestamp(expiration),
+            SALT_STR: salt,
+        }
+
+    async def get_vault_erc4626_contract(self, account: Account) -> Contract:
+        vault_contract_address = (await self.get_asset_config(VAULT_ASSET_ID))["token_contract"]
+        abi, cairo_version = await ContractAbiResolver(
+            address=vault_contract_address,
+            client=account.client,
+            proxy_config=ProxyConfig(),
+        ).resolve()
+        vault_erc4626_contract = Contract(
+            address=vault_contract_address,
+            abi=abi,
+            provider=account,
+            cairo_version=cairo_version,
+        )
+        return vault_erc4626_contract
 
     async def new_account(self) -> Account:
         if self.new_accounts_number >= len(self.starknet_test_utils.starknet.accounts):
@@ -200,6 +284,21 @@ class PerpetualsTestUtils:
         )
         return tv_tr["total_value"]
 
+    async def get_asset_balance_of_position(self, position_id: int, asset_id: int) -> int:
+        (position_data,) = (
+            await self.known_contracts["operator"]
+            .functions["get_position_assets"]
+            .call(formatted_position_id(position_id))
+        )
+        if asset_id == await self.get_collateral_asset_id():
+            return position_data["collateral_balance"]["value"]
+
+        for asset in position_data["assets"]:
+            if asset["id"]["value"] == asset_id:
+                return asset["balance"]["value"]
+
+        raise Exception(f"Asset {asset_id} not found in position {position_id}")
+
     async def get_num_of_active_synthetic_assets(self) -> int:
         (num_of_active_synthetic_assets,) = (
             await self.known_contracts["operator"]
@@ -215,6 +314,14 @@ class PerpetualsTestUtils:
             .call(formatted_asset_id(asset_id))
         )
         return asset_timely_data
+
+    async def get_asset_config(self, asset_id: int) -> dict:
+        (asset_config,) = (
+            await self.known_contracts["operator"]
+            .functions["get_asset_config"]
+            .call(formatted_asset_id(asset_id))
+        )
+        return asset_config
 
     ### Storage-mutating functions ###
 
@@ -313,66 +420,90 @@ class PerpetualsTestUtils:
         await invocation.wait_for_acceptance(check_interval=0.1)
 
         # Process deposit
-        async def _process_deposit(account: Account, amount: int, salt: int):
-            invocation = (
-                await self.known_contracts["operator"]
-                .functions["process_deposit"]
-                .invoke_v3(
-                    await self.consume_operator_nonce(),
-                    self.get_account_address(account),
-                    formatted_asset_id(await self.get_collateral_asset_id()),
-                    formatted_position_id(self.get_account_position_id(account)),
-                    amount,
-                    salt,
-                    auto_estimate=True,
-                )
-            )
-            await invocation.wait_for_acceptance(check_interval=0.1)
+        await self.process_base_collateral_deposit(account, amount, salt)
 
-        await _process_deposit(account, amount, salt)
+    async def __process_deposit(
+        self,
+        depositer_address: int,
+        asset_id: int,
+        position_id: int,
+        amount: int,
+        salt: int,
+    ):
+        """Private method for processing deposits. Use the specific flow methods instead."""
+        invocation = (
+            await self.known_contracts["operator"]
+            .functions["process_deposit"]
+            .invoke_v3(
+                await self.consume_operator_nonce(),
+                depositer_address,
+                formatted_asset_id(asset_id),
+                formatted_position_id(position_id),
+                amount,
+                salt,
+                auto_estimate=True,
+            )
+        )
+        await invocation.wait_for_acceptance(check_interval=0.1)
+
+    async def process_base_collateral_deposit(
+        self,
+        account: Account,
+        amount: int,
+        salt: int,
+    ):
+        """Flow 1: Process base collateral deposit from user."""
+        asset_id = await self.get_collateral_asset_id()
+        depositer_address = self.get_account_address(account)
+        position_id = self.get_account_position_id(account)
+        await self.__process_deposit(depositer_address, asset_id, position_id, amount, salt)
+
+    async def process_non_base_collateral_deposit(
+        self,
+        account: Account,
+        asset_id: int,
+        amount: int,
+        salt: int,
+    ):
+        """Flow 2: Process non-base collateral deposit from user."""
+        depositer_address = self.get_account_address(account)
+        position_id = self.get_account_position_id(account)
+        await self.__process_deposit(depositer_address, asset_id, position_id, amount, salt)
+
+    async def process_vault_invest_deposit(
+        self,
+        position_id: int,
+        amount: int,
+        salt: int,
+        asset_id: int,
+    ):
+        """Flow 3: Process vault investment deposit (depositer is perps contract)."""
+        depositer_address = self.perpetuals_contract_address
+        await self.__process_deposit(depositer_address, asset_id, position_id, amount, salt)
 
     async def withdraw(self, account: Account, amount: int, expiration: int):
         salt = random.randint(0, MAX_UINT32)
         collateral_asset_id = await self.get_collateral_asset_id()
 
-        withdraw_args_hash = poseidon_hash_many(
+        signature = self.sign_message(
+            account,
+            WITHDEAW_ARGS_HASH,
             [
-                WITHDEAW_ARGS_HASH,
                 self.get_account_address(account),
                 self.get_account_position_id(account),
                 collateral_asset_id,
                 amount,
                 expiration,
                 salt,
-            ]
+            ],
         )
-        starknet_domain_hash = poseidon_hash_many(
-            [
-                STARKNET_DOMAIN_HASH,
-                encode_shortstring(PERPETUALS_NAME),
-                encode_shortstring(PERPETUALS_VERSION),
-                STARKNET_CHAIN_ID,
-                REVISION,
-            ]
-        )
-
-        message = [
-            encode_shortstring("StarkNet Message"),
-            starknet_domain_hash,
-            self.get_account_public_key(account),
-            withdraw_args_hash,
-        ]
-
-        message_hash = poseidon_hash_many(message)
-        signature = message_signature(message_hash, self.new_account_key_pairs[account][1])
-        asset_id = await self.get_collateral_asset_id()
 
         invocation = (
             await self.new_account_contracts[account]
             .functions["withdraw_request"]
             .invoke_v3(
                 signature,
-                formatted_asset_id(asset_id),
+                formatted_asset_id(collateral_asset_id),
                 self.get_account_address(account),
                 formatted_position_id(self.get_account_position_id(account)),
                 amount,
@@ -410,7 +541,7 @@ class PerpetualsTestUtils:
             await self.known_contracts["operator"]
             .functions["price_tick"]
             .invoke_v3(
-                await self.get_operator_nonce(),
+                await self.consume_operator_nonce(),
                 formatted_asset_id(asset_id),
                 oracle_price,
                 signed_prices,
@@ -526,7 +657,7 @@ class PerpetualsTestUtils:
             await self.known_contracts["operator"]
             .functions["funding_tick"]
             .invoke_v3(
-                await self.get_operator_nonce(),
+                await self.consume_operator_nonce(),
                 new_funding_indices,
                 formatted_timestamp(self.now_timestamp),
                 auto_estimate=True,
@@ -545,9 +676,10 @@ class PerpetualsTestUtils:
         actual_fee_a: int,
         actual_fee_b: int,
     ):
-        order_a_hash = poseidon_hash_many(
+        signature_a = self.sign_message(
+            account_a,
+            ORDER_ARGS_HASH,
             [
-                ORDER_ARGS_HASH,
                 order_a[POSITION_ID_STR][VALUE_STR],
                 order_a[BASE_ASSET_ID_STR][VALUE_STR],
                 order_a[BASE_AMOUNT_STR],
@@ -557,11 +689,12 @@ class PerpetualsTestUtils:
                 order_a[FEE_AMOUNT_STR],
                 order_a[EXPIRATION_STR][SECONDS_STR],
                 order_a[SALT_STR],
-            ]
+            ],
         )
-        order_b_hash = poseidon_hash_many(
+        signature_b = self.sign_message(
+            account_b,
+            ORDER_ARGS_HASH,
             [
-                ORDER_ARGS_HASH,
                 order_b[POSITION_ID_STR][VALUE_STR],
                 order_b[BASE_ASSET_ID_STR][VALUE_STR],
                 order_b[BASE_AMOUNT_STR],
@@ -571,41 +704,14 @@ class PerpetualsTestUtils:
                 order_b[FEE_AMOUNT_STR],
                 order_b[EXPIRATION_STR][SECONDS_STR],
                 order_b[SALT_STR],
-            ]
+            ],
         )
-        starknet_domain_hash = poseidon_hash_many(
-            [
-                STARKNET_DOMAIN_HASH,
-                encode_shortstring(PERPETUALS_NAME),
-                encode_shortstring(PERPETUALS_VERSION),
-                STARKNET_CHAIN_ID,
-                REVISION,
-            ]
-        )
-
-        message_a = [
-            encode_shortstring("StarkNet Message"),
-            starknet_domain_hash,
-            self.get_account_public_key(account_a),
-            order_a_hash,
-        ]
-        message_b = [
-            encode_shortstring("StarkNet Message"),
-            starknet_domain_hash,
-            self.get_account_public_key(account_b),
-            order_b_hash,
-        ]
-
-        message_hash_a = poseidon_hash_many(message_a)
-        message_hash_b = poseidon_hash_many(message_b)
-        signature_a = message_signature(message_hash_a, self.new_account_key_pairs[account_a][1])
-        signature_b = message_signature(message_hash_b, self.new_account_key_pairs[account_b][1])
 
         invocation = (
             await self.known_contracts["operator"]
             .functions["trade"]
             .invoke_v3(
-                await self.get_operator_nonce(),
+                await self.consume_operator_nonce(),
                 signature_a,
                 signature_b,
                 order_a,
@@ -687,6 +793,123 @@ class PerpetualsTestUtils:
         )
         await invocation.wait_for_acceptance(check_interval=0.1)
 
+    async def invest_in_vault(self, account: Account, min_base_amount: int, quote_amount: int):
+        user_position_id = self.get_account_position_id(account)
+        order = await self.create_limit_order(
+            user_position_id, user_position_id, min_base_amount, quote_amount
+        )
+
+        signature = self.sign_message(
+            account,
+            INVEST_REDEEM_VAULT_ARGS_HASH,
+            [
+                order[SOURCE_POSITION_STR][VALUE_STR],
+                order[RECEIVE_POSITION_STR][VALUE_STR],
+                order[BASE_ASSET_ID_STR][VALUE_STR],
+                order[BASE_AMOUNT_STR],
+                order[QUOTE_ASSET_ID_STR][VALUE_STR],
+                order[QUOTE_AMOUNT_STR],
+                order[FEE_ASSET_ID_STR][VALUE_STR],
+                order[FEE_AMOUNT_STR],
+                order[EXPIRATION_STR][SECONDS_STR],
+                order[SALT_STR],
+            ],
+        )
+
+        vault_erc4626_contract = await self.get_vault_erc4626_contract(account)
+        (minted_shares,) = await vault_erc4626_contract.functions["preview_deposit"].call(
+            # quote_amount is negative because we are investing collateral into the vault
+            abs(quote_amount)
+        )
+
+        correlation_id = random.randint(0, MAX_UINT32)
+        invocation = (
+            await self.known_contracts["operator"]
+            .functions["invest_in_vault"]
+            .invoke_v3(
+                await self.consume_operator_nonce(),
+                signature,
+                order,
+                correlation_id,
+                auto_estimate=True,
+            )
+        )
+        await invocation.wait_for_acceptance(check_interval=0.1)
+
+        await self.process_vault_invest_deposit(
+            position_id=self.get_account_position_id(account),
+            amount=minted_shares,
+            salt=order[SALT_STR],
+            asset_id=VAULT_ASSET_ID,
+        )
+
+    async def redeem_from_vault(self, account: Account, base_amount: int):
+        if self.vault_manager_account is None:
+            raise ValueError("Vault manager account is not set")
+
+        vault_erc4626_contract = await self.get_vault_erc4626_contract(account)
+        (actual_quote_amount,) = await vault_erc4626_contract.functions["preview_redeem"].call(
+            abs(base_amount),
+        )
+
+        user_position_id = self.get_account_position_id(account)
+        user_order = await self.create_limit_order(
+            user_position_id, user_position_id, base_amount, actual_quote_amount
+        )
+        vault_approval = await self.create_limit_order(
+            VAULT_POSITION_ID, user_position_id, -base_amount, -actual_quote_amount
+        )
+
+        user_signature = self.sign_message(
+            account,
+            INVEST_REDEEM_VAULT_ARGS_HASH,
+            [
+                user_order[SOURCE_POSITION_STR][VALUE_STR],
+                user_order[RECEIVE_POSITION_STR][VALUE_STR],
+                user_order[BASE_ASSET_ID_STR][VALUE_STR],
+                user_order[BASE_AMOUNT_STR],
+                user_order[QUOTE_ASSET_ID_STR][VALUE_STR],
+                user_order[QUOTE_AMOUNT_STR],
+                user_order[FEE_ASSET_ID_STR][VALUE_STR],
+                user_order[FEE_AMOUNT_STR],
+                user_order[EXPIRATION_STR][SECONDS_STR],
+                user_order[SALT_STR],
+            ],
+        )
+
+        vault_signature = self.sign_message(
+            self.vault_manager_account,
+            INVEST_REDEEM_VAULT_ARGS_HASH,
+            [
+                vault_approval[SOURCE_POSITION_STR][VALUE_STR],
+                vault_approval[RECEIVE_POSITION_STR][VALUE_STR],
+                vault_approval[BASE_ASSET_ID_STR][VALUE_STR],
+                vault_approval[BASE_AMOUNT_STR],
+                vault_approval[QUOTE_ASSET_ID_STR][VALUE_STR],
+                vault_approval[QUOTE_AMOUNT_STR],
+                vault_approval[FEE_ASSET_ID_STR][VALUE_STR],
+                vault_approval[FEE_AMOUNT_STR],
+                vault_approval[EXPIRATION_STR][SECONDS_STR],
+                vault_approval[SALT_STR],
+            ],
+        )
+
+        invocation = (
+            await self.known_contracts["operator"]
+            .functions["redeem_from_vault"]
+            .invoke_v3(
+                await self.consume_operator_nonce(),
+                user_signature,
+                user_order,
+                vault_approval,
+                vault_signature,
+                base_amount,
+                actual_quote_amount,
+                auto_estimate=True,
+            )
+        )
+        await invocation.wait_for_acceptance(check_interval=0.1)
+
     ### JSON-RPC requests ###
     async def fund_account(self, address: Union[str, int], amount: int, unit: str = "FRI") -> dict:
         """
@@ -726,7 +949,6 @@ class PerpetualsTestUtils:
         if "error" in result:
             print(f"Error funding account: {result['error']}")
             raise ValueError(f"devnet_mint failed: {result['error']}")
-        print(f"Successfully funded account {address}: {result}")
         return result
 
     def get_account_balance(

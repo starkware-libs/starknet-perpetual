@@ -4,7 +4,7 @@ from starknet_py.cairo.felt import encode_shortstring
 from devnet_tests.perpetuals_test_utils import PerpetualsTestUtils
 
 
-@pytest_asyncio.fixture(scope="session", autouse=True)
+@pytest_asyncio.fixture(autouse=True)
 async def upgade_test_utils(test_utils: PerpetualsTestUtils):
     """Upgrade the perpetuals contract to the latest version and register the external components."""
 
