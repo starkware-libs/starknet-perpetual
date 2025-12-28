@@ -114,7 +114,7 @@ GOVERNANCE_ADMIN_ADDRESS = 0x522E5BA327BFBD85138B29BDE060A5340A460706B00AE2E10E6
 RICH_USDC_HOLDER_ADDRESS = 0x054A6DF48915BE451CD6650C3697C5789B934EB2A89D90CBB71E3234F24F0311
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def accounts_to_impersonate() -> dict[str, tuple[int, int]]:
     # dict[account_name] = (address, dummy_key)
     return {
@@ -147,11 +147,11 @@ def wait_for_devnet(port: int, timeout: int = 60) -> bool:
     return False
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def starknet_test_utils_factory():
     """
-    Session-scoped factory for creating StarknetTestUtils instances.
-    Overrides the function-scoped fixture from test_utils.fixtures.
+    Factory for creating StarknetTestUtils instances.
+    Overrides the fixture from test_utils.fixtures.
     """
 
     @contextlib.contextmanager
@@ -168,7 +168,7 @@ def starknet_test_utils_factory():
     return _factory
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def starknet_forked(
     starknet_test_utils_factory: Callable[..., Iterator[StarknetTestUtils]]
 ) -> Iterator[StarknetTestUtils]:
@@ -181,7 +181,7 @@ def starknet_forked(
         yield val
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def starknet_forked_with_impersonated_accounts(
     starknet_forked: StarknetTestUtils,
     accounts_to_impersonate: dict[str, tuple[int, int]],
@@ -196,7 +196,7 @@ def starknet_forked_with_impersonated_accounts(
     return starknet_forked
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def accounts(
     starknet_forked_with_impersonated_accounts: StarknetTestUtils,
     accounts_to_impersonate: dict[str, tuple[int, int]],
@@ -216,7 +216,7 @@ def accounts(
     }
 
 
-@pytest_asyncio.fixture(scope="session")
+@pytest_asyncio.fixture
 async def contracts(
     accounts: dict[str, Account],
 ) -> dict[str, Contract]:
@@ -260,15 +260,15 @@ async def contracts_inner_fixture(
     return result
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture
 def test_utils(
     starknet_forked_with_impersonated_accounts: StarknetTestUtils,
     accounts: dict[str, Account],
     contracts: dict[str, Contract],
 ):
     """
-    Session-scoped PerpetualsTestUtils instance.
-    Shared across all tests to maintain nonce tracking.
+    Function-scoped PerpetualsTestUtils instance.
+    Each test gets its own instance with its own fork.
     """
     from devnet_tests.perpetuals_test_utils import PerpetualsTestUtils
 
