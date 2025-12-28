@@ -25,6 +25,7 @@ pub struct Withdraw {
     #[key]
     pub recipient: ContractAddress,
     pub collateral_id: AssetId,
+    pub token_address: ContractAddress,
     pub amount: u64,
     pub expiration: Timestamp,
     #[key]
@@ -53,6 +54,7 @@ pub struct ForcedWithdraw {
     #[key]
     pub recipient: ContractAddress,
     pub collateral_id: AssetId,
+    pub token_address: ContractAddress,
     pub amount: u64,
     pub expiration: Timestamp,
     #[key]
@@ -282,7 +284,7 @@ pub(crate) mod WithdrawalManager {
         ) {
             let position = self.positions.get_position_snapshot(:position_id);
 
-            let hash = self
+            let (hash, token_address) = self
                 ._withdraw(
                     :recipient,
                     :position_id,
@@ -299,6 +301,7 @@ pub(crate) mod WithdrawalManager {
                         position_id,
                         recipient,
                         collateral_id,
+                        token_address,
                         amount,
                         expiration,
                         withdraw_request_hash: hash,
@@ -409,7 +412,7 @@ pub(crate) mod WithdrawalManager {
             let forced_action_timelock = self.forced_action_timelock.read();
             assert(request_time.add(forced_action_timelock) <= now, FORCED_WAIT_REQUIRED);
 
-            self
+            let (_, token_address) = self
                 ._withdraw(
                     :recipient,
                     :position_id,
@@ -426,6 +429,7 @@ pub(crate) mod WithdrawalManager {
                         position_id,
                         recipient,
                         collateral_id,
+                        token_address,
                         amount,
                         expiration,
                         forced_withdraw_request_hash,
@@ -446,7 +450,7 @@ pub(crate) mod WithdrawalManager {
             salt: felt252,
             position: StoragePath<Position>,
             collateral_id: AssetId,
-        ) -> HashType {
+        ) -> (HashType, ContractAddress) {
             validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
 
             let hash = self
@@ -500,7 +504,7 @@ pub(crate) mod WithdrawalManager {
                 TRANSFER_FAILED,
             );
 
-            hash
+            (hash, token_contract.contract_address)
         }
     }
 }

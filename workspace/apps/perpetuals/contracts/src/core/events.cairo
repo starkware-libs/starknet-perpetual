@@ -24,6 +24,7 @@ pub struct Withdraw {
     #[key]
     pub recipient: ContractAddress,
     pub collateral_id: AssetId,
+    pub token_address: ContractAddress,
     pub amount: u64,
     pub expiration: Timestamp,
     #[key]

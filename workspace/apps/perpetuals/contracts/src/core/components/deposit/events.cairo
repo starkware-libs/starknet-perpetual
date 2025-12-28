@@ -9,6 +9,7 @@ pub struct Deposit {
     #[key]
     pub depositing_address: ContractAddress,
     pub collateral_id: AssetId,
+    pub token_address: ContractAddress,
     pub quantized_amount: u64,
     pub unquantized_amount: u64,
     #[key]
@@ -23,6 +24,7 @@ pub struct DepositProcessed {
     #[key]
     pub depositing_address: ContractAddress,
     pub collateral_id: AssetId,
+    pub token_address: ContractAddress,
     pub quantized_amount: u64,
     pub unquantized_amount: u256,
     #[key]
@@ -37,6 +39,7 @@ pub struct DepositCanceled {
     #[key]
     pub depositing_address: ContractAddress,
     pub collateral_id: AssetId,
+    pub token_address: ContractAddress,
     pub quantized_amount: u64,
     pub unquantized_amount: u256,
     #[key]
