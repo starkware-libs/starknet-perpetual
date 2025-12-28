@@ -558,7 +558,7 @@ fn replace_to_current_code() {
 /// tx: 0x07b042c11b78c947b958f5559f40feac97866bc8b1ecc9ec62818f1a1b177586 (12 trades)
 /// block number: 1844545
 #[test]
-#[fork(url: "https://rpc.pathfinder.equilibrium.co/mainnet/rpc/v0_8", block_number: 1844544)]
+#[fork(url: "https://rpc.pathfinder.equilibrium.co/mainnet/rpc/v0_10", block_number: 1844544)]
 fn test_performance() {
     replace_to_current_code();
 
