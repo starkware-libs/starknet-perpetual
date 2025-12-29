@@ -4,62 +4,6 @@ use starknet::ContractAddress;
 use starkware_utils::signature::stark::Signature;
 use starkware_utils::time::time::Timestamp;
 
-#[derive(Debug, Drop, PartialEq, starknet::Event)]
-pub struct WithdrawRequest {
-    #[key]
-    pub position_id: PositionId,
-    #[key]
-    pub recipient: ContractAddress,
-    pub collateral_id: AssetId,
-    pub amount: u64,
-    pub expiration: Timestamp,
-    #[key]
-    pub withdraw_request_hash: felt252,
-    pub salt: felt252,
-}
-
-#[derive(Debug, Drop, PartialEq, starknet::Event)]
-pub struct Withdraw {
-    #[key]
-    pub position_id: PositionId,
-    #[key]
-    pub recipient: ContractAddress,
-    pub collateral_id: AssetId,
-    pub amount: u64,
-    pub expiration: Timestamp,
-    #[key]
-    pub withdraw_request_hash: felt252,
-    pub salt: felt252,
-}
-
-#[derive(Debug, Drop, PartialEq, starknet::Event)]
-pub struct ForcedWithdrawRequest {
-    #[key]
-    pub position_id: PositionId,
-    #[key]
-    pub recipient: ContractAddress,
-    pub collateral_id: AssetId,
-    pub amount: u64,
-    pub expiration: Timestamp,
-    #[key]
-    pub forced_withdraw_request_hash: felt252,
-    pub salt: felt252,
-}
-
-#[derive(Debug, Drop, PartialEq, starknet::Event)]
-pub struct ForcedWithdraw {
-    #[key]
-    pub position_id: PositionId,
-    #[key]
-    pub recipient: ContractAddress,
-    pub collateral_id: AssetId,
-    pub amount: u64,
-    pub expiration: Timestamp,
-    #[key]
-    pub forced_withdraw_request_hash: felt252,
-    pub salt: felt252,
-}
-
 #[starknet::interface]
 pub trait IWithdrawalManager<TContractState> {
     fn withdraw_request(
@@ -113,18 +57,23 @@ pub(crate) mod WithdrawalManager {
     use perpetuals::core::components::assets::errors::{ASSET_NOT_EXISTS, INACTIVE_ASSET};
     use perpetuals::core::components::assets::interface::IAssets;
     use perpetuals::core::components::deposit::Deposit::InternalImpl as DepositInternal;
+    use perpetuals::core::components::external_components::interface::EXTERNAL_COMPONENT_WITHDRAWALS;
+    use perpetuals::core::components::external_components::named_component::ITypedComponent;
     use perpetuals::core::components::fulfillment::fulfillment::Fulfillement as FulfillmentComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalImpl as OperatorNonceInternal;
     use perpetuals::core::components::positions::Positions as PositionsComponent;
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
     use perpetuals::core::components::snip::SNIP12MetadataImpl;
+    use perpetuals::core::components::withdrawal::events::{
+        ForcedWithdraw, ForcedWithdrawRequest, Withdraw, WithdrawRequest,
+    };
     use perpetuals::core::errors::{
         FORCED_WAIT_REQUIRED, INVALID_WITHDRAW_COLLATERAL, INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED,
         TRANSFER_FAILED,
     };
-    use perpetuals::core::types::asset::AssetId;
-    use perpetuals::core::types::asset::synthetic::SyntheticTrait;
+    use perpetuals::core::types::asset::synthetic::{AssetType, SyntheticTrait};
+    use perpetuals::core::types::asset::{AssetId, AssetStatus};
     use perpetuals::core::types::balance::BalanceImpl;
     use perpetuals::core::types::position::{Position, PositionDiff, PositionId, PositionTrait};
     use perpetuals::core::types::price::PriceImpl;
@@ -139,19 +88,12 @@ pub(crate) mod WithdrawalManager {
     use starkware_utils::components::request_approvals::RequestApprovalsComponent::InternalTrait as RequestApprovalsInternal;
     use starkware_utils::components::roles::RolesComponent;
     use starkware_utils::hash::message_hash::OffchainMessageHash;
-    use starkware_utils::signature::stark::HashType;
+    use starkware_utils::signature::stark::{HashType, Signature};
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
-    use starkware_utils::time::time::{Time, TimeDelta, validate_expiration};
-    use crate::core::components::external_components::interface::EXTERNAL_COMPONENT_WITHDRAWALS;
-    use crate::core::components::external_components::named_component::ITypedComponent;
-    use crate::core::types::asset::AssetStatus;
-    use crate::core::types::asset::synthetic::AssetType;
-    use super::{
-        ForcedWithdraw, ForcedWithdrawRequest, IWithdrawalManager, Signature, Timestamp, Withdraw,
-        WithdrawRequest,
-    };
+    use starkware_utils::time::time::{Time, TimeDelta, Timestamp, validate_expiration};
+    use super::IWithdrawalManager;
 
     impl SnipImpl = SNIP12MetadataImpl;
 

@@ -23,6 +23,7 @@ pub(crate) mod Deposit {
     use starkware_utils::time::time::{Time, TimeDelta};
     use crate::core::components::assets::interface::IAssets;
     use crate::core::components::deposit::deposit_manager::IDepositExternalDispatcherTrait;
+    use crate::core::components::deposit::events;
     use crate::core::components::external_components::external_component_manager::ExternalComponents as ExternalComponentsComponent;
     use crate::core::components::external_components::external_component_manager::ExternalComponents::InternalTrait as ExternalComponentsInternalTrait;
     use crate::core::components::vaults::vaults::Vaults as VaultsComponent;
@@ -36,7 +37,11 @@ pub(crate) mod Deposit {
 
     #[event]
     #[derive(Drop, PartialEq, starknet::Event)]
-    pub enum Event {}
+    pub enum Event {
+        Deposit: events::Deposit,
+        DepositCanceled: events::DepositCanceled,
+        DepositProcessed: events::DepositProcessed,
+    }
 
 
     #[embeddable_as(DepositImpl)]

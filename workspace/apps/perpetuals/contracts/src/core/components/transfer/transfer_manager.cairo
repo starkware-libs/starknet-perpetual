@@ -3,34 +3,6 @@ use perpetuals::core::types::position::PositionId;
 use starkware_utils::signature::stark::Signature;
 use starkware_utils::time::time::Timestamp;
 
-#[derive(Debug, Drop, PartialEq, starknet::Event)]
-pub struct TransferRequest {
-    #[key]
-    pub recipient: PositionId,
-    #[key]
-    pub position_id: PositionId,
-    pub collateral_id: AssetId,
-    pub amount: u64,
-    pub expiration: Timestamp,
-    #[key]
-    pub transfer_request_hash: felt252,
-    pub salt: felt252,
-}
-
-#[derive(Debug, Drop, PartialEq, starknet::Event)]
-pub struct Transfer {
-    #[key]
-    pub recipient: PositionId,
-    #[key]
-    pub position_id: PositionId,
-    pub collateral_id: AssetId,
-    pub amount: u64,
-    pub expiration: Timestamp,
-    #[key]
-    pub transfer_request_hash: felt252,
-    pub salt: felt252,
-}
-
 #[starknet::interface]
 pub trait ITransferManager<TContractState> {
     fn transfer_request(
@@ -63,32 +35,33 @@ pub(crate) mod TransferManager {
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::AssetsComponent::InternalImpl as AssetsInternal;
     use perpetuals::core::components::assets::interface::IAssets;
+    use perpetuals::core::components::external_components::interface::EXTERNAL_COMPONENT_TRANSFERS;
+    use perpetuals::core::components::external_components::named_component::ITypedComponent;
     use perpetuals::core::components::fulfillment::fulfillment::Fulfillement as FulfillmentComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalImpl as OperatorNonceInternal;
     use perpetuals::core::components::positions::Positions as PositionsComponent;
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
+    use perpetuals::core::components::snip::SNIP12MetadataImpl;
+    use perpetuals::core::components::transfer::events::{Transfer, TransferRequest};
+    use perpetuals::core::components::vaults::vaults::{IVaults, Vaults as VaultsComponent};
+    use perpetuals::core::errors::{INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED};
     use perpetuals::core::types::asset::AssetId;
-    use perpetuals::core::types::position::{PositionId, PositionTrait};
+    use perpetuals::core::types::asset::synthetic::AssetType;
+    use perpetuals::core::types::position::{PositionDiff, PositionId, PositionTrait};
+    use perpetuals::core::types::transfer::TransferArgs;
     use starknet::storage::StoragePointerReadAccess;
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalImpl as PausableInternal;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent::InternalTrait as RequestApprovalsInternal;
     use starkware_utils::components::roles::RolesComponent;
+    use starkware_utils::signature::stark::Signature;
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
-    use starkware_utils::time::time::validate_expiration;
-    use crate::core::components::external_components::interface::EXTERNAL_COMPONENT_TRANSFERS;
-    use crate::core::components::external_components::named_component::ITypedComponent;
-    use crate::core::components::snip::SNIP12MetadataImpl;
-    use crate::core::components::vaults::vaults::{IVaults, Vaults as VaultsComponent};
-    use crate::core::errors::{INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED};
-    use crate::core::types::asset::synthetic::AssetType;
-    use crate::core::types::position::PositionDiff;
-    use crate::core::types::transfer::TransferArgs;
-    use super::{ITransferManager, Signature, Timestamp, Transfer, TransferRequest};
+    use starkware_utils::time::time::{Timestamp, validate_expiration};
+    use super::ITransferManager;
 
     impl SnipImpl = SNIP12MetadataImpl;
 
