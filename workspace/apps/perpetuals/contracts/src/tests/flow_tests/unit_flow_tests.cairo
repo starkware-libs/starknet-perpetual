@@ -2481,3 +2481,68 @@ fn test_unfair_deleverage() {
             deleveraged_quote: 204,
         );
 }
+
+#[test]
+fn test_spot_collateral_deposit_transfer_withdraw() {
+    // Setup.
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+
+    // Create a custom spot collateral asset (not the base collateral).
+    let token = snforge_std::Token::STRK;
+    let erc20_contract_address = token.contract_address();
+    let asset_info = AssetInfoTrait::new_collateral(
+        asset_name: 'SPOT', :risk_factor_data, oracles_len: 1, :erc20_contract_address,
+    );
+    let asset_id = asset_info.asset_id;
+    state.facade.add_active_collateral(asset_info: @asset_info, initial_price: 100);
+
+    // Create users.
+    let user_1 = state.new_user_with_position();
+    let user_2 = state.new_user_with_position();
+    snforge_std::set_balance(target: user_1.account.address, new_balance: 5000000, :token);
+    snforge_std::set_balance(target: user_2.account.address, new_balance: 5000000, :token);
+
+    // Deposit spot collateral asset to user_1.
+    let deposit_info_user_1 = state
+        .facade
+        .deposit_spot(
+            depositor: user_1.account,
+            :asset_id,
+            position_id: user_1.position_id,
+            quantized_amount: 100000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_info_user_1);
+
+    // Transfer partial amount from user_1 to user_2.
+    let transfer_info = state
+        .facade
+        .transfer_spot_request(sender: user_1, recipient: user_2, :asset_id, amount: 40000);
+    state.facade.transfer(:transfer_info);
+    // Withdraw from user_1 (first withdrawal).
+    let mut withdraw_info = state
+        .facade
+        .withdraw_spot_request(user: user_1, :asset_id, amount: 30000);
+    state.facade.withdraw(withdraw_info: withdraw_info);
+
+    // Withdraw from user_2 (second withdrawal).
+    withdraw_info = state.facade.withdraw_spot_request(user: user_2, :asset_id, amount: 40000);
+    state.facade.withdraw(withdraw_info: withdraw_info);
+
+    // Verify final balances.
+    let balance_user_1: i64 = state
+        .facade
+        .get_position_asset_balance(user_1.position_id, asset_id)
+        .into();
+    let balance_user_2: i64 = state
+        .facade
+        .get_position_asset_balance(user_2.position_id, asset_id)
+        .into();
+
+    // user_1: 100000 (deposit) - 40000 (transfer) - 30000 (withdraw) = 30000
+    assert_eq!(balance_user_1, 30000_i64);
+    // user_2: 40000 (transfer) - 40000 (withdraw) = 0
+    assert_eq!(balance_user_2, 0_i64);
+}

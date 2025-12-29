@@ -196,6 +196,11 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
     ) -> RequestInfo {
         self.flow_test_base.facade.transfer_request(:sender, :recipient, :amount)
     }
+    fn transfer_spot_request(
+        ref self: FlowTestExtended, sender: User, recipient: User, asset_id: AssetId, amount: u64,
+    ) -> RequestInfo {
+        self.flow_test_base.facade.transfer_spot_request(:sender, :recipient, :asset_id, :amount)
+    }
     fn transfer(ref self: FlowTestExtended, transfer_info: RequestInfo) {
         self.flow_test_base.facade.transfer(:transfer_info)
     }
