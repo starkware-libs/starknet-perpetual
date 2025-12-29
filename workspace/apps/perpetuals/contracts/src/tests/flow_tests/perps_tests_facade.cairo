@@ -1142,6 +1142,18 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
     fn transfer_request(
         ref self: PerpsTestsFacade, sender: User, recipient: User, amount: u64,
     ) -> RequestInfo {
+        self._transfer_request(:sender, recipient: recipient, asset_id: self.collateral_id, :amount)
+    }
+
+    fn transfer_spot_request(
+        ref self: PerpsTestsFacade, sender: User, recipient: User, asset_id: AssetId, amount: u64,
+    ) -> RequestInfo {
+        self._transfer_request(:sender, recipient: recipient, :asset_id, :amount)
+    }
+
+    fn _transfer_request(
+        ref self: PerpsTestsFacade, sender: User, recipient: User, asset_id: AssetId, amount: u64,
+    ) -> RequestInfo {
         let expiration = Time::now().add(delta: Time::weeks(1));
 
         let salt = self.generate_salt();
@@ -1149,7 +1161,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             position_id: sender.position_id,
             salt,
             expiration,
-            collateral_id: self.collateral_id,
+            collateral_id: asset_id,
             amount,
             recipient: recipient.position_id,
         };
@@ -1160,8 +1172,8 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         sender.account.set_as_caller(self.perpetuals_contract);
         ICoreDispatcher { contract_address: self.perpetuals_contract }
             .transfer_request(
-                signature,
-                asset_id: self.collateral_id,
+                :signature,
+                asset_id: asset_id,
                 recipient: recipient.position_id,
                 position_id: sender.position_id,
                 :amount,
@@ -1175,7 +1187,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             spied_event: self.get_last_event(contract_address: self.perpetuals_contract),
             position_id: sender.position_id,
             recipient: recipient.position_id,
-            collateral_id: self.collateral_id,
+            collateral_id: asset_id,
             :amount,
             :expiration,
             transfer_request_hash: request_hash,
@@ -1183,7 +1195,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         );
 
         RequestInfo {
-            asset_id: self.collateral_id,
+            asset_id,
             recipient,
             position_id: sender.position_id,
             amount,
@@ -1197,13 +1209,18 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         let RequestInfo {
             asset_id, recipient, position_id, amount, expiration, salt, request_hash,
         } = transfer_info;
-        let dispatcher = IPositionsDispatcher { contract_address: self.perpetuals_contract };
-        let sender_balance_before = dispatcher
-            .get_position_assets(position_id: position_id)
-            .collateral_balance;
-        let recipient_balance_before = dispatcher
-            .get_position_assets(position_id: recipient.position_id)
-            .collateral_balance;
+
+        let sender_balance_before = if (asset_id == self.collateral_id) {
+            self.get_position_collateral_balance(position_id)
+        } else {
+            self.get_position_asset_balance(position_id, asset_id)
+        };
+
+        let recipient_balance_before = if (asset_id == self.collateral_id) {
+            self.get_position_collateral_balance(recipient.position_id)
+        } else {
+            self.get_position_asset_balance(recipient.position_id, asset_id)
+        };
 
         let operator_nonce = self.get_nonce();
         self.operator.set_as_caller(self.perpetuals_contract);
@@ -1223,16 +1240,32 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 request_hash: request_hash, expected_status: RequestStatus::PROCESSED,
             );
 
-        self
-            .validate_collateral_balance(
-                position_id: position_id, expected_balance: sender_balance_before - amount.into(),
-            );
+        if (asset_id == self.collateral_id) {
+            self
+                .validate_collateral_balance(
+                    :position_id, expected_balance: sender_balance_before - amount.into(),
+                );
 
-        self
-            .validate_collateral_balance(
-                position_id: recipient.position_id,
-                expected_balance: recipient_balance_before + amount.into(),
-            );
+            self
+                .validate_collateral_balance(
+                    position_id: recipient.position_id,
+                    expected_balance: recipient_balance_before + amount.into(),
+                );
+        } else {
+            self
+                .validate_asset_balance(
+                    :position_id,
+                    :asset_id,
+                    expected_balance: sender_balance_before - amount.into(),
+                );
+
+            self
+                .validate_asset_balance(
+                    position_id: recipient.position_id,
+                    :asset_id,
+                    expected_balance: recipient_balance_before + amount.into(),
+                );
+        }
 
         assert_transfer_event_with_expected(
             spied_event: self.get_last_event(contract_address: self.perpetuals_contract),
