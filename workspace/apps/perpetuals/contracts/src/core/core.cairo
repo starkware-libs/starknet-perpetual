@@ -27,7 +27,7 @@ pub mod Core {
     use perpetuals::core::types::asset::AssetId;
     use perpetuals::core::types::asset::synthetic::AssetType;
     use perpetuals::core::types::balance::Balance;
-    use perpetuals::core::types::order::{ForcedTrade, LimitOrder, Order};
+    use perpetuals::core::types::order::{ForcedRedeemFromVault, ForcedTrade, LimitOrder, Order};
     use perpetuals::core::types::position::{PositionDiff, PositionId, PositionTrait};
     use perpetuals::core::types::price::PriceMulTrait;
     use perpetuals::core::types::vault::ConvertPositionToVault;
@@ -63,6 +63,7 @@ pub mod Core {
     use crate::core::components::snip::SNIP12MetadataImpl;
     use crate::core::components::transfer::transfer_manager::ITransferManagerDispatcherTrait;
     use crate::core::components::vaults::events as vault_events;
+    use crate::core::components::vaults::vaults::Vaults::InternalTrait as VaultsInternal;
     use crate::core::components::vaults::vaults::{IVaults, Vaults as VaultsComponent};
     use crate::core::components::vaults::vaults_contract::IVaultExternalDispatcherTrait;
     use crate::core::components::withdrawal::withdrawal_manager::IWithdrawalManagerDispatcherTrait;
@@ -207,6 +208,8 @@ pub mod Core {
         WithdrawRequest: events::WithdrawRequest,
         ForcedTradeRequest: events::ForcedTradeRequest,
         ForcedTrade: events::ForcedTrade,
+        ForcedRedeemFromVaultRequest: vault_events::ForcedRedeemFromVaultRequest,
+        ForcedRedeemFromVault: vault_events::ForcedRedeemFromVault,
         #[flat]
         FulfillmentEvent: Fulfillement::Event,
         #[flat]
@@ -1009,6 +1012,171 @@ pub mod Core {
                 );
         }
 
+        /// Requests a forced redeem from vault - it enables redemption of vault shares without
+        /// operator approval.
+        ///
+        /// Validations:
+        /// - Validates the forced request signature.
+        /// - Validates the position exists.
+        /// - Validates the caller is the position owner.
+        ///
+        /// Execution:
+        /// - Stores the forced redemption request hash in pending forced actions.
+        /// - transfer `ForcedFee` amount.
+        /// - Emits a `ForcedRedeemFromVaultRequest` event.
+        fn forced_redeem_from_vault_request(
+            ref self: ContractState,
+            signature: Signature,
+            vault_signature: Signature,
+            order: LimitOrder,
+            vault_approval: LimitOrder,
+        ) {
+            let redeeming_position = self
+                .positions
+                .get_position_snapshot(position_id: order.source_position);
+            let vault_config = self.vaults.get_vault_config_for_asset(order.base_asset_id);
+            let vault_position_id: PositionId = vault_config.position_id.into();
+            let vault_position = self
+                .positions
+                .get_position_snapshot(position_id: vault_position_id);
+
+            // Validate the caller is the position owner account
+            let owner_account = if (redeeming_position.owner_protection_enabled.read()) {
+                redeeming_position.get_owner_account()
+            } else {
+                Option::None
+            };
+            let public_key = redeeming_position.get_owner_public_key();
+            let vault_public_key = vault_position.get_owner_public_key();
+            let forced_redeem_from_vault = ForcedRedeemFromVault { order, vault_approval };
+
+            // Validate the forced request signatures.
+            let hash = self
+                .request_approvals
+                .register_forced_approval(
+                    :owner_account, :public_key, :signature, args: forced_redeem_from_vault,
+                );
+
+            validate_signature(
+                public_key: vault_public_key,
+                message: forced_redeem_from_vault,
+                signature: vault_signature,
+            );
+
+            // Transfer premium_cost (forced fee) from the caller to the sequencer address.
+            let premium_cost = self.premium_cost.read();
+            let quantum = self.assets.get_collateral_quantum();
+            let token_contract = self.assets.get_base_collateral_token_contract();
+            assert(
+                token_contract
+                    .transfer_from(
+                        sender: get_caller_address(),
+                        recipient: get_block_info().sequencer_address,
+                        amount: (premium_cost * quantum).into(),
+                    ),
+                TRANSFER_FAILED,
+            );
+
+            self
+                .emit(
+                    vault_events::ForcedRedeemFromVaultRequest {
+                        order_source_position: order.source_position,
+                        order_receive_position: order.receive_position,
+                        order_base_asset_id: order.base_asset_id,
+                        order_base_amount: order.base_amount,
+                        order_quote_asset_id: order.quote_asset_id,
+                        order_quote_amount: order.quote_amount,
+                        order_fee_asset_id: order.fee_asset_id,
+                        order_fee_amount: order.fee_amount,
+                        order_expiration: order.expiration,
+                        order_salt: order.salt,
+                        vault_approval_source_position: vault_approval.source_position,
+                        vault_approval_receive_position: vault_approval.receive_position,
+                        vault_approval_base_asset_id: vault_approval.base_asset_id,
+                        vault_approval_base_amount: vault_approval.base_amount,
+                        vault_approval_quote_asset_id: vault_approval.quote_asset_id,
+                        vault_approval_quote_amount: vault_approval.quote_amount,
+                        vault_approval_fee_asset_id: vault_approval.fee_asset_id,
+                        vault_approval_fee_amount: vault_approval.fee_amount,
+                        vault_approval_expiration: vault_approval.expiration,
+                        vault_approval_salt: vault_approval.salt,
+                        hash,
+                    },
+                );
+        }
+
+        /// Executes a previously submitted forced redeem from vault request.
+        ///
+        /// Validations:
+        /// - Validates that a matching forced redeem request exists.
+        /// - Validates the request is not already completed.
+        /// - If the caller is the operator, validates the operator nonce.
+        /// - If the caller is not the operator, validates the forced request timeout has passed.
+        /// - Execute regular redeem validations.
+        ///
+        /// Execution:
+        /// - Processes the forced redeem.
+        /// - Marks the forced request as completed and clears the pending entry.
+        /// - Emits a `ForcedRedeemFromVault` event.
+        fn force_redeem_from_vault(
+            ref self: ContractState,
+            operator_nonce: u64,
+            order: LimitOrder,
+            vault_approval: LimitOrder,
+        ) {
+            let redeeming_position = self
+                .positions
+                .get_position_snapshot(position_id: order.source_position);
+            let public_key = redeeming_position.get_owner_public_key();
+
+            // Check forced request.
+            let (request_time, _) = self
+                .request_approvals
+                .consume_forced_approved_request(
+                    args: ForcedRedeemFromVault { order, vault_approval }, public_key: public_key,
+                );
+
+            // Only operator can process the force redeem during timelock.
+            if !self.roles.is_operator(get_caller_address()) {
+                let now = Time::now();
+                let forced_action_timelock = self.forced_action_timelock.read();
+                assert(request_time.add(forced_action_timelock) <= now, FORCED_WAIT_REQUIRED);
+            } else {
+                self.operator_nonce.use_checked_nonce(:operator_nonce);
+            }
+
+            // Execute redeem.
+            self
+                .external_components
+                ._get_vault_manager_dispatcher()
+                .force_redeem_from_vault(:order, :vault_approval);
+
+            self
+                .emit(
+                    vault_events::ForcedRedeemFromVault {
+                        order_source_position: order.source_position,
+                        order_receive_position: order.receive_position,
+                        order_base_asset_id: order.base_asset_id,
+                        order_base_amount: order.base_amount,
+                        order_quote_asset_id: order.quote_asset_id,
+                        order_quote_amount: order.quote_amount,
+                        order_fee_asset_id: order.fee_asset_id,
+                        order_fee_amount: order.fee_amount,
+                        order_expiration: order.expiration,
+                        order_salt: order.salt,
+                        vault_approval_source_position: vault_approval.source_position,
+                        vault_approval_receive_position: vault_approval.receive_position,
+                        vault_approval_base_asset_id: vault_approval.base_asset_id,
+                        vault_approval_base_amount: vault_approval.base_amount,
+                        vault_approval_quote_asset_id: vault_approval.quote_asset_id,
+                        vault_approval_quote_amount: vault_approval.quote_amount,
+                        vault_approval_fee_asset_id: vault_approval.fee_asset_id,
+                        vault_approval_fee_amount: vault_approval.fee_amount,
+                        vault_approval_expiration: vault_approval.expiration,
+                        vault_approval_salt: vault_approval.salt,
+                    },
+                );
+        }
 
         fn apply_interests(
             ref self: ContractState,

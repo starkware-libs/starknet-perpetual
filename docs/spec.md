@@ -34,6 +34,8 @@ classDiagram
         liquidate_vault_shares()
         liquidate_spot_asset()
         deleverage_spot_asset()
+        forced_redeem_from_vault_request()
+        force_redeem_from_vault()
     }
     class Position{
         version: u8,
@@ -913,6 +915,53 @@ impl ForcedTradeStructHashImpl of StructHash<ForcedTrade> {
     fn hash_struct(self: @ForcedTrade) -> HashType {
         let hash_state = PoseidonTrait::new();
         hash_state.update_with(FORCED_TRADE_TYPE_HASH).update_with(*self).finalize()
+    }
+}
+```
+
+##### ForcedRedeemFromVault
+
+```rust
+pub struct ForcedRedeemFromVault {
+    pub order: LimitOrder,
+    pub vault_approval: LimitOrder,
+}
+
+/// selector!(
+///   "\"ForcedRedeemFromVault\"(
+///    \"order\":\"LimitOrder\",
+///    \"vault_approval\":\"LimitOrder\",
+///    )
+///   "\"LimitOrder\"(
+///    \"source_position\":\"PositionId\",
+///    \"receive_position\":\"PositionId\",
+///    \"base_asset_id\":\"AssetId\",
+///    \"base_amount\":\"i64\",
+///    \"quote_asset_id\":\"AssetId\",
+///    \"quote_amount\":\"i64\",
+///    \"fee_asset_id\":\"AssetId\",
+///    \"fee_amount\":\"u64\",
+///    \"expiration\":\"Timestamp\",
+///    \"salt\":\"felt\"
+///    )
+///    \"PositionId\"(
+///    \"value\":\"u32\"
+///    )"
+///    \"AssetId\"(
+///    \"value\":\"felt\"
+///    )"
+///    \"Timestamp\"(
+///    \"seconds\":\"u64\"
+///    )"
+/// );
+
+const FORCED_REDEEM_FROM_VAULT_TYPE_HASH: HashType =
+    0x024da7c41d3d07be3249275f92e8e0e87cde33e9543002f1d10c75108e5f90b9;
+
+impl ForcedRedeemFromVaultStructHashImpl of StructHash<ForcedRedeemFromVault> {
+    fn hash_struct(self: @ForcedRedeemFromVault) -> HashType {
+        let hash_state = PoseidonTrait::new();
+        hash_state.update_with(FORCED_REDEEM_FROM_VAULT_TYPE_HASH).update_with(*self).finalize()
     }
 }
 ```
@@ -3041,6 +3090,8 @@ pub enum Event {
     Trade: events::Trade,
     ForcedTrade: events::ForcedTrade,
     ForcedTradeRequest: events::ForcedTradeRequest,
+    ForcedRedeemFromVault: vault_events::ForcedRedeemFromVault,
+    ForcedRedeemFromVaultRequest: vault_events::ForcedRedeemFromVaultRequest,
     Withdraw: events::Withdraw,
     WithdrawRequest: events::WithdrawRequest,
     ForcedWithdraw: events::ForcedWithdraw,
@@ -3396,6 +3447,72 @@ pub struct InterestApplied {
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
 pub struct TimeTick {
     pub timestamp: Timestamp,
+    }
+```
+
+##### ForcedRedeemFromVaultRequest
+
+```rust
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct ForcedRedeemFromVaultRequest {
+    #[key]
+    pub order_source_position: PositionId,
+    #[key]
+    pub order_receive_position: PositionId,
+    pub order_base_asset_id: AssetId,
+    pub order_base_amount: i64,
+    pub order_quote_asset_id: AssetId,
+    pub order_quote_amount: i64,
+    pub order_fee_asset_id: AssetId,
+    pub order_fee_amount: u64,
+    pub order_expiration: Timestamp,
+    pub order_salt: felt252,
+    #[key]
+    pub vault_approval_source_position: PositionId,
+    #[key]
+    pub vault_approval_receive_position: PositionId,
+    pub vault_approval_base_asset_id: AssetId,
+    pub vault_approval_base_amount: i64,
+    pub vault_approval_quote_asset_id: AssetId,
+    pub vault_approval_quote_amount: i64,
+    pub vault_approval_fee_asset_id: AssetId,
+    pub vault_approval_fee_amount: u64,
+    pub vault_approval_expiration: Timestamp,
+    pub vault_approval_salt: felt252,
+    #[key]
+    pub hash: felt252,
+}
+```
+
+##### ForcedRedeemFromVault
+
+```rust
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct ForcedRedeemFromVault {
+    #[key]
+    pub order_source_position: PositionId,
+    #[key]
+    pub order_receive_position: PositionId,
+    pub order_base_asset_id: AssetId,
+    pub order_base_amount: i64,
+    pub order_quote_asset_id: AssetId,
+    pub order_quote_amount: i64,
+    pub order_fee_asset_id: AssetId,
+    pub order_fee_amount: u64,
+    pub order_expiration: Timestamp,
+    pub order_salt: felt252,
+    #[key]
+    pub vault_approval_source_position: PositionId,
+    #[key]
+    pub vault_approval_receive_position: PositionId,
+    pub vault_approval_base_asset_id: AssetId,
+    pub vault_approval_base_amount: i64,
+    pub vault_approval_quote_asset_id: AssetId,
+    pub vault_approval_quote_amount: i64,
+    pub vault_approval_fee_asset_id: AssetId,
+    pub vault_approval_fee_amount: u64,
+    pub vault_approval_expiration: Timestamp,
+    pub vault_approval_salt: felt252,
 }
 ```
 
@@ -4076,6 +4193,111 @@ fn forced_trade(
 **Emits:**
 
 [ForcedTrade](#forcedtrade)
+
+#### Forced Redeem From Vault Request
+
+A forced redeem from vault request allows users to initiate a vault redemption without operator approval, but requires a timelock period before execution (unless executed by the operator). This mechanism provides users with an exit option if the operator becomes unresponsive.
+
+```rust
+fn forced_redeem_from_vault_request(
+    ref self: ContractState,
+    signature: Signature,
+    vault_signature: Signature,
+    order: LimitOrder,
+    vault_approval: LimitOrder,
+)
+```
+
+**Access Control:**
+
+- The caller must be the owner account of the redeeming position (if owner protection is enabled).
+
+**Hash:**
+
+1. Calculate the hash of [ForcedRedeemFromVault](#forcedredeemfromvault) with the redeeming position `public_key`:
+   [get\_message\_hash](#get-message-hash).
+2. Calculate the hash of [ForcedRedeemFromVault](#forcedredeemfromvault) with the vault position `public_key`:
+   [get\_message\_hash](#get-message-hash).
+
+**Validations:**
+
+1. The redeeming position exists.
+2. The vault position exists.
+3. [signature validation](#signature) on the `ForcedRedeemFromVault` hash with the redeeming position `public_key` using `signature`.
+4. [signature validation](#signature) on the `ForcedRedeemFromVault` hash with the vault position `public_key` using `vault_signature`.
+5. The caller is the redeeming position owner account (if owner protection is enabled).
+
+**Logic:**
+
+1. Run validations.
+2. Register the forced approval request for the redeeming position with the current timestamp.
+3. Transfer `premium_cost * quantum` (forced fee) from the caller to the sequencer address.
+4. Emit `ForcedRedeemFromVaultRequest` event.
+
+**Errors:**
+
+- INVALID\_POSITION
+- INVALID\_STARK\_KEY\_SIGNATURE
+- TRANSFER_FAILED
+- CALLER_IS_NOT_OWNER_ACCOUNT
+
+**Emits:**
+
+[ForcedRedeemFromVaultRequest](#forcedredeemfromvaultrequest)
+
+#### Forced Redeem From Vault
+
+Executes a forced redeem from vault after the timelock period has elapsed (or immediately if executed by the operator). This allows users to redeem vault shares without operator approval if the operator is unresponsive.
+
+```rust
+fn force_redeem_from_vault(
+    ref self: ContractState,
+    operator_nonce: u64,
+    order: LimitOrder,
+    vault_approval: LimitOrder,
+)
+```
+
+**Access Control:**
+
+- This function can be called by either a user or an operator.
+- If the caller is the operator, the operator nonce is checked.
+- If the caller is not the operator, the timelock period must have elapsed: `request_time + forced_action_timelock <= now`.
+
+**Validations:**
+
+1. The redeeming position exists.
+2. The vault position exists.
+3. The forced redeem request exists and is not consumed.
+4. If the caller is the operator, the operator nonce is validated.
+5. If the caller is not the operator, the timelock period has elapsed: `request_time + forced_action_timelock <= now`.
+6. Execute regular redeem validations (same as [WithdrawFromVault](#withdrawfromvault)) with the following differences:
+   - Operator nonce check only applies when the caller is the operator.
+   - No signature validation for user order (signature was validated during request).
+   - No signature validation for vault approval (vault signature was validated during request).
+   - Actual amounts are set to order amounts: `actual_shares_user = order.base_amount`, `actual_collateral_user = order.quote_amount`.
+
+**Logic:**
+
+1. Run validations.
+2. Consume the forced approved request (marks it as processed).
+3. Execute the redeem using the same logic as [WithdrawFromVault](#withdrawfromvault) with the modifications above.
+4. Emit `ForcedRedeemFromVault` event.
+
+**Errors:**
+
+- INVALID\_POSITION
+- FORCED_WAIT_REQUIRED
+- REQUEST_NOT_REGISTERED
+- All errors from [WithdrawFromVault](#withdrawfromvault) except:
+  - PAUSED (forced redeems can execute even if paused)
+  - ONLY\_OPERATOR
+  - INVALID\_NONCE
+  - INVALID_STARK_KEY_SIGNATURE
+
+**Emits:**
+
+[ForcedRedeemFromVault](#forcedredeemfromvault)
 
 #### Multi Trade
 

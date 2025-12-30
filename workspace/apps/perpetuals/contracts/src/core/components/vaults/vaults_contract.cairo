@@ -4,7 +4,6 @@ use perpetuals::core::types::position::PositionId;
 use perpetuals::core::types::vault::ConvertPositionToVault;
 use starkware_utils::signature::stark::Signature;
 
-
 #[starknet::interface]
 pub trait IVaultExternal<TContractState> {
     fn activate_vault(
@@ -32,6 +31,9 @@ pub trait IVaultExternal<TContractState> {
         actual_shares_user: i64,
         actual_collateral_user: i64,
     );
+    fn force_redeem_from_vault(
+        ref self: TContractState, order: LimitOrder, vault_approval: LimitOrder,
+    );
 }
 
 #[starknet::contract]
@@ -57,6 +59,7 @@ pub(crate) mod VaultsManager {
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
     use starkware_utils::components::roles::RolesComponent;
+    use starkware_utils::hash::message_hash::OffchainMessageHash;
     use starkware_utils::math::abs::Abs;
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
@@ -350,6 +353,7 @@ pub(crate) mod VaultsManager {
                     :actual_collateral_user,
                     validate_user_order: true,
                     user_signature: signature,
+                    validate_signatures: true,
                 );
         }
 
@@ -388,6 +392,24 @@ pub(crate) mod VaultsManager {
                     :actual_collateral_user,
                     validate_user_order: false,
                     user_signature: array![0, 0].span(),
+                    validate_signatures: true,
+                );
+        }
+
+        fn force_redeem_from_vault(
+            ref self: ContractState, order: LimitOrder, vault_approval: LimitOrder,
+        ) {
+            let empty_signature = array![].span();
+            self
+                ._execute_redeem(
+                    order: order,
+                    :vault_approval,
+                    vault_signature: empty_signature,
+                    actual_shares_user: order.base_amount,
+                    actual_collateral_user: order.quote_amount,
+                    validate_user_order: false,
+                    user_signature: empty_signature,
+                    validate_signatures: false,
                 );
         }
     }
@@ -403,6 +425,7 @@ pub(crate) mod VaultsManager {
             actual_collateral_user: i64,
             validate_user_order: bool,
             user_signature: Signature,
+            validate_signatures: bool,
         ) {
             let vault_config = self.vaults.get_vault_config_for_asset(order.base_asset_id);
             let vault_asset = self.assets.get_asset_config(vault_config.asset_id);
@@ -439,11 +462,15 @@ pub(crate) mod VaultsManager {
             let value_to_receive = actual_collateral_user;
 
             if (validate_user_order) {
-                let order_hash = validate_signature(
-                    public_key: redeeming_position.get_owner_public_key(),
-                    message: order,
-                    signature: user_signature,
-                );
+                let order_hash = if validate_signatures {
+                    validate_signature(
+                        public_key: redeeming_position.get_owner_public_key(),
+                        message: order,
+                        signature: user_signature,
+                    )
+                } else {
+                    order.get_message_hash(public_key: redeeming_position.get_owner_public_key())
+                };
                 self
                     .fulfillment_tracking
                     .update_fulfillment(
@@ -454,12 +481,15 @@ pub(crate) mod VaultsManager {
                     );
             }
 
-            let vault_order_hash = validate_signature(
-                public_key: vault_position.get_owner_public_key(),
-                message: vault_approval,
-                signature: vault_signature,
-            );
-
+            let vault_order_hash = if validate_signatures {
+                validate_signature(
+                    public_key: vault_position.get_owner_public_key(),
+                    message: vault_approval,
+                    signature: vault_signature,
+                )
+            } else {
+                vault_approval.get_message_hash(public_key: vault_position.get_owner_public_key())
+            };
             self
                 .fulfillment_tracking
                 .update_fulfillment(
