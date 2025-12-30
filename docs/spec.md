@@ -358,8 +358,7 @@ pub struct Position {
     pub collateral_balance: Balance,
     pub asset_balances: IterableMap<AssetId, AssetBalance>,
     pub owner_protection_enabled: bool,
-    // TODO(Mohammad): need to think about the initial value (if last_updated == 0 )
-    // Possible solution: in first update `interest_amount` should be zero.
+    // In first update, when `last_interest_amount_applied_time` is zero, `interest_amount` should be zero.
     pub last_interest_amount_applied_time: Timestamp,
 }
 ```
@@ -2205,6 +2204,7 @@ pub struct DepositProcessed {
     #[key]
     pub deposit_request_hash: felt252,
     pub salt: felt252,
+    pub interest_amount: i64,
 }
 ```
 
@@ -2314,6 +2314,7 @@ fn process_deposit(
     position_id: PositionId,
     quantized_amount: u64,
     salt: felt252,
+    interest_amount: i64,
 )
 
 ```
@@ -2349,12 +2350,14 @@ We assume that the position is always healthier for deposit
 2. [Pausable check](#pausable)
 3. [Operator Nonce check](#operator-nonce)
 4. [Request approval check on deposit message](#requests)
+5. Interest amount is in range.
 
 **Logic:**
 
 1. Run deposit validations.
-2. Add the amount to the collateral balance in the position.
-3. Mark deposit request as `DepositStatus::PROCESSED`.
+2. Add interest amount to the base collateral balance, including updating timestamp.
+3. Add the amount to the collateral balance in the position.
+4. Mark deposit request as `DepositStatus::PROCESSED`.
 
 **Errors:**
 
@@ -2919,6 +2922,8 @@ struct Storage {
     forced_action_timelock: TimeDelta,
     // Cost for executing forced actions (in quantized units).
     premium_cost: u64,
+    // System time from the latest system_time call.
+    system_time: Timestamp,
 }
 ```
 
@@ -2960,6 +2965,8 @@ pub enum Event {
     WithdrawRequest: events::WithdrawRequest,
     ForcedWithdraw: events::ForcedWithdraw,
     ForcedWithdrawRequest: events::ForcedWithdrawRequest,
+    InterestApplied: events::InterestApplied,
+    TimeTick: events::TimeTick,
     #[flat]
     FulfillmentEvent: Fulfillement::Event,
     #[flat]
@@ -3164,6 +3171,8 @@ pub struct Transfer {
     pub expiration: Timestamp,
     #[key]
     pub transfer_request_hash: felt252,
+    pub sender_interest_amount: i64,
+    pub receiver_interest_amount: i64,
 }
 ```
 
@@ -3225,6 +3234,8 @@ pub struct AssetPositionReduced {
     pub base_amount_a: i64,
     pub quote_asset_id: AssetId,
     pub quote_amount_a: i64,
+    pub interest_amount_a: i64,
+    pub interest_amount_b: i64,
 }
 ```
 
@@ -3288,6 +3299,26 @@ pub struct LiquidatedFromVault {
 }
 ```
 
+##### InterestApplied
+
+```rust
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct InterestApplied {
+    #[key]
+    pub position_id: PositionId,
+    pub interest_amount: i64,
+}
+```
+
+##### TimeTick
+
+```rust
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct TimeTick {
+    pub timestamp: Timestamp,
+}
+```
+
 ### Constructor
 
 It only runs once when deploying the contract and is used to initialize the state of the contract.
@@ -3330,6 +3361,7 @@ pub fn constructor(
 5. Initialize positions: create fee position with `fee_position_owner_public_key` and insurance fund position with `insurance_fund_position_owner_public_key`.
 6. Initialize forced action timelock with `forced_action_timelock`.
 7. Initialize premium cost with `premium_cost`.
+8. Initialize last system time to current time.
 
 ### Public Functions
 
@@ -3628,6 +3660,7 @@ fn transfer(
     expiration: Timestamp,
     salt: felt252,
     sender_interest_amount: i64,
+    reciever_interest_amount: i64,
 )
 ```
 
@@ -3649,13 +3682,14 @@ Only the Operator can execute.
 6. [Expiration validation](#expiration)
 7. `recipient != position_id`.
 8. [Request approval check on transfer message](#requests-1)
-9. Check interest amount in range.
+9. Check interest amounts in range.
 
 **Logic:**
 
 1. Run transfer validations
 2. Subtract the amount from the `position_id` collateral balance.
 3. Add sender_interest_amount to sender's collateral balance, including updating timestamp.
+4. Add reciever_interest amount to the reciever's base collateral balance, including updating timestamp.
 4. Add the amount to the recipient `recipient` collateral balance.
 5. [Fundamental validation](#fundamental) for `position_id` in transfer.
 
@@ -3676,6 +3710,89 @@ Only the Operator can execute.
 - REQUEST_NOT_REGISTERED
 - REQUEST_ALREADY_PROCESSED
 - POSITION_NOT_HEALTHY_NOR_HEALTHIER
+
+#### Apply Interest
+
+Applies interest to the positions collateral balances.
+
+```rust
+fn apply_interests(
+    ref self: ContractState,
+    operator_nonce: u64,
+    position_ids: Span<PositionId>,
+    interest_amounts: Span<i64>,
+)
+```
+
+**Access Control:**
+
+Only the Operator can execute.
+
+**Validations:**
+
+1. [Pausable check](#pausable)
+2. [Operator Nonce check](#operator-nonce)
+3. position_ids.len() equals interest_amounts.len(), and both are non-empty.
+4. [Position check](#position) for `position_id`s.
+5. Interest amounts are in range.
+
+**Logic:**
+
+1. Run validations
+2. Add interest amounts to the base collateral balances, including updating timestamp.
+// TODO(Mohammad): Check if health validation is needed.
+
+**Errors:**
+
+- PAUSED
+- ONLY\_OPERATOR
+- LEN\_MISMATCH
+- INVALID\_NONCE
+- INVALID\_POSITION
+
+**Emits:**
+
+[InterestApplied](#interestapplied)
+
+#### Time Tick
+
+Updates the system time. This function allows the operator to set the current system time, which must be monotonically increasing and not exceed the current block timestamp.
+
+```rust
+fn update_system_time(
+    ref self: ContractState,
+    operator_nonce: u64,
+    new_timestamp: Timestamp,
+)
+```
+
+**Access Control:**
+
+Only the Operator can execute.
+
+**Validations:**
+
+1. [Pausable check](#pausable)
+2. [Operator Nonce check](#operator-nonce)
+3. `new_timestamp <= now`
+4. `new_timestamp > system_time`
+
+**Logic:**
+
+1. Run validations
+2. Update `system_time` to `new_timestamp`
+
+**Errors:**
+
+- PAUSED
+- ONLY\_OPERATOR
+- INVALID\_NONCE
+- INVALID_TIMESTAMP
+- TIMESTAMP_NOT_MONOTONIC
+
+**Emits:**
+
+[TimeTick](#timetick)
 
 #### Trade
 
@@ -4107,6 +4224,8 @@ fn reduce_asset_position(
     position_id_b: PositionId,
     base_asset_id: AssetId,
     base_amount_a: i64,
+    interest_amount_a: i64,
+    interest_amount_b: i64,
 )
 ```
 
@@ -4125,11 +4244,13 @@ Only the Operator can execute.
 7. `base_asset_id` must be a registered inactive synthetic asset.
 8. `position_id_a.balance` decreases in magnitude after the change: `|base_amount_a|` must not exceed `|position_id_a.balance|`, and both should have the same sign.
 9. `position_id_b.balance` decreases in magnitude after the change: `|base_amount_a|` must not exceed `|position_id_b.balance|`, and both should have opposite sign.
+10. Check interest amounts in range for both positions.
 
 **Logic:**
 
 1. Run validations
 2. Calculate `quote_amount_a = -1 * price(base_asset_id) * base_amount_a`
+3. Add interest amounts to collateral balances for both positions, including timestamp.
 3. `positions[position_id_a].syntethic_assets[base_asset_id] += base_amount_a`
 4. `positions[position_id_b].syntethic_assets[base_asset_id] -= base_amount_a`
 5. Add `quote_amount_a` to the `position_id_a` collateral.
@@ -4227,8 +4348,9 @@ fn redeem_from_vault(
     vault_signature: Signature,
     actual_shares_user: i64,
     actual_collateral_user: i64,
-    interest_amount_investor: i64,
-    interest_amount_vault: i64,
+    redeeming_interest_amount: i64,
+    receiving_interest_amount: i64,
+    vault_interest_amount: i64,
 );
 ```
 
@@ -4258,7 +4380,7 @@ Only the Operator can execute.
 12. Caller is the operator.
 13. Request is new (check user payload hash not exists in the fulfillment map).
 14. `number_of_shares * vault_share_execution_price >= minimum_quantized_amount`
-15. Check interest amount in range for both positions.
+15. Check interest amount in range for all the positions.
 
 **Logic:**
 
@@ -4269,7 +4391,7 @@ Only the Operator can execute.
 5. call the new redeem function of the vault contract (a version where the price of a vault share is dicateded by the operator) which burns the vault shares and transfers the assets from the vault contract to the perps contract
 6. increase the position_id collateral_id balance by vault_share_execution_price*number_of_shares
 7. reduce the vault_position_id collateral_id balance by vault_share_execution_price*number_of_shares
-8. Add interest amounts to collateral balances for both positions, including timestamp.
+8. Add interest amounts to collateral balances for all the positions, including timestamp.
 
 **Emits:**
 
@@ -4289,6 +4411,8 @@ fn liquidate_vault_shares(
     liquidated_asset_id: AssetId,
     actual_shares_user: i64,
     actual_collateral_user: i64,
+    liquidated_interest_amount: i64,
+    vault_interest_amount: i64,
 );
 ```
 
@@ -4314,17 +4438,19 @@ Only the Operator can execute.
 10. position id is liquidatable.
 11. vault_share_execution_price is non zero.
 12. Caller is the operator.
+13. Check interest amounts in range for both positions.
 
 **Logic:**
 
 1. Run validations
-2. transfer vault_asset_id: number_of_shares from the perps contract to the vault contract (for burning the vault shares)
-3. reduce the position id vault share balance by number_of_shares
-4. transfer collateral_id: vault_share_execution_price*number_of_shares from the perps contract to the vault contract (for transferring back the shares value)
-5. call the new redeem function of the vault contract (a version where the price of a vault share is dicateded by the operator) which burns the vault shares and transfers the assets from the vault contract to the perps contract
-6. increase the position_id collateral_id balance by vault_share_execution_price*number_of_shares
-7. reduce the vault_position_id collateral_id balance by vault_share_execution_price*number_of_shares
-8. position id is healthier
+2. Add interest amounts for both positions, and update timestamps.
+3. transfer vault_asset_id: number_of_shares from the perps contract to the vault contract (for burning the vault shares)
+4. reduce the position id vault share balance by number_of_shares
+5. transfer collateral_id: vault_share_execution_price*number_of_shares from the perps contract to the vault contract (for transferring back the shares value)
+6. call the new redeem function of the vault contract (a version where the price of a vault share is dicateded by the operator) which burns the vault shares and transfers the assets from the vault contract to the perps contract
+7. increase the position_id collateral_id balance by vault_share_execution_price*number_of_shares
+8. reduce the vault_position_id collateral_id balance by vault_share_execution_price*number_of_shares
+9. position id is healthier
 
 **Emits:**
 
