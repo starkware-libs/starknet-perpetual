@@ -41,6 +41,9 @@ pub trait IVaultExternal<TContractState> {
         actual_shares_user: i64,
         actual_collateral_user: i64,
     );
+    fn force_redeem_from_vault(
+        ref self: TContractState, order: LimitOrder, vault_approval: LimitOrder,
+    );
 }
 
 #[starknet::contract]
@@ -358,6 +361,7 @@ pub(crate) mod VaultsManager {
                 ._execute_redeem(
                     order: order,
                     :vault_approval,
+                    validate_vault_approval: true,
                     :vault_signature,
                     :actual_shares_user,
                     :actual_collateral_user,
@@ -397,11 +401,29 @@ pub(crate) mod VaultsManager {
                 ._execute_redeem(
                     order: user_order,
                     :vault_approval,
+                    validate_vault_approval: true,
                     :vault_signature,
                     :actual_shares_user,
                     :actual_collateral_user,
                     validate_user_order: false,
                     user_signature: array![0, 0].span(),
+                );
+        }
+
+        fn force_redeem_from_vault(
+            ref self: ContractState, order: LimitOrder, vault_approval: LimitOrder,
+        ) {
+            let empty_signature = array![].span();
+            self
+                ._execute_redeem(
+                    order: order,
+                    :vault_approval,
+                    validate_vault_approval: false,
+                    vault_signature: empty_signature,
+                    actual_shares_user: order.base_amount,
+                    actual_collateral_user: order.quote_amount,
+                    validate_user_order: false,
+                    user_signature: empty_signature,
                 );
         }
     }
@@ -412,6 +434,7 @@ pub(crate) mod VaultsManager {
             ref self: ContractState,
             order: LimitOrder,
             vault_approval: LimitOrder,
+            validate_vault_approval: bool,
             vault_signature: Signature,
             actual_shares_user: i64,
             actual_collateral_user: i64,
@@ -468,20 +491,21 @@ pub(crate) mod VaultsManager {
                     );
             }
 
-            let vault_order_hash = validate_signature(
-                public_key: vault_position.get_owner_public_key(),
-                message: vault_approval,
-                signature: vault_signature,
-            );
-
-            self
-                .fulfillment_tracking
-                .update_fulfillment(
-                    position_id: vault_position_id,
-                    hash: vault_order_hash,
-                    order_base_amount: vault_approval.base_amount.try_into().unwrap(),
-                    actual_base_amount: -actual_shares_user.try_into().unwrap(),
+            if (validate_vault_approval) {
+                let vault_order_hash = validate_signature(
+                    public_key: vault_position.get_owner_public_key(),
+                    message: vault_approval,
+                    signature: vault_signature,
                 );
+                self
+                    .fulfillment_tracking
+                    .update_fulfillment(
+                        position_id: vault_position_id,
+                        hash: vault_order_hash,
+                        order_base_amount: vault_approval.base_amount.try_into().unwrap(),
+                        actual_base_amount: -actual_shares_user.try_into().unwrap(),
+                    );
+            }
 
             let vault_dispatcher = IProtocolVaultDispatcher {
                 contract_address: vault_asset.token_contract.expect('NOT_ERC20'),
