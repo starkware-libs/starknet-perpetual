@@ -34,7 +34,7 @@ async def phase_0_set_public_key(test_utils: PerpetualsTestUtils):
     )
 
     # Upgrade the perpetuals contract to the latest version
-    await test_utils.upgrade_perpetuals_contract()
+    await test_utils.upgrade_perpetuals_contract(contract_name="perpetuals_Core_phase_0")
 
     # Set new public key for Vault Position
     vault_manager_account = await test_utils.new_account()
@@ -157,7 +157,7 @@ async def test_migration(test_utils: PerpetualsTestUtils):
     # Upgrade core contract
 
     eic_declare_result = await declare_contract(
-        "perpetuals_ReplaceCollateralEIC",
+        "perpetuals_ReplaceCollateralEIC_phase_1",
         test_utils.known_accounts["upgrade_governor"],
     )
     eic_data = {

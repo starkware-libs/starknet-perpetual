@@ -805,6 +805,7 @@ class PerpetualsTestUtils:
 
     async def upgrade_perpetuals_contract(
         self,
+        contract_name: str = "perpetuals_Core",
         eic_data: Optional[dict] = None,
     ):
         """
@@ -812,7 +813,7 @@ class PerpetualsTestUtils:
         """
         upgrade_governor_contract = self.known_contracts["upgrade_governor"]
         new_class_hash = (
-            await declare_contract("perpetuals_Core", self.known_accounts["upgrade_governor"])
+            await declare_contract(contract_name, self.known_accounts["upgrade_governor"])
         ).class_hash
 
         invocation = await upgrade_governor_contract.functions["add_new_implementation"].invoke_v3(
