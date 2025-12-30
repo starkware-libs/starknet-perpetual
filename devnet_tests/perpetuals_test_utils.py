@@ -378,7 +378,7 @@ class PerpetualsTestUtils:
         assert error is not None
         raise Exception(f"Failed to create a new position: {error}")
 
-    async def deposit(self, account: Account, amount: int):
+    async def deposit(self, account: Account, amount: int, process_deposit: bool = True):
         # Fund the account with collateral tokens
         async def _fund_account_with_collateral(account: Account, amount: int):
             """Fund an account with collateral tokens using the rich USDC holder account."""
@@ -442,7 +442,8 @@ class PerpetualsTestUtils:
         await invocation.wait_for_acceptance(check_interval=0.1)
 
         # Process deposit
-        await self.process_base_collateral_deposit(account, amount, salt)
+        if process_deposit:
+            await self.process_base_collateral_deposit(account, amount, salt)
 
     async def __process_deposit(
         self,
@@ -503,7 +504,7 @@ class PerpetualsTestUtils:
         depositer_address = self.perpetuals_contract_address
         await self.__process_deposit(depositer_address, asset_id, position_id, amount, salt)
 
-    async def withdraw(self, account: Account, amount: int):
+    async def withdraw(self, account: Account, amount: int, process_withdraw: bool = True):
         expiration = self.now_timestamp + WEEK_IN_SECONDS
         salt = random.randint(0, MAX_UINT32)
         collateral_asset_id = await self.get_collateral_asset_id()
@@ -557,7 +558,8 @@ class PerpetualsTestUtils:
             )
             await invocation.wait_for_acceptance(check_interval=0.1)
 
-        await _process_withdraw(account, amount, expiration, salt)
+        if process_withdraw:
+            await _process_withdraw(account, amount, expiration, salt)
 
     async def price_tick(self, asset_id: int, oracle_price: int, signed_prices: list[dict]):
         invocation = (
@@ -753,6 +755,7 @@ class PerpetualsTestUtils:
         sender: Account,
         recipient: Account,
         amount: int,
+        process_transfer: bool = True,
     ):
         transfer_args = await self.create_transfer_args(sender, recipient, amount)
         signature = self.sign_message(
@@ -801,7 +804,8 @@ class PerpetualsTestUtils:
             )
             await invocation.wait_for_acceptance(check_interval=0.1)
 
-        await _process_transfer(transfer_args)
+        if process_transfer:
+            await _process_transfer(transfer_args)
 
     async def upgrade_perpetuals_contract(
         self,
@@ -986,6 +990,26 @@ class PerpetualsTestUtils:
                 actual_quote_amount,
                 auto_estimate=True,
             )
+        )
+        await invocation.wait_for_acceptance(check_interval=0.1)
+
+    ### USDC migration ###
+
+    async def register_token_admin(self, account: Account):
+        invocation = (
+            await self.known_contracts["governance_admin"]
+            .functions["register_token_admin"]
+            .invoke_v3(
+                account.address,
+                auto_estimate=True,
+            )
+        )
+        await invocation.wait_for_acceptance(check_interval=0.1)
+
+    async def migrate_usdc(self, contract: Contract, amount: int):
+        invocation = await contract.functions["migrate_usdc"].invoke_v3(
+            amount,
+            auto_estimate=True,
         )
         await invocation.wait_for_acceptance(check_interval=0.1)
 

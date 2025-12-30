@@ -261,3 +261,37 @@ async def upgrade_vault_contract(
         auto_estimate=True,
     )
     await invocation.wait_for_acceptance(check_interval=0.1)
+
+async def get_old_usdc_balance(account: Account, address: Optional[int] = None):
+    if address is None:
+        address = account.address
+    abi, cairo_version = await ContractAbiResolver(
+        address=USDC_OLD_CONTRACT_ADDRESS,
+        client=account.client,
+        proxy_config=ProxyConfig(),
+    ).resolve()
+    usdc_contract = Contract(
+        address=USDC_OLD_CONTRACT_ADDRESS,
+        abi=abi,
+        provider=account,
+        cairo_version=cairo_version,
+    )
+    (balance,) = await usdc_contract.functions["balance_of"].call(address)
+    return balance
+
+async def get_new_usdc_balance(account: Account, address: Optional[int] = None):
+    if address is None:
+        address = account.address
+    abi, cairo_version = await ContractAbiResolver(
+        address=USDC_NEW_CONTRACT_ADDRESS,
+        client=account.client,
+        proxy_config=ProxyConfig(),
+    ).resolve()
+    usdc_contract = Contract(
+        address=USDC_NEW_CONTRACT_ADDRESS,
+        abi=abi,
+        provider=account,
+        cairo_version=cairo_version,
+    )
+    (balance,) = await usdc_contract.functions["balance_of"].call(address)
+    return balance
