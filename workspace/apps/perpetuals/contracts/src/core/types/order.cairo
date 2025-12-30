@@ -297,11 +297,55 @@ impl ForcedTradeStructHashImpl of StructHash<ForcedTrade> {
     }
 }
 
+#[derive(Copy, Drop, Hash, Serde)]
+pub struct ForcedRedeemFromVault {
+    pub order: LimitOrder,
+    pub vault_approval: LimitOrder,
+}
+
+/// selector!(
+///   "\"ForcedRedeemFromVault\"(
+///    \"order\":\"LimitOrder\",
+///    \"vault_approval\":\"LimitOrder\",
+///    )
+///   "\"LimitOrder\"(
+///    \"source_position\":\"PositionId\",
+///    \"receive_position\":\"PositionId\",
+///    \"base_asset_id\":\"AssetId\",
+///    \"base_amount\":\"i64\",
+///    \"quote_asset_id\":\"AssetId\",
+///    \"quote_amount\":\"i64\",
+///    \"fee_asset_id\":\"AssetId\",
+///    \"fee_amount\":\"u64\",
+///    \"expiration\":\"Timestamp\",
+///    \"salt\":\"felt\"
+///    )
+///    \"PositionId\"(
+///    \"value\":\"u32\"
+///    )"
+///    \"AssetId\"(
+///    \"value\":\"felt\"
+///    )"
+/// );
+
+const FORCED_REDEEM_FROM_VAULT_TYPE_HASH: HashType =
+    0x024da7c41d3d07be3249275f92e8e0e87cde33e9543002f1d10c75108e5f90b9;
+
+impl ForcedRedeemFromVaultStructHashImpl of StructHash<ForcedRedeemFromVault> {
+    fn hash_struct(self: @ForcedRedeemFromVault) -> HashType {
+        let hash_state = PoseidonTrait::new();
+        hash_state.update_with(FORCED_REDEEM_FROM_VAULT_TYPE_HASH).update_with(*self).finalize()
+    }
+}
+
 
 #[cfg(test)]
 mod tests {
     use starkware_utils::math::utils::to_base_16_string;
-    use super::{FORCED_TRADE_TYPE_HASH, LIMIT_ORDER_TYPE_HASH, ORDER_TYPE_HASH};
+    use super::{
+        FORCED_REDEEM_FROM_VAULT_TYPE_HASH, FORCED_TRADE_TYPE_HASH, LIMIT_ORDER_TYPE_HASH,
+        ORDER_TYPE_HASH,
+    };
 
     #[test]
     fn test_order_type_hash() {
@@ -323,5 +367,14 @@ mod tests {
             "\"ForcedTrade\"(\"order_a\":\"Order\",\"order_b\":\"Order\")\"Order\"(\"position_id\":\"PositionId\",\"base_asset_id\":\"AssetId\",\"base_amount\":\"i64\",\"quote_asset_id\":\"AssetId\",\"quote_amount\":\"i64\",\"fee_asset_id\":\"AssetId\",\"fee_amount\":\"u64\",\"expiration\":\"Timestamp\",\"salt\":\"felt\")\"PositionId\"(\"value\":\"u32\")\"AssetId\"(\"value\":\"felt\")",
         );
         assert_eq!(to_base_16_string(FORCED_TRADE_TYPE_HASH), to_base_16_string(expected));
+    }
+    #[test]
+    fn test_forced_redeem_from_vault_type_hash() {
+        let expected = selector!(
+            "\"ForcedRedeemFromVault\"(\"order\":\"LimitOrder\",\"vault_approval\":\"LimitOrder\")\"LimitOrder\"(\"source_position\":\"PositionId\",\"receive_position\":\"PositionId\",\"base_asset_id\":\"AssetId\",\"base_amount\":\"i64\",\"quote_asset_id\":\"AssetId\",\"quote_amount\":\"i64\",\"fee_asset_id\":\"AssetId\",\"fee_amount\":\"u64\",\"expiration\":\"Timestamp\",\"salt\":\"felt\")\"PositionId\"(\"value\":\"u32\")\"AssetId\"(\"value\":\"felt\")\"Timestamp\"(\"seconds\":\"u64\")",
+        );
+        assert_eq!(
+            to_base_16_string(FORCED_REDEEM_FROM_VAULT_TYPE_HASH), to_base_16_string(expected),
+        );
     }
 }
