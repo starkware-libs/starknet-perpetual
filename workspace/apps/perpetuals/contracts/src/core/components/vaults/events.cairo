@@ -27,3 +27,69 @@ pub struct InvestInVault {
     pub user_investment: u64,
     pub correlation_id: felt252,
 }
+
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct ForcedRedeemFromVaultRequest {
+    #[key]
+    pub order_source_position: PositionId,
+    #[key]
+    pub order_receive_position: PositionId,
+    pub order_base_asset_id: AssetId,
+    pub order_base_amount: i64,
+    pub order_quote_asset_id: AssetId,
+    pub order_quote_amount: i64,
+    pub order_fee_asset_id: AssetId,
+    pub order_fee_amount: u64,
+    pub order_expiration: starkware_utils::time::time::Timestamp,
+    pub order_salt: felt252,
+    #[key]
+    pub vault_approval_source_position: PositionId,
+    #[key]
+    pub vault_approval_receive_position: PositionId,
+    pub vault_approval_base_asset_id: AssetId,
+    pub vault_approval_base_amount: i64,
+    pub vault_approval_quote_asset_id: AssetId,
+    pub vault_approval_quote_amount: i64,
+    pub vault_approval_fee_asset_id: AssetId,
+    pub vault_approval_fee_amount: u64,
+    pub vault_approval_expiration: starkware_utils::time::time::Timestamp,
+    pub vault_approval_salt: felt252,
+    #[key]
+    pub order_hash: felt252,
+    #[key]
+    pub vault_approval_hash: felt252,
+}
+
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct ForcedRedeemFromVault {
+    #[key]
+    pub order_source_position: PositionId,
+    #[key]
+    pub order_receive_position: PositionId,
+    pub order_base_asset_id: AssetId,
+    pub order_base_amount: i64,
+    pub order_quote_asset_id: AssetId,
+    pub order_quote_amount: i64,
+    pub order_fee_asset_id: AssetId,
+    pub order_fee_amount: u64,
+    pub order_expiration: starkware_utils::time::time::Timestamp,
+    pub order_salt: felt252,
+    #[key]
+    pub vault_approval_source_position: PositionId,
+    #[key]
+    pub vault_approval_receive_position: PositionId,
+    pub vault_approval_base_asset_id: AssetId,
+    pub vault_approval_base_amount: i64,
+    pub vault_approval_quote_asset_id: AssetId,
+    pub vault_approval_quote_amount: i64,
+    pub vault_approval_fee_asset_id: AssetId,
+    pub vault_approval_fee_amount: u64,
+    pub vault_approval_expiration: starkware_utils::time::time::Timestamp,
+    pub vault_approval_salt: felt252,
+    pub actual_shares_user: i64,
+    pub actual_collateral_user: i64,
+    #[key]
+    pub order_hash: felt252,
+    #[key]
+    pub vault_approval_hash: felt252,
+}

@@ -272,6 +272,47 @@ impl ForcedTradeStructHashImpl of StructHash<ForcedTrade> {
     }
 }
 
+#[derive(Copy, Drop, Hash, Serde)]
+pub struct ForcedRedeemFromVault {
+    pub order: LimitOrder,
+    pub vault_approval: LimitOrder,
+}
+
+/// selector!(
+///   "\"ForcedRedeemFromVault\"(
+///    \"order\":\"LimitOrder\",
+///    \"vault_approval\":\"LimitOrder\",
+///    )
+///   "\"LimitOrder\"(
+///    \"source_position\":\"PositionId\",
+///    \"receive_position\":\"PositionId\",
+///    \"base_asset_id\":\"AssetId\",
+///    \"base_amount\":\"i64\",
+///    \"quote_asset_id\":\"AssetId\",
+///    \"quote_amount\":\"i64\",
+///    \"fee_asset_id\":\"AssetId\",
+///    \"fee_amount\":\"u64\",
+///    \"expiration\":\"Timestamp\",
+///    \"salt\":\"felt\"
+///    )
+///    \"PositionId\"(
+///    \"value\":\"u32\"
+///    )"
+///    \"AssetId\"(
+///    \"value\":\"felt\"
+///    )"
+/// );
+
+const FORCED_REDEEM_FROM_VAULT_TYPE_HASH: HashType =
+    0x2a8f5c3b1e9d4a6c7f2b8e1a3d5c9f4b7e2a6d8c1f3b9e5a7c2d4f8b1e3a6c9;
+
+impl ForcedRedeemFromVaultStructHashImpl of StructHash<ForcedRedeemFromVault> {
+    fn hash_struct(self: @ForcedRedeemFromVault) -> HashType {
+        let hash_state = PoseidonTrait::new();
+        hash_state.update_with(FORCED_REDEEM_FROM_VAULT_TYPE_HASH).update_with(*self).finalize()
+    }
+}
+
 
 #[cfg(test)]
 mod tests {

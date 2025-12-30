@@ -41,6 +41,9 @@ pub trait IVaultExternal<TContractState> {
         actual_shares_user: i64,
         actual_collateral_user: i64,
     );
+    fn force_redeem_from_vault(
+        ref self: TContractState, order: LimitOrder, vault_approval: LimitOrder,
+    );
 }
 
 #[starknet::contract]
@@ -402,6 +405,23 @@ pub(crate) mod VaultsManager {
                     :actual_collateral_user,
                     validate_user_order: false,
                     user_signature: array![0, 0].span(),
+                );
+        }
+
+        fn force_redeem_from_vault(
+            ref self: ContractState, order: LimitOrder, vault_approval: LimitOrder,
+        ) {
+            let empty_signature = array![].span();
+            self
+                ._execute_redeem(
+                    order: order,
+                    :vault_approval,
+                    vault_signature: empty_signature,
+                    actual_shares_user: order.base_amount,
+                    actual_collateral_user: order.quote_amount,
+                    validate_user_order: false,
+                    // validate_vault_order: false,
+                    user_signature: empty_signature,
                 );
         }
     }
