@@ -28,6 +28,7 @@ from starknet_py.net.models.chains import StarknetChainId
 ORDER_ARGS_HASH = 0x36DA8D51815527CABFAA9C982F564C80FA7429616739306036F1F9B608DD112
 WITHDEAW_ARGS_HASH = 0x250A5FA378E8B771654BD43DCB34844534F9D1E29E16B14760D7936EA7F4B1D
 INVEST_REDEEM_VAULT_ARGS_HASH = 0x03C79B3B5997E78A29AB2FB5E8BC8244F222C5E01AE914C10F956BD0F805199A
+TRANSFER_ARGS_HASH = 0x1DB88E2709FDF2C59E651D141C3296A42B209CE770871B40413EA109846A3B4
 STARKNET_DOMAIN_HASH = 0x1FF2F602E42168014D405A94F75E8A93D640751D71D16311266E140D8B0A210
 PERPETUALS_NAME = "Perpetuals"
 PERPETUALS_VERSION = "v0"
@@ -59,6 +60,9 @@ TIMESTAMP_STR = "timestamp"
 ORACLE_PRICE_STR = "oracle_price"
 SOURCE_POSITION_STR = "source_position"
 RECEIVE_POSITION_STR = "receive_position"
+RECIPIENT_STR = "recipient"
+COLLATERAL_ID_STR = "collateral_id"
+AMOUNT_STR = "amount"
 
 
 class PerpetualsTestUtils:
@@ -202,6 +206,24 @@ class PerpetualsTestUtils:
             QUOTE_AMOUNT_STR: quote_amount,
             FEE_ASSET_ID_STR: formatted_asset_id(collateral_asset_id),
             FEE_AMOUNT_STR: 0,
+            EXPIRATION_STR: formatted_timestamp(expiration),
+            SALT_STR: salt,
+        }
+
+    async def create_transfer_args(
+        self,
+        sender: Account,
+        recipient: Account,
+        amount: int,
+    ):
+        collateral_asset_id = await self.get_collateral_asset_id()
+        expiration = self.now_timestamp + WEEK_IN_SECONDS
+        salt = random.randint(0, MAX_UINT32)
+        return {
+            RECIPIENT_STR: formatted_position_id(self.get_account_position_id(recipient)),
+            POSITION_ID_STR: formatted_position_id(self.get_account_position_id(sender)),
+            COLLATERAL_ID_STR: formatted_asset_id(collateral_asset_id),
+            AMOUNT_STR: amount,
             EXPIRATION_STR: formatted_timestamp(expiration),
             SALT_STR: salt,
         }
@@ -724,6 +746,61 @@ class PerpetualsTestUtils:
             )
         )
         await invocation.wait_for_acceptance(check_interval=0.1)
+
+    async def transfer(
+        self,
+        sender: Account,
+        recipient: Account,
+        amount: int,
+    ):
+        transfer_args = await self.create_transfer_args(sender, recipient, amount)
+        signature = self.sign_message(
+            sender,
+            TRANSFER_ARGS_HASH,
+            [
+                transfer_args[RECIPIENT_STR][VALUE_STR],
+                transfer_args[POSITION_ID_STR][VALUE_STR],
+                transfer_args[COLLATERAL_ID_STR][VALUE_STR],
+                transfer_args[AMOUNT_STR],
+                transfer_args[EXPIRATION_STR][SECONDS_STR],
+                transfer_args[SALT_STR],
+            ],
+        )
+
+        invocation = (
+            await self.new_account_contracts[sender]
+            .functions["transfer_request"]
+            .invoke_v3(
+                signature,
+                transfer_args[COLLATERAL_ID_STR],
+                transfer_args[RECIPIENT_STR],
+                transfer_args[POSITION_ID_STR],
+                transfer_args[AMOUNT_STR],
+                transfer_args[EXPIRATION_STR],
+                transfer_args[SALT_STR],
+                auto_estimate=True,
+            )
+        )
+        await invocation.wait_for_acceptance(check_interval=0.1)
+
+        async def _process_transfer(transfer_args: dict):
+            invocation = (
+                await self.known_contracts["operator"]
+                .functions["transfer"]
+                .invoke_v3(
+                    await self.consume_operator_nonce(),
+                    transfer_args[COLLATERAL_ID_STR],
+                    transfer_args[RECIPIENT_STR],
+                    transfer_args[POSITION_ID_STR],
+                    transfer_args[AMOUNT_STR],
+                    transfer_args[EXPIRATION_STR],
+                    transfer_args[SALT_STR],
+                    auto_estimate=True,
+                )
+            )
+            await invocation.wait_for_acceptance(check_interval=0.1)
+
+        await _process_transfer(transfer_args)
 
     async def upgrade_perpetuals_contract(
         self,
