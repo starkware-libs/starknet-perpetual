@@ -166,4 +166,14 @@ pub trait ICore<TContractState> {
         order_b: Order,
     );
     fn forced_trade(ref self: TContractState, order_a: Order, order_b: Order);
+    fn forced_redeem_from_vault_request(
+        ref self: TContractState,
+        signature: Signature,
+        vault_signature: Signature,
+        order: LimitOrder,
+        vault_approval: LimitOrder,
+    );
+    fn force_redeem_from_vault(
+        ref self: TContractState, order: LimitOrder, vault_approval: LimitOrder,
+    );
 }
