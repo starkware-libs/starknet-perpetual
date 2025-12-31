@@ -2,6 +2,7 @@ use perpetuals::core::components::assets::events as assets_events;
 use perpetuals::core::components::deposit::events as deposit_events;
 use perpetuals::core::components::positions::events as positions_events;
 use perpetuals::core::components::snip::SNIP12MetadataImpl;
+use perpetuals::core::components::vaults::events as vault_events;
 use perpetuals::core::components::withdrawal::withdrawal_manager::{
     ForcedWithdraw, ForcedWithdrawRequest,
 };
@@ -721,5 +722,113 @@ pub fn assert_forced_trade_event_with_expected(
         :expected_event,
         expected_event_selector: @selector!("ForcedTrade"),
         expected_event_name: "ForcedTrade",
+    );
+}
+
+pub fn assert_forced_redeem_from_vault_request_event_with_expected(
+    spied_event: @(ContractAddress, Event),
+    order_source_position: PositionId,
+    order_receive_position: PositionId,
+    order_base_asset_id: AssetId,
+    order_base_amount: i64,
+    order_quote_asset_id: AssetId,
+    order_quote_amount: i64,
+    order_fee_asset_id: AssetId,
+    order_fee_amount: u64,
+    order_expiration: Timestamp,
+    order_salt: felt252,
+    vault_approval_source_position: PositionId,
+    vault_approval_receive_position: PositionId,
+    vault_approval_base_asset_id: AssetId,
+    vault_approval_base_amount: i64,
+    vault_approval_quote_asset_id: AssetId,
+    vault_approval_quote_amount: i64,
+    vault_approval_fee_asset_id: AssetId,
+    vault_approval_fee_amount: u64,
+    vault_approval_expiration: Timestamp,
+    vault_approval_salt: felt252,
+    hash: felt252,
+) {
+    let expected_event = vault_events::ForcedRedeemFromVaultRequest {
+        order_source_position,
+        order_receive_position,
+        order_base_asset_id,
+        order_base_amount,
+        order_quote_asset_id,
+        order_quote_amount,
+        order_fee_asset_id,
+        order_fee_amount,
+        order_expiration,
+        order_salt,
+        vault_approval_source_position,
+        vault_approval_receive_position,
+        vault_approval_base_asset_id,
+        vault_approval_base_amount,
+        vault_approval_quote_asset_id,
+        vault_approval_quote_amount,
+        vault_approval_fee_asset_id,
+        vault_approval_fee_amount,
+        vault_approval_expiration,
+        vault_approval_salt,
+        hash,
+    };
+    assert_expected_event_emitted(
+        :spied_event,
+        :expected_event,
+        expected_event_selector: @selector!("ForcedRedeemFromVaultRequest"),
+        expected_event_name: "ForcedRedeemFromVaultRequest",
+    );
+}
+
+pub fn assert_forced_redeem_from_vault_event_with_expected(
+    spied_event: @(ContractAddress, Event),
+    order_source_position: PositionId,
+    order_receive_position: PositionId,
+    order_base_asset_id: AssetId,
+    order_base_amount: i64,
+    order_quote_asset_id: AssetId,
+    order_quote_amount: i64,
+    order_fee_asset_id: AssetId,
+    order_fee_amount: u64,
+    order_expiration: Timestamp,
+    order_salt: felt252,
+    vault_approval_source_position: PositionId,
+    vault_approval_receive_position: PositionId,
+    vault_approval_base_asset_id: AssetId,
+    vault_approval_base_amount: i64,
+    vault_approval_quote_asset_id: AssetId,
+    vault_approval_quote_amount: i64,
+    vault_approval_fee_asset_id: AssetId,
+    vault_approval_fee_amount: u64,
+    vault_approval_expiration: Timestamp,
+    vault_approval_salt: felt252,
+) {
+    let expected_event = vault_events::ForcedRedeemFromVault {
+        order_source_position,
+        order_receive_position,
+        order_base_asset_id,
+        order_base_amount,
+        order_quote_asset_id,
+        order_quote_amount,
+        order_fee_asset_id,
+        order_fee_amount,
+        order_expiration,
+        order_salt,
+        vault_approval_source_position,
+        vault_approval_receive_position,
+        vault_approval_base_asset_id,
+        vault_approval_base_amount,
+        vault_approval_quote_asset_id,
+        vault_approval_quote_amount,
+        vault_approval_fee_asset_id,
+        vault_approval_fee_amount,
+        vault_approval_expiration,
+        vault_approval_salt,
+    };
+    assert_expected_event_emitted(
+        :spied_event,
+        :expected_event,
+        expected_event_selector: @selector!("ForcedRedeemFromVault"),
+        expected_event_name: "ForcedRedeemFromVault",
     );
 }

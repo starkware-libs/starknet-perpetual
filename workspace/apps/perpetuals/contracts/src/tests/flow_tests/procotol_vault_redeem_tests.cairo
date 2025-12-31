@@ -1,9 +1,17 @@
-use core::num::traits::Bounded;
+use core::num::traits::{Bounded, WideMul};
 use openzeppelin::interfaces::erc4626::{IERC4626Dispatcher, IERC4626DispatcherTrait};
+use perpetuals::core::components::snip::SNIP12MetadataImpl;
+use perpetuals::core::types::order::ForcedRedeemFromVault;
 use perpetuals::tests::constants::*;
+use perpetuals::tests::event_test_utils::{
+    assert_forced_redeem_from_vault_event_with_expected,
+    assert_forced_redeem_from_vault_request_event_with_expected,
+};
 use perpetuals::tests::flow_tests::infra::*;
 use perpetuals::tests::flow_tests::perps_tests_facade::*;
 use perpetuals::tests::test_utils::assert_with_error;
+use snforge_std::cheatcodes::events::{EventSpyTrait, EventsFilterTrait};
+use starkware_utils::hash::message_hash::OffchainMessageHash;
 use starkware_utils_testing::test_utils::TokenTrait;
 use super::perps_tests_facade::PerpsTestsFacadeTrait;
 
@@ -1402,6 +1410,7 @@ fn test_redeem_vault_shares_negative() {
         .process_deposit(
             state.facade.deposit(redeeming_user.account, redeeming_user.position_id, 10000_u64),
         );
+
     state
         .facade
         .process_deposit(
@@ -1434,4 +1443,565 @@ fn test_redeem_vault_shares_negative() {
             actual_shares_user: 400,
             actual_collateral_user: 400,
         );
+}
+
+#[test]
+fn test_forced_redeem_from_vault_request() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let vault_user = state.new_user_with_position();
+    let redeeming_user = state.new_user_with_position();
+    let vault_init_deposit = state
+        .facade
+        .deposit(vault_user.account, vault_user.position_id, 5000_u64);
+    state.facade.process_deposit(vault_init_deposit);
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user);
+    state.facade.price_tick(@vault_config.asset_info, 1);
+
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(redeeming_user.account, redeeming_user.position_id, 1000_u64),
+        );
+
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit_into_vault(
+                    vault: vault_config,
+                    amount_to_invest: 1000,
+                    min_shares_to_receive: 500,
+                    depositing_user: redeeming_user,
+                    receiving_user: redeeming_user,
+                ),
+        );
+
+    let redeeming_user_usdc_balance_before = state
+        .facade
+        .get_position_collateral_balance(redeeming_user.position_id);
+    let redeeming_user_vault_share_balance_before = state
+        .facade
+        .get_position_asset_balance(redeeming_user.position_id, vault_config.asset_id);
+
+    let value_of_shares: u64 = 399;
+    let shares_to_redeem: u64 = 400;
+
+    // Approve premium cost for forced redeem
+    let premium_cost: u64 = PREMIUM_COST;
+    let quantum: u64 = state.facade.collateral_quantum;
+    let premium_amount: u128 = premium_cost.wide_mul(quantum);
+    state
+        .facade
+        .token_state
+        .approve(
+            owner: redeeming_user.account.address,
+            spender: state.facade.perpetuals_contract,
+            amount: premium_amount,
+        );
+
+    // Request forced redeem
+    let (user_order, vault_order) = state
+        .facade
+        .forced_redeem_from_vault_request(
+            vault: vault_config,
+            withdrawing_user: redeeming_user,
+            receiving_user: redeeming_user,
+            shares_to_burn_user: shares_to_redeem,
+            value_of_shares_user: value_of_shares,
+            shares_to_burn_vault: shares_to_redeem,
+            value_of_shares_vault: value_of_shares,
+        );
+
+    // Check ForcedRedeemFromVaultRequest event
+    let forced_redeem = ForcedRedeemFromVault { order: user_order, vault_approval: vault_order };
+    let user_hash = forced_redeem.get_message_hash(redeeming_user.account.key_pair.public_key);
+    let events_span = state
+        .facade
+        .event_info
+        .get_events()
+        .emitted_by(state.facade.perpetuals_contract)
+        .events;
+    let events_len: usize = events_span.len();
+    let last_event = events_span[events_len - 1];
+    assert_forced_redeem_from_vault_request_event_with_expected(
+        spied_event: last_event,
+        order_source_position: user_order.source_position,
+        order_receive_position: user_order.receive_position,
+        order_base_asset_id: user_order.base_asset_id,
+        order_base_amount: user_order.base_amount,
+        order_quote_asset_id: user_order.quote_asset_id,
+        order_quote_amount: user_order.quote_amount,
+        order_fee_asset_id: user_order.fee_asset_id,
+        order_fee_amount: user_order.fee_amount,
+        order_expiration: user_order.expiration,
+        order_salt: user_order.salt,
+        vault_approval_source_position: vault_order.source_position,
+        vault_approval_receive_position: vault_order.receive_position,
+        vault_approval_base_asset_id: vault_order.base_asset_id,
+        vault_approval_base_amount: vault_order.base_amount,
+        vault_approval_quote_asset_id: vault_order.quote_asset_id,
+        vault_approval_quote_amount: vault_order.quote_amount,
+        vault_approval_fee_asset_id: vault_order.fee_asset_id,
+        vault_approval_fee_amount: vault_order.fee_amount,
+        vault_approval_expiration: vault_order.expiration,
+        vault_approval_salt: vault_order.salt,
+        hash: user_hash,
+    );
+
+    // Check balances haven't changed yet (request only)
+    assert_with_error(
+        state
+            .facade
+            .get_position_collateral_balance(
+                redeeming_user.position_id,
+            ) == redeeming_user_usdc_balance_before,
+        "User collateral balance should not change after request",
+    );
+    assert_with_error(
+        state
+            .facade
+            .get_position_asset_balance(
+                redeeming_user.position_id, vault_config.asset_id,
+            ) == redeeming_user_vault_share_balance_before,
+        "User vault share balance should not change after request",
+    );
+}
+
+#[test]
+fn test_forced_redeem_from_vault_after_timelock() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let vault_user = state.new_user_with_position();
+    let redeeming_user = state.new_user_with_position();
+    let vault_init_deposit = state
+        .facade
+        .deposit(vault_user.account, vault_user.position_id, 5000_u64);
+    state.facade.process_deposit(vault_init_deposit);
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user);
+    state.facade.price_tick(@vault_config.asset_info, 1);
+
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(redeeming_user.account, redeeming_user.position_id, 1000_u64),
+        );
+
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit_into_vault(
+                    vault: vault_config,
+                    amount_to_invest: 1000,
+                    min_shares_to_receive: 500,
+                    depositing_user: redeeming_user,
+                    receiving_user: redeeming_user,
+                ),
+        );
+
+    let redeeming_user_usdc_balance_before = state
+        .facade
+        .get_position_collateral_balance(redeeming_user.position_id);
+    let redeeming_user_vault_share_balance_before = state
+        .facade
+        .get_position_asset_balance(redeeming_user.position_id, vault_config.asset_id);
+    let vault_usdc_balance_before = state
+        .facade
+        .get_position_collateral_balance(vault_config.position_id);
+
+    let value_of_shares: u64 = 399;
+    let shares_to_redeem: u64 = 400;
+
+    // Approve premium cost for forced redeem
+    let premium_cost: u64 = PREMIUM_COST;
+    let quantum: u64 = state.facade.collateral_quantum;
+    let premium_amount: u128 = premium_cost.wide_mul(quantum);
+    state
+        .facade
+        .token_state
+        .approve(
+            owner: redeeming_user.account.address,
+            spender: state.facade.perpetuals_contract,
+            amount: premium_amount,
+        );
+
+    // Request forced redeem
+    let (user_order, vault_order) = state
+        .facade
+        .forced_redeem_from_vault_request(
+            vault: vault_config,
+            withdrawing_user: redeeming_user,
+            receiving_user: redeeming_user,
+            shares_to_burn_user: shares_to_redeem,
+            value_of_shares_user: value_of_shares,
+            shares_to_burn_vault: shares_to_redeem,
+            value_of_shares_vault: value_of_shares,
+        );
+
+    // Wait for timelock
+    state.facade.advance_time(FORCED_ACTION_TIMELOCK + 1);
+
+    // Execute forced redeem
+    state.facade.force_redeem_from_vault(user_order, vault_order, caller: redeeming_user.account);
+
+    // Check ForcedRedeemFromVault event
+    let events_span = state
+        .facade
+        .event_info
+        .get_events()
+        .emitted_by(state.facade.perpetuals_contract)
+        .events;
+    let events_len: usize = events_span.len();
+    let last_event = events_span[events_len - 1];
+    assert_forced_redeem_from_vault_event_with_expected(
+        spied_event: last_event,
+        order_source_position: user_order.source_position,
+        order_receive_position: user_order.receive_position,
+        order_base_asset_id: user_order.base_asset_id,
+        order_base_amount: user_order.base_amount,
+        order_quote_asset_id: user_order.quote_asset_id,
+        order_quote_amount: user_order.quote_amount,
+        order_fee_asset_id: user_order.fee_asset_id,
+        order_fee_amount: user_order.fee_amount,
+        order_expiration: user_order.expiration,
+        order_salt: user_order.salt,
+        vault_approval_source_position: vault_order.source_position,
+        vault_approval_receive_position: vault_order.receive_position,
+        vault_approval_base_asset_id: vault_order.base_asset_id,
+        vault_approval_base_amount: vault_order.base_amount,
+        vault_approval_quote_asset_id: vault_order.quote_asset_id,
+        vault_approval_quote_amount: vault_order.quote_amount,
+        vault_approval_fee_asset_id: vault_order.fee_asset_id,
+        vault_approval_fee_amount: vault_order.fee_amount,
+        vault_approval_expiration: vault_order.expiration,
+        vault_approval_salt: vault_order.salt,
+    );
+
+    // Check balances after forced redeem
+    let redeeming_user_usdc_balance_after = state
+        .facade
+        .get_position_collateral_balance(redeeming_user.position_id);
+    let redeeming_user_vault_share_balance_after = state
+        .facade
+        .get_position_asset_balance(redeeming_user.position_id, vault_config.asset_id);
+    let vault_usdc_balance_after = state
+        .facade
+        .get_position_collateral_balance(vault_config.position_id);
+
+    assert_with_error(
+        redeeming_user_usdc_balance_after == redeeming_user_usdc_balance_before
+            + value_of_shares.into(),
+        "User collateral balance should increase by value_of_shares",
+    );
+    assert_with_error(
+        redeeming_user_vault_share_balance_after == redeeming_user_vault_share_balance_before
+            - shares_to_redeem.into(),
+        "User vault share balance should decrease by shares_to_redeem",
+    );
+    assert_with_error(
+        vault_usdc_balance_after == vault_usdc_balance_before - value_of_shares.into(),
+        "Vault collateral balance should decrease by value_of_shares",
+    );
+}
+
+#[test]
+fn test_forced_redeem_from_vault_by_operator_before_timelock() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let vault_user = state.new_user_with_position();
+    let redeeming_user = state.new_user_with_position();
+    let vault_init_deposit = state
+        .facade
+        .deposit(vault_user.account, vault_user.position_id, 5000_u64);
+    state.facade.process_deposit(vault_init_deposit);
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user);
+    state.facade.price_tick(@vault_config.asset_info, 1);
+
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(redeeming_user.account, redeeming_user.position_id, 1000_u64),
+        );
+
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit_into_vault(
+                    vault: vault_config,
+                    amount_to_invest: 1000,
+                    min_shares_to_receive: 500,
+                    depositing_user: redeeming_user,
+                    receiving_user: redeeming_user,
+                ),
+        );
+
+    let redeeming_user_usdc_balance_before = state
+        .facade
+        .get_position_collateral_balance(redeeming_user.position_id);
+    let redeeming_user_vault_share_balance_before = state
+        .facade
+        .get_position_asset_balance(redeeming_user.position_id, vault_config.asset_id);
+
+    let value_of_shares: u64 = 399;
+    let shares_to_redeem: u64 = 400;
+
+    // Approve premium cost for forced redeem
+    let premium_cost: u64 = PREMIUM_COST;
+    let quantum: u64 = state.facade.collateral_quantum;
+    let premium_amount: u128 = premium_cost.wide_mul(quantum);
+    state
+        .facade
+        .token_state
+        .approve(
+            owner: redeeming_user.account.address,
+            spender: state.facade.perpetuals_contract,
+            amount: premium_amount,
+        );
+
+    // Request forced redeem
+    let (user_order, vault_order) = state
+        .facade
+        .forced_redeem_from_vault_request(
+            vault: vault_config,
+            withdrawing_user: redeeming_user,
+            receiving_user: redeeming_user,
+            shares_to_burn_user: shares_to_redeem,
+            value_of_shares_user: value_of_shares,
+            shares_to_burn_vault: shares_to_redeem,
+            value_of_shares_vault: value_of_shares,
+        );
+
+    // Operator executes forced redeem before timelock (allowed)
+    state.facade.force_redeem_from_vault(user_order, vault_order, caller: state.facade.operator);
+
+    // Check balances after forced redeem
+    let redeeming_user_usdc_balance_after = state
+        .facade
+        .get_position_collateral_balance(redeeming_user.position_id);
+    let redeeming_user_vault_share_balance_after = state
+        .facade
+        .get_position_asset_balance(redeeming_user.position_id, vault_config.asset_id);
+
+    assert_with_error(
+        redeeming_user_usdc_balance_after == redeeming_user_usdc_balance_before
+            + value_of_shares.into(),
+        "User collateral balance should increase by value_of_shares",
+    );
+    assert_with_error(
+        redeeming_user_vault_share_balance_after == redeeming_user_vault_share_balance_before
+            - shares_to_redeem.into(),
+        "User vault share balance should decrease by shares_to_redeem",
+    );
+}
+
+#[test]
+#[should_panic(expected: 'FORCED_WAIT_REQUIRED')]
+fn test_forced_redeem_from_vault_user_before_timelock_fails() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let vault_user = state.new_user_with_position();
+    let redeeming_user = state.new_user_with_position();
+    let vault_init_deposit = state
+        .facade
+        .deposit(vault_user.account, vault_user.position_id, 5000_u64);
+    state.facade.process_deposit(vault_init_deposit);
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user);
+    state.facade.price_tick(@vault_config.asset_info, 1);
+
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(redeeming_user.account, redeeming_user.position_id, 1000_u64),
+        );
+
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit_into_vault(
+                    vault: vault_config,
+                    amount_to_invest: 1000,
+                    min_shares_to_receive: 500,
+                    depositing_user: redeeming_user,
+                    receiving_user: redeeming_user,
+                ),
+        );
+
+    let value_of_shares: u64 = 399;
+    let shares_to_redeem: u64 = 400;
+
+    // Approve premium cost for forced redeem
+    let premium_cost: u64 = PREMIUM_COST;
+    let quantum: u64 = state.facade.collateral_quantum;
+    let premium_amount: u128 = premium_cost.wide_mul(quantum);
+    state
+        .facade
+        .token_state
+        .approve(
+            owner: redeeming_user.account.address,
+            spender: state.facade.perpetuals_contract,
+            amount: premium_amount,
+        );
+
+    // Request forced redeem
+    let (user_order, vault_order) = state
+        .facade
+        .forced_redeem_from_vault_request(
+            vault: vault_config,
+            withdrawing_user: redeeming_user,
+            receiving_user: redeeming_user,
+            shares_to_burn_user: shares_to_redeem,
+            value_of_shares_user: value_of_shares,
+            shares_to_burn_vault: shares_to_redeem,
+            value_of_shares_vault: value_of_shares,
+        );
+
+    // Try to execute forced redeem before timelock (should fail)
+    state.facade.force_redeem_from_vault(user_order, vault_order, caller: redeeming_user.account);
+}
+
+#[test]
+#[should_panic(expected: 'REQUEST_ALREADY_PROCESSED')]
+fn test_forced_redeem_from_vault_user_after_operator_already_redeemed_fails() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let vault_user = state.new_user_with_position();
+    let redeeming_user = state.new_user_with_position();
+    let vault_init_deposit = state
+        .facade
+        .deposit(vault_user.account, vault_user.position_id, 5000_u64);
+    state.facade.process_deposit(vault_init_deposit);
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user);
+    state.facade.price_tick(@vault_config.asset_info, 1);
+
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(redeeming_user.account, redeeming_user.position_id, 1000_u64),
+        );
+
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit_into_vault(
+                    vault: vault_config,
+                    amount_to_invest: 1000,
+                    min_shares_to_receive: 500,
+                    depositing_user: redeeming_user,
+                    receiving_user: redeeming_user,
+                ),
+        );
+
+    let value_of_shares: u64 = 399;
+    let shares_to_redeem: u64 = 400;
+
+    // Approve premium cost for forced redeem
+    let premium_cost: u64 = PREMIUM_COST;
+    let quantum: u64 = state.facade.collateral_quantum;
+    let premium_amount: u128 = premium_cost.wide_mul(quantum);
+    state
+        .facade
+        .token_state
+        .approve(
+            owner: redeeming_user.account.address,
+            spender: state.facade.perpetuals_contract,
+            amount: premium_amount,
+        );
+
+    // Request forced redeem
+    let (user_order, vault_order) = state
+        .facade
+        .forced_redeem_from_vault_request(
+            vault: vault_config,
+            withdrawing_user: redeeming_user,
+            receiving_user: redeeming_user,
+            shares_to_burn_user: shares_to_redeem,
+            value_of_shares_user: value_of_shares,
+            shares_to_burn_vault: shares_to_redeem,
+            value_of_shares_vault: value_of_shares,
+        );
+
+    // Operator executes forced redeem before timelock (allowed)
+    state.facade.force_redeem_from_vault(user_order, vault_order, caller: state.facade.operator);
+
+    // Wait for timelock
+    state.facade.advance_time(FORCED_ACTION_TIMELOCK + 1);
+
+    // User tries to execute forced redeem after operator already did it (should fail)
+    state.facade.force_redeem_from_vault(user_order, vault_order, caller: redeeming_user.account);
+}
+
+#[test]
+#[should_panic(expected: 'REQUEST_ALREADY_PROCESSED')]
+fn test_forced_redeem_from_vault_operator_after_user_already_redeemed_fails() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let vault_user = state.new_user_with_position();
+    let redeeming_user = state.new_user_with_position();
+    let vault_init_deposit = state
+        .facade
+        .deposit(vault_user.account, vault_user.position_id, 5000_u64);
+    state.facade.process_deposit(vault_init_deposit);
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user);
+    state.facade.price_tick(@vault_config.asset_info, 1);
+
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(redeeming_user.account, redeeming_user.position_id, 1000_u64),
+        );
+
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit_into_vault(
+                    vault: vault_config,
+                    amount_to_invest: 1000,
+                    min_shares_to_receive: 500,
+                    depositing_user: redeeming_user,
+                    receiving_user: redeeming_user,
+                ),
+        );
+
+    let value_of_shares: u64 = 399;
+    let shares_to_redeem: u64 = 400;
+
+    // Approve premium cost for forced redeem
+    let premium_cost: u64 = PREMIUM_COST;
+    let quantum: u64 = state.facade.collateral_quantum;
+    let premium_amount: u128 = premium_cost.wide_mul(quantum);
+    state
+        .facade
+        .token_state
+        .approve(
+            owner: redeeming_user.account.address,
+            spender: state.facade.perpetuals_contract,
+            amount: premium_amount,
+        );
+
+    // Request forced redeem
+    let (user_order, vault_order) = state
+        .facade
+        .forced_redeem_from_vault_request(
+            vault: vault_config,
+            withdrawing_user: redeeming_user,
+            receiving_user: redeeming_user,
+            shares_to_burn_user: shares_to_redeem,
+            value_of_shares_user: value_of_shares,
+            shares_to_burn_vault: shares_to_redeem,
+            value_of_shares_vault: value_of_shares,
+        );
+
+    // Wait for timelock
+    state.facade.advance_time(FORCED_ACTION_TIMELOCK + 1);
+
+    // User executes forced redeem after timelock
+    state.facade.force_redeem_from_vault(user_order, vault_order, caller: redeeming_user.account);
+
+    // Operator tries to execute forced redeem after user already did it (should fail)
+    state.facade.force_redeem_from_vault(user_order, vault_order, caller: state.facade.operator);
 }

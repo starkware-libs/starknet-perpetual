@@ -34,7 +34,7 @@ use perpetuals::core::types::asset::synthetic::{AssetBalanceInfo, AssetType};
 use perpetuals::core::types::asset::{AssetId, AssetIdTrait, AssetStatus};
 use perpetuals::core::types::balance::Balance;
 use perpetuals::core::types::funding::FundingTick;
-use perpetuals::core::types::order::{LimitOrder, Order};
+use perpetuals::core::types::order::{ForcedRedeemFromVault, LimitOrder, Order};
 use perpetuals::core::types::position::{PositionData, PositionId};
 use perpetuals::core::types::price::{Price, SignedPrice};
 use perpetuals::core::types::transfer::TransferArgs;
@@ -2323,6 +2323,83 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             salt,
             asset_id: vault.asset_id,
         }
+    }
+
+    fn forced_redeem_from_vault_request(
+        ref self: PerpsTestsFacade,
+        vault: VaultState,
+        withdrawing_user: User,
+        receiving_user: User,
+        shares_to_burn_user: u64,
+        value_of_shares_user: u64,
+        shares_to_burn_vault: u64,
+        value_of_shares_vault: u64,
+    ) -> (LimitOrder, LimitOrder) {
+        withdrawing_user.account.set_as_caller(self.perpetuals_contract);
+
+        let user_order = LimitOrder {
+            source_position: withdrawing_user.position_id,
+            receive_position: receiving_user.position_id,
+            base_asset_id: vault.asset_id,
+            base_amount: -shares_to_burn_user.try_into().unwrap(),
+            quote_asset_id: self.collateral_id,
+            quote_amount: value_of_shares_user.try_into().unwrap(),
+            fee_asset_id: self.collateral_id,
+            fee_amount: 0_u64,
+            expiration: Time::now().add(Time::weeks(3)),
+            salt: self.generate_salt(),
+        };
+
+        let vault_order = LimitOrder {
+            source_position: vault.position_id,
+            receive_position: vault.position_id,
+            base_asset_id: vault.asset_id,
+            base_amount: shares_to_burn_vault.try_into().unwrap(),
+            quote_asset_id: self.collateral_id,
+            quote_amount: -value_of_shares_vault.try_into().unwrap(),
+            fee_asset_id: self.collateral_id,
+            fee_amount: 0_u64,
+            expiration: Time::now().add(Time::weeks(3)),
+            salt: self.generate_salt(),
+        };
+
+        let forced_redeem = ForcedRedeemFromVault {
+            order: user_order, vault_approval: vault_order,
+        };
+        let user_hash = forced_redeem
+            .get_message_hash(withdrawing_user.account.key_pair.public_key);
+        let user_signature = withdrawing_user.account.sign_message(user_hash);
+        let vault_hash = forced_redeem.get_message_hash(vault.user.account.key_pair.public_key);
+        let vault_signature = vault.user.account.sign_message(vault_hash);
+
+        ICoreDispatcher { contract_address: self.perpetuals_contract }
+            .forced_redeem_from_vault_request(
+                signature: user_signature,
+                vault_signature: vault_signature,
+                order: user_order,
+                vault_approval: vault_order,
+            );
+
+        (user_order, vault_order)
+    }
+
+    fn force_redeem_from_vault(
+        ref self: PerpsTestsFacade,
+        user_order: LimitOrder,
+        vault_order: LimitOrder,
+        caller: Account,
+    ) {
+        let operator_nonce = if caller.address == self.operator.address {
+            self.get_nonce()
+        } else {
+            Default::default()
+        };
+
+        caller.set_as_caller(self.perpetuals_contract);
+        ICoreDispatcher { contract_address: self.perpetuals_contract }
+            .force_redeem_from_vault(
+                :operator_nonce, order: user_order, vault_approval: vault_order,
+            );
     }
 
     fn advance_time(ref self: PerpsTestsFacade, seconds: u64) {
