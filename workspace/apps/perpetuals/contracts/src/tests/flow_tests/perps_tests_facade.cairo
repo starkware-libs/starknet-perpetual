@@ -112,9 +112,13 @@ pub fn deploy_protocol_vault_with_dispatcher(
     let owning_account_address = deploy_account(stark_key_pair);
     let owning_account = Account { address: owning_account_address, key_pair: stark_key_pair };
     let mut calldata = ArrayTrait::new();
+    let governance_admin = GOVERNANCE_ADMIN();
+    let upgrade_delay = UPGRADE_DELAY;
     let name: ByteArray = "Perpetuals Protocol Vault";
     let symbol: ByteArray = "PPV";
     let initial_price = 1_000_000_u64; // 1 USDC with 6 decimals
+    governance_admin.serialize(ref calldata);
+    upgrade_delay.serialize(ref calldata);
     name.serialize(ref calldata);
     symbol.serialize(ref calldata);
     usdc_token_state.address.serialize(ref calldata);
