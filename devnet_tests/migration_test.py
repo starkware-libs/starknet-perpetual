@@ -16,8 +16,9 @@ from devnet_tests.perpetuals_test_utils import (
 
 USDC_NEW_CONTRACT_ADDRESS = 0x033068F6539F8E6E6B131E6B2B814E6C34A5224BC66947C47DAB9DFEE93B35FB
 USDC_OLD_CONTRACT_ADDRESS = 0x053C91253BC9682C04929CA02ED00B3E423F6710D2EE7E0D5EBB06F3ECF368A8
+MIGRATION_CONTRACT_ADDRESS = 0x07BFFC7F6BDA62B7BEE9B7880579633A38F7EF910E0AD5E686B0B8712E216A19
 OLD_VAULT_ADDRESS = 0x07DB365513DF1EE2EB8FC2D157D4D1CBA3D4A2EF59B44DD3D61124C88B4F6084
-RECIPIENT_ADDRESS = 0x785932B867B6A21DFD64367EDD181C1CFA83FA7CE942D005857CD5935049D58
+RECIPIENT_ADDRESS = 0x0785932B867B6A21DFD64367EDD181C1CFA83FA7CE942D005857CD5935049D58
 
 
 @pytest_asyncio.fixture(autouse=True)
@@ -35,6 +36,12 @@ async def phase_0_set_public_key(test_utils: PerpetualsTestUtils):
 
     # Upgrade the perpetuals contract to the latest version
     await test_utils.upgrade_perpetuals_contract(contract_name="perpetuals_Core_phase_0")
+
+    # Register and activate the external components.
+    # Required because the on-chain WithdrawalManager has the old interface (without collateral_id).
+    await test_utils.register_and_activate_external_component(
+        "perpetuals_WithdrawalManager", "WITHDRAWALS"
+    )
 
     # Set new public key for Vault Position
     vault_manager_account = await test_utils.new_account()
@@ -70,7 +77,7 @@ async def test_migration(test_utils: PerpetualsTestUtils):
         4. Upgrade Core contract (eic only, same class hash)
            (https://github.com/x10xchange/starknet-perpetual/pull/49)
         5. Redeem from vault to POSITION_A and assert that it is successful
-        6. Upgrade Vault contract to original code (with the replaceability component)
+        6. [Optional] Upgrade Vault contract to original code (with the replaceability component)
 
     Phase 2- Upgrade Core contract into migration phase:
         1. Declare new Core contract (https://github.com/x10xchange/starknet-perpetual/pull/44)
@@ -96,7 +103,8 @@ async def test_migration(test_utils: PerpetualsTestUtils):
         10. Redeem from vault to POSITION_A and assert that it is successful
         11. Invest in vault from POSITION_A and assert that it is successful
         12. Assert USDC.e balance + Native USDC balance = Original USDC.e balance - withdraw amount
-        13. Upgrade Core contract to original code
+        13. [Optional] Migrate the rest of the USDC.e to Native USDC and assert that it is successful
+        14. [Optional] Upgrade Core contract to original code
     """
     ### Phase 1- Deploy new vault contract ###
 
@@ -111,7 +119,7 @@ async def test_migration(test_utils: PerpetualsTestUtils):
 
     account_a = await test_utils.new_account()
     position_a_id = await test_utils.new_position(account_a)
-    await test_utils.deposit(account_a, 2000)
+    await test_utils.deposit(account_a, 3000)
     await test_utils.invest_in_vault(
         account=account_a,
         min_base_amount=500,
@@ -124,7 +132,7 @@ async def test_migration(test_utils: PerpetualsTestUtils):
         position_a_id, await test_utils.get_collateral_asset_id()
     )
     assert vault_shares_balance_after_invest >= 500
-    assert collateral_balance_after_invest == 1000
+    assert collateral_balance_after_invest == 2000
 
     # Deploy new vault contract
 
@@ -215,6 +223,117 @@ async def test_migration(test_utils: PerpetualsTestUtils):
     await setup_upgrade_role(upgrade_governor_account.address, governance_admin_vault_contract)
     await upgrade_vault_contract(upgrade_governor_account, upgrade_governor_vault_contract)
 
+    ### Phase 2- Upgrade Core contract into migration phase ###
+
+    # Upgrade Core contract to migration phase
+    eic_declare_result = await declare_contract(
+        "perpetuals_MigrateTVLEIC",
+        test_utils.known_accounts["upgrade_governor"],
+    )
+    eic_data = {
+        "eic_hash": eic_declare_result.class_hash,
+        "eic_init_data": [MIGRATION_CONTRACT_ADDRESS],
+    }
+    await test_utils.upgrade_perpetuals_contract(
+        contract_name="perpetuals_Core_phase_2_3", eic_data=eic_data
+    )
+
+    # Deposit, Withdraw, Transfer requests but do not process them
+    account_b = await test_utils.new_account()
+    await test_utils.new_position(account_b)
+    await test_utils.deposit(account_a, 1000, process_deposit=False)
+    await test_utils.withdraw(account_a, 500, process_withdraw=False)
+    await test_utils.transfer(
+        sender=account_a, recipient=account_b, amount=500, process_transfer=False
+    )
+
+    # Invest in vault
+    await test_utils.invest_in_vault(
+        account=account_a,
+        min_base_amount=500,
+        quote_amount=-1000,
+    )
+    vault_shares_balance_after_2nd_invest = await test_utils.get_asset_balance_of_position(
+        position_a_id, VAULT_ASSET_ID
+    )
+    collateral_balance_after_2nd_invest = await test_utils.get_asset_balance_of_position(
+        position_a_id, await test_utils.get_collateral_asset_id()
+    )
+    assert vault_shares_balance_after_2nd_invest >= vault_shares_balance_after_redeem + 500
+    assert collateral_balance_after_2nd_invest == collateral_balance_after_redeem - 1000
+
+    # Store USDC.e balance of Core contract
+    old_usdc_perps_balance_before_migration = await get_old_usdc_balance(
+        test_utils.known_accounts["operator"], test_utils.perpetuals_contract_address
+    )
+    new_usdc_perps_balance_before_migration = await get_new_usdc_balance(
+        test_utils.known_accounts["operator"], test_utils.perpetuals_contract_address
+    )
+    assert old_usdc_perps_balance_before_migration > 0
+    assert new_usdc_perps_balance_before_migration == 0
+
+    # Register token admin
+    token_admin_account = await test_utils.new_account()
+    abi, cairo_version = await ContractAbiResolver(
+        address=test_utils.perpetuals_contract_address,
+        client=token_admin_account.client,
+        proxy_config=ProxyConfig(),
+    ).resolve()
+    token_admin_perps_contract = Contract(
+        address=test_utils.perpetuals_contract_address,
+        abi=abi,
+        provider=token_admin_account,
+        cairo_version=cairo_version,
+    )
+    await test_utils.register_token_admin(token_admin_account)
+
+    # get max available swap amount
+    abi, cairo_version = await ContractAbiResolver(
+        address=MIGRATION_CONTRACT_ADDRESS,
+        client=token_admin_account.client,
+        proxy_config=ProxyConfig(),
+    ).resolve()
+    migration_contract = Contract(
+        address=MIGRATION_CONTRACT_ADDRESS,
+        abi=abi,
+        provider=token_admin_account,
+        cairo_version=cairo_version,
+    )
+    (max_available_swap_amount,) = await migration_contract.functions["max_available_swap"].call()
+    print(f"Max available swap amount: {max_available_swap_amount}")
+
+    # Migrate USDC
+    threshold = old_usdc_perps_balance_before_migration // 2
+    current_old_usdc_perps_balance = old_usdc_perps_balance_before_migration
+    current_new_usdc_perps_balance = 0
+    amount_to_migrate = 100_000_000_000
+    total_migrated = 0
+    while current_old_usdc_perps_balance > threshold:
+        if total_migrated + amount_to_migrate > max_available_swap_amount:
+            print(f"Max available swap amount reached, total migrated: {total_migrated}")
+            break
+        await test_utils.migrate_usdc(contract=token_admin_perps_contract, amount=amount_to_migrate)
+        current_old_usdc_perps_balance -= amount_to_migrate
+        current_new_usdc_perps_balance += amount_to_migrate
+        total_migrated += amount_to_migrate
+        print(
+            f"Migrated {amount_to_migrate} USDC.e, current old balance: {current_old_usdc_perps_balance}, current new balance: {current_new_usdc_perps_balance}"
+        )
+    old_usdc_perps_balance_after_migration = await get_old_usdc_balance(
+        test_utils.known_accounts["operator"], test_utils.perpetuals_contract_address
+    )
+    new_usdc_perps_balance_after_migration = await get_new_usdc_balance(
+        test_utils.known_accounts["operator"], test_utils.perpetuals_contract_address
+    )
+    assert old_usdc_perps_balance_after_migration == current_old_usdc_perps_balance
+    assert new_usdc_perps_balance_after_migration == current_new_usdc_perps_balance
+
+    # Assert that the total USDC.e + Native USDC = Original USDC.e balance
+    assert (
+        old_usdc_perps_balance_after_migration + new_usdc_perps_balance_after_migration
+        == old_usdc_perps_balance_before_migration
+    )
+
 
 async def setup_upgrade_role(
     upgrade_governor_account_address: int, governance_admin_vault_contract: Contract
@@ -262,6 +381,7 @@ async def upgrade_vault_contract(
     )
     await invocation.wait_for_acceptance(check_interval=0.1)
 
+
 async def get_old_usdc_balance(account: Account, address: Optional[int] = None):
     if address is None:
         address = account.address
@@ -278,6 +398,7 @@ async def get_old_usdc_balance(account: Account, address: Optional[int] = None):
     )
     (balance,) = await usdc_contract.functions["balance_of"].call(address)
     return balance
+
 
 async def get_new_usdc_balance(account: Account, address: Optional[int] = None):
     if address is None:
