@@ -26,7 +26,7 @@ from starknet_py.net.models.chains import StarknetChainId
 
 # Required for hash computations.
 ORDER_ARGS_HASH = 0x36DA8D51815527CABFAA9C982F564C80FA7429616739306036F1F9B608DD112
-WITHDEAW_ARGS_HASH = 0x250A5FA378E8B771654BD43DCB34844534F9D1E29E16B14760D7936EA7F4B1D
+WITHDRAW_ARGS_HASH = 0x250A5FA378E8B771654BD43DCB34844534F9D1E29E16B14760D7936EA7F4B1D
 INVEST_REDEEM_VAULT_ARGS_HASH = 0x03C79B3B5997E78A29AB2FB5E8BC8244F222C5E01AE914C10F956BD0F805199A
 TRANSFER_ARGS_HASH = 0x1DB88E2709FDF2C59E651D141C3296A42B209CE770871B40413EA109846A3B4
 STARKNET_DOMAIN_HASH = 0x1FF2F602E42168014D405A94F75E8A93D640751D71D16311266E140D8B0A210
@@ -503,13 +503,14 @@ class PerpetualsTestUtils:
         depositer_address = self.perpetuals_contract_address
         await self.__process_deposit(depositer_address, asset_id, position_id, amount, salt)
 
-    async def withdraw(self, account: Account, amount: int, expiration: int):
+    async def withdraw(self, account: Account, amount: int):
+        expiration = self.now_timestamp + WEEK_IN_SECONDS
         salt = random.randint(0, MAX_UINT32)
         collateral_asset_id = await self.get_collateral_asset_id()
 
         signature = self.sign_message(
             account,
-            WITHDEAW_ARGS_HASH,
+            WITHDRAW_ARGS_HASH,
             [
                 self.get_account_address(account),
                 self.get_account_position_id(account),
