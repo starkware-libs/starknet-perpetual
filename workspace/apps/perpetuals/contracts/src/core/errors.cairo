@@ -25,6 +25,8 @@ pub const TRANSFER_FAILED: felt252 = 'TRANSFER_FAILED';
 pub const SAME_BASE_QUOTE_ASSET_IDS: felt252 = 'SAME_BASE_QUOTE_ASSET_IDS';
 pub const ORDER_IS_NOT_EXPIRED: felt252 = 'ORDER_IS_NOT_EXPIRED';
 pub const LENGTH_MISMATCH: felt252 = 'LENGTH_MISMATCH';
+pub const INVALID_INTEREST_RATE: felt252 = 'INVALID_INTEREST_RATE';
+pub const ZERO_MAX_INTEREST_RATE: felt252 = 'ZERO_MAX_INTEREST_RATE';
 
 pub fn fulfillment_exceeded_err(position_id: PositionId) -> ByteArray {
     format!("FULFILLMENT_EXCEEDED position_id: {:?}", position_id)
