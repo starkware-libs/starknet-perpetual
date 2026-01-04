@@ -48,7 +48,6 @@ pub trait IPositions<TContractState> {
         new_public_key: PublicKey,
         expiration: Timestamp,
     );
-
     fn enable_owner_protection(
         ref self: TContractState,
         operator_nonce: u64,

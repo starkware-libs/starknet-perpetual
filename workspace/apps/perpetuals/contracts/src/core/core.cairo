@@ -1,7 +1,7 @@
 #[starknet::contract]
 pub mod Core {
     use core::dict::{Felt252Dict, Felt252DictTrait};
-    use core::num::traits::Zero;
+    use core::num::traits::{Pow, Zero};
     use core::panic_with_felt252;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::interfaces::erc20::IERC20DispatcherTrait;
@@ -18,19 +18,20 @@ pub mod Core {
         FEE_POSITION, InternalTrait as PositionsInternalTrait,
     };
     use perpetuals::core::errors::{
-        AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_ZERO_TIMEOUT, LENGTH_MISMATCH,
-        NON_MONOTONIC_TIME, ORDER_IS_NOT_EXPIRED, STALE_TIME, TRADE_ASSET_NOT_SYNTHETIC,
-        TRANSFER_FAILED,
+        AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_INTEREST_RATE, INVALID_ZERO_TIMEOUT,
+        LENGTH_MISMATCH, NON_MONOTONIC_TIME, ORDER_IS_NOT_EXPIRED, STALE_TIME,
+        TRADE_ASSET_NOT_SYNTHETIC, TRANSFER_FAILED, ZERO_MAX_INTEREST_RATE,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
     use perpetuals::core::types::asset::AssetId;
+    use perpetuals::core::types::asset::synthetic::AssetType;
     use perpetuals::core::types::balance::Balance;
     use perpetuals::core::types::order::{ForcedTrade, LimitOrder, Order};
     use perpetuals::core::types::position::{PositionDiff, PositionId, PositionTrait};
     use perpetuals::core::types::price::PriceMulTrait;
     use perpetuals::core::types::vault::ConvertPositionToVault;
-    use perpetuals::core::value_risk_calculator::PositionTVTR;
+    use perpetuals::core::value_risk_calculator::{PositionTVTR, calculate_position_pnl};
     use starknet::event::EventEmitter;
     use starknet::storage::{
         StorageMapReadAccess, StoragePointerReadAccess, StoragePointerWriteAccess,
@@ -46,10 +47,13 @@ pub mod Core {
     use starkware_utils::components::roles::RolesComponent::InternalTrait as RolesInternal;
     use starkware_utils::components::roles::interface::IRoles;
     use starkware_utils::hash::message_hash::OffchainMessageHash;
+    use starkware_utils::math::abs::Abs;
+    use starkware_utils::math::utils::mul_wide_and_floor_div;
     use starkware_utils::signature::stark::{PublicKey, Signature};
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
+    use starkware_utils::storage::utils::AddToStorage;
     use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
     use crate::core::components::assets::interface::IAssets;
     use crate::core::components::deleverage::deleverage_manager::IDeleverageManagerDispatcherTrait;
@@ -65,7 +69,6 @@ pub mod Core {
     use crate::core::components::vaults::vaults::{IVaults, Vaults as VaultsComponent};
     use crate::core::components::vaults::vaults_contract::IVaultExternalDispatcherTrait;
     use crate::core::components::withdrawal::withdrawal_manager::IWithdrawalManagerDispatcherTrait;
-    use crate::core::types::asset::synthetic::AssetType;
     use crate::core::utils::{validate_signature, validate_trade};
 
 
@@ -163,6 +166,10 @@ pub mod Core {
         // Cost for executing forced actions.
         premium_cost: u64,
         system_time: Timestamp,
+        // Maximum interest rate per second (32-bit fixed-point with 32-bit fractional part).
+        // Example: max_interest_rate_per_sec = 10 means the rate is 10 / 2^32 ≈ 0.000000232 per
+        // second, which is approximately 7.4% per year.
+        max_interest_rate_per_sec: u32,
     }
 
     #[event]
@@ -228,6 +235,7 @@ pub mod Core {
         insurance_fund_position_owner_public_key: PublicKey,
         forced_action_timelock: u64,
         premium_cost: u64,
+        max_interest_rate_per_sec: u32,
     ) {
         self.roles.initialize(:governance_admin);
         self.replaceability.initialize(:upgrade_delay);
@@ -250,6 +258,8 @@ pub mod Core {
         assert(forced_action_timelock.is_non_zero(), INVALID_ZERO_TIMEOUT);
         self.forced_action_timelock.write(TimeDelta { seconds: forced_action_timelock });
         self.premium_cost.write(premium_cost);
+        assert(max_interest_rate_per_sec.is_non_zero(), ZERO_MAX_INTEREST_RATE);
+        self.max_interest_rate_per_sec.write(max_interest_rate_per_sec);
     }
 
     #[abi(embed_v0)]
@@ -994,6 +1004,38 @@ pub mod Core {
         fn get_system_time(self: @ContractState) -> Timestamp {
             self.system_time.read()
         }
+
+        fn apply_interests(
+            ref self: ContractState,
+            operator_nonce: u64,
+            position_ids: Span<PositionId>,
+            interest_amounts: Span<i64>,
+        ) {
+            assert(position_ids.len() == interest_amounts.len(), LENGTH_MISMATCH);
+            self.pausable.assert_not_paused();
+            self.assets.validate_assets_integrity();
+            self.operator_nonce.use_checked_nonce(:operator_nonce);
+
+            // Read once and pass as arguments to avoid redundant storage reads
+            let current_time = Time::now();
+            let max_interest_rate_per_sec = self.max_interest_rate_per_sec.read();
+            let interest_rate_scale: u64 = 2_u64.pow(32);
+
+            let mut i: usize = 0;
+            for position_id in position_ids {
+                let interest_amount = *interest_amounts[i];
+                self
+                    ._apply_interest_to_position(
+                        position_id: *position_id,
+                        :interest_amount,
+                        :current_time,
+                        :max_interest_rate_per_sec,
+                        :interest_rate_scale,
+                    );
+                i += 1;
+            }
+        }
+
         fn liquidate_spot_asset(
             ref self: ContractState,
             operator_nonce: u64,
@@ -1174,6 +1216,84 @@ pub mod Core {
 
         fn _is_vault(ref self: ContractState, vault_position: PositionId) -> bool {
             self.vaults.is_vault_position(vault_position)
+        }
+
+        /// Calculates the position PnL (profit and loss) as the total value of synthetic assets
+        /// plus base collateral. Similar to TV calculation but without vault and spot assets.
+        /// Includes funding ticks in the calculation.
+        fn _calculate_position_pnl(
+            ref self: ContractState, position_id: PositionId, collateral_balance: Balance,
+        ) -> i64 {
+            let position = self.positions.get_position_snapshot(:position_id);
+
+            // Use existing function to derive funding delta and unchanged assets
+            // This already calculates funding and builds AssetBalanceInfo array
+            let (funding_delta, unchanged_assets) = self
+                .positions
+                .derive_funding_delta_and_unchanged_assets(
+                    :position, position_diff: Default::default(),
+                );
+
+            // Filter to only include synthetic assets (exclude vault and spot)
+            let mut synthetic_assets = array![];
+            for asset in unchanged_assets {
+                let asset_config = self.assets.get_asset_config(*asset.id);
+                if asset_config.asset_type == AssetType::SYNTHETIC {
+                    synthetic_assets.append(*asset);
+                }
+            }
+
+            let collateral_balance_with_funding = collateral_balance + funding_delta;
+            calculate_position_pnl(
+                assets: synthetic_assets.span(),
+                collateral_balance: collateral_balance_with_funding,
+            )
+        }
+
+        fn _apply_interest_to_position(
+            ref self: ContractState,
+            position_id: PositionId,
+            interest_amount: i64,
+            current_time: Timestamp,
+            max_interest_rate_per_sec: u32,
+            interest_rate_scale: u64,
+        ) {
+            // Check that position exists
+            let position = self.positions.get_position_mut(:position_id);
+
+            let previous_timestamp = position.last_interest_applied_time.read();
+
+            // Calculate position PnL (total value of synthetic assets + base collateral)
+            let pnl = self._calculate_position_pnl(position_id, position.collateral_balance.read());
+
+            // Validate interest rate
+            if pnl.is_non_zero() && previous_timestamp.is_non_zero() {
+                // Calculate time difference
+                let time_diff: u64 = current_time.seconds - previous_timestamp.seconds;
+
+                // Calculate maximum allowed change: |pnl| * time_diff *
+                // max_interest_rate_per_sec / 2^32.
+                let balance_time_product: u128 = pnl.abs().into() * time_diff.into();
+                let max_allowed_change = mul_wide_and_floor_div(
+                    balance_time_product,
+                    max_interest_rate_per_sec.into(),
+                    interest_rate_scale.into(),
+                )
+                    .expect(AMOUNT_OVERFLOW);
+
+                // Check: |interest_amount| <= max_allowed_change
+                assert(interest_amount.abs().into() <= max_allowed_change, INVALID_INTEREST_RATE);
+
+                // Apply interest
+                position.collateral_balance.add_and_write(interest_amount.into());
+            } else {
+                // If old balance is zero, only allow zero interest.
+                // If `previous_timestamp` is zero, this indicates the first interest calculation,
+                // and the interest amount is required to be zero.
+                assert(interest_amount.is_zero(), INVALID_INTEREST_RATE);
+            }
+
+            position.last_interest_applied_time.write(current_time);
         }
     }
 }
