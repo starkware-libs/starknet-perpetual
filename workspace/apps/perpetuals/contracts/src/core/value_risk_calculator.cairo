@@ -166,6 +166,36 @@ pub fn calculate_position_tvtr(
     calculate_position_tvtr_before(:unchanged_assets, :position_diff_enriched)
 }
 
+/// Calculates the position PnL (profit and loss) as the total value of synthetic assets
+/// plus base collateral. Similar to TV calculation but without vault and spot assets.
+///
+/// # Arguments
+///
+/// * `unchanged_assets` - Span of AssetBalanceInfo for synthetic assets only (vault and spot
+/// excluded)
+/// * `collateral_balance` - Base collateral balance
+///
+/// # Returns
+///
+/// * `i128` - The position PnL in units of 10^-6 USD
+pub fn calculate_position_pnl(
+    unchanged_assets: Span<AssetBalanceInfo>, collateral_balance: Balance,
+) -> i128 {
+    let mut pnl: i128 = 0_i128;
+
+    // Add base collateral value.
+    let collateral_price: Price = One::one();
+    pnl += collateral_price.mul(rhs: collateral_balance);
+
+    // Vault and spot assets should already be excluded.
+    for synthetic in unchanged_assets {
+        let asset_value: i128 = (*synthetic.price).mul(rhs: *synthetic.balance);
+        pnl += asset_value;
+    }
+
+    pnl
+}
+
 /// Calculates the total value and total risk change for a position, taking into account both
 /// unchanged assets and position changes (collateral and synthetic assets).
 ///
