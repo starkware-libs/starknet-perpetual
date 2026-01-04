@@ -1,7 +1,7 @@
 #[starknet::contract]
 pub mod Core {
     use core::dict::{Felt252Dict, Felt252DictTrait};
-    use core::num::traits::Zero;
+    use core::num::traits::{Pow, Zero};
     use core::panic_with_felt252;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::interfaces::erc20::IERC20DispatcherTrait;
@@ -18,8 +18,9 @@ pub mod Core {
         FEE_POSITION, InternalTrait as PositionsInternalTrait,
     };
     use perpetuals::core::errors::{
-        AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_ZERO_TIMEOUT, LENGTH_MISMATCH,
-        ORDER_IS_NOT_EXPIRED, TRADE_ASSET_NOT_SYNTHETIC, TRANSFER_FAILED,
+        AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_INTEREST_RATE, INVALID_ZERO_TIMEOUT,
+        LENGTH_MISMATCH, ORDER_IS_NOT_EXPIRED, TRADE_ASSET_NOT_SYNTHETIC, TRANSFER_FAILED,
+        ZERO_MAX_INTEREST_RATE,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
@@ -45,6 +46,8 @@ pub mod Core {
     use starkware_utils::components::roles::RolesComponent::InternalTrait as RolesInternal;
     use starkware_utils::components::roles::interface::IRoles;
     use starkware_utils::hash::message_hash::OffchainMessageHash;
+    use starkware_utils::math::abs::Abs;
+    use starkware_utils::math::utils::mul_wide_and_floor_div;
     use starkware_utils::signature::stark::{PublicKey, Signature};
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
@@ -161,6 +164,8 @@ pub mod Core {
         forced_action_timelock: TimeDelta,
         // Cost for executing forced actions.
         premium_cost: u64,
+        // Maximum interest rate per second (32-bit fixed-point with 32-bit fractional part).
+        max_interest_rate_per_sec: u32,
     }
 
     #[event]
@@ -226,6 +231,7 @@ pub mod Core {
         insurance_fund_position_owner_public_key: PublicKey,
         forced_action_timelock: u64,
         premium_cost: u64,
+        max_interest_rate_per_sec: u32,
     ) {
         self.roles.initialize(:governance_admin);
         self.replaceability.initialize(:upgrade_delay);
@@ -248,6 +254,8 @@ pub mod Core {
         assert(forced_action_timelock.is_non_zero(), INVALID_ZERO_TIMEOUT);
         self.forced_action_timelock.write(TimeDelta { seconds: forced_action_timelock });
         self.premium_cost.write(premium_cost);
+        assert(max_interest_rate_per_sec.is_non_zero(), ZERO_MAX_INTEREST_RATE);
+        self.max_interest_rate_per_sec.write(max_interest_rate_per_sec);
     }
 
     #[abi(embed_v0)]
@@ -953,6 +961,36 @@ pub mod Core {
                     },
                 );
         }
+        fn apply_interests(
+            ref self: ContractState,
+            operator_nonce: u64,
+            position_ids: Span<PositionId>,
+            interest_amounts: Span<i64>,
+        ) {
+            assert(position_ids.len() == interest_amounts.len(), LENGTH_MISMATCH);
+            self.pausable.assert_not_paused();
+            self.assets.validate_assets_integrity();
+            self.operator_nonce.use_checked_nonce(:operator_nonce);
+
+            // Read once and pass as arguments to avoid redundant storage reads
+            let current_time = Time::now();
+            let max_interest_rate_per_sec = self.max_interest_rate_per_sec.read();
+            let interest_rate_scale: u64 = 2_u64.pow(32);
+
+            let mut i: usize = 0;
+            for position_id in position_ids {
+                let interest_amount = *interest_amounts[i];
+                self
+                    ._apply_interest_to_position(
+                        position_id: *position_id,
+                        interest_amount: interest_amount,
+                        current_time: current_time,
+                        max_interest_rate_per_sec: max_interest_rate_per_sec,
+                        interest_rate_scale: interest_rate_scale,
+                    );
+                i += 1;
+            }
+        }
     }
 
     #[generate_trait]
@@ -1105,6 +1143,61 @@ pub mod Core {
 
         fn _is_vault(ref self: ContractState, vault_position: PositionId) -> bool {
             self.vaults.is_vault_position(vault_position)
+        }
+
+        fn _apply_interest_to_position(
+            ref self: ContractState,
+            position_id: PositionId,
+            interest_amount: i64,
+            current_time: Timestamp,
+            max_interest_rate_per_sec: u32,
+            interest_rate_scale: u64,
+        ) {
+            // Check that position exists
+            let mut position = self.positions.get_position_mut(position_id: position_id);
+
+            // Get old balance and last interest applied time
+            let old_balance = position.collateral_balance.read();
+            let prev_ts = position.last_interest_applied_time.read();
+
+            // Calculate new balance
+            let new_balance = old_balance + interest_amount.into();
+
+            // Validate interest rate
+            let old_balance_value: i64 = old_balance.into();
+            if old_balance_value != 0 {
+                // Calculate time difference
+                let time_diff: u64 = if current_time.seconds >= prev_ts.seconds {
+                    current_time.seconds - prev_ts.seconds
+                } else {
+                    // If current time is before previous time, something is wrong
+                    panic_with_felt252('INVALID_TIMESTAMP');
+                };
+
+                // Calculate maximum allowed change: |old_balance| * time_diff *
+                // max_interest_rate_per_sec / 2^32 Formula: |interest_amount| <= |old_balance| *
+                // time_diff * max_interest_rate_per_sec / 2^32
+                let old_balance_abs: u128 = old_balance_value.abs().into();
+                let max_rate: u128 = max_interest_rate_per_sec.into();
+                // First calculate: (|old_balance| * max_interest_rate_per_sec) / 2^32
+                let rate_per_second = mul_wide_and_floor_div(
+                    old_balance_abs, max_rate, interest_rate_scale.into(),
+                )
+                    .expect(AMOUNT_OVERFLOW);
+                // Then multiply by time_diff
+                let max_allowed_change: u128 = rate_per_second * time_diff.into();
+
+                // Check: |interest_amount| <= max_allowed_change
+                let interest_amount_abs: u128 = interest_amount.abs().into();
+                assert(interest_amount_abs <= max_allowed_change, INVALID_INTEREST_RATE);
+            } else {
+                // If old balance is zero, only allow zero interest
+                assert(interest_amount == 0, INVALID_INTEREST_RATE);
+            }
+
+            // Apply interest
+            position.collateral_balance.write(new_balance);
+            position.last_interest_applied_time.write(current_time);
         }
     }
 }

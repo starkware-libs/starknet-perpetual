@@ -81,6 +81,8 @@ pub const SYNTHETIC_BALANCE_AMOUNT: i64 = 20;
 pub const CONTRACT_INIT_BALANCE: u128 = 1_000_000_000;
 pub const USER_INIT_BALANCE: u128 = 10_000_000_000;
 pub const VAULT_SHARE_QUANTUM: u64 = 1_000;
+// TODO(Mohammad): what value need to use for testing?
+pub const MAX_INTEREST_RATE_PER_SEC: u32 = 1_000;
 
 pub const POSITION_ID_100: PositionId = PositionId { value: 100 };
 pub const POSITION_ID_200: PositionId = PositionId { value: 200 };
