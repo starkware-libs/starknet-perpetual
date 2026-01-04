@@ -166,4 +166,10 @@ pub trait ICore<TContractState> {
         order_b: Order,
     );
     fn forced_trade(ref self: TContractState, order_a: Order, order_b: Order);
+    fn apply_interests(
+        ref self: TContractState,
+        operator_nonce: u64,
+        position_ids: Span<PositionId>,
+        interest_amounts: Span<i64>,
+    );
 }

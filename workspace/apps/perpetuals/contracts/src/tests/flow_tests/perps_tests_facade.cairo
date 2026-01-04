@@ -264,6 +264,7 @@ struct PerpetualsConfig {
     insurance_fund_position_owner_public_key: PublicKey,
     forced_action_timelock: u64,
     premium_cost: u64,
+    max_interest_rate_per_sec: u32,
 }
 
 #[generate_trait]
@@ -290,6 +291,7 @@ pub impl PerpetualsConfigImpl of PerpetualsConfigTrait {
             insurance_fund_position_owner_public_key: operator.key_pair.public_key,
             forced_action_timelock: FORCED_ACTION_TIMELOCK,
             premium_cost: PREMIUM_COST,
+            max_interest_rate_per_sec: MAX_INTEREST_RATE_PER_SEC,
         }
     }
 }
@@ -311,6 +313,7 @@ impl PerpetualsContractStateImpl of Deployable<PerpetualsConfig, ContractAddress
         self.insurance_fund_position_owner_public_key.serialize(ref calldata);
         self.forced_action_timelock.serialize(ref calldata);
         self.premium_cost.serialize(ref calldata);
+        self.max_interest_rate_per_sec.serialize(ref calldata);
 
         let perpetuals_contract = snforge_std::declare("Core").unwrap().contract_class();
         let (address, _) = perpetuals_contract.deploy(@calldata).unwrap();
