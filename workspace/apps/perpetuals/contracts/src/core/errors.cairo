@@ -27,7 +27,8 @@ pub const ORDER_IS_NOT_EXPIRED: felt252 = 'ORDER_IS_NOT_EXPIRED';
 pub const LENGTH_MISMATCH: felt252 = 'LENGTH_MISMATCH';
 pub const NON_MONOTONIC_TIME: felt252 = 'NON_MONOTONIC_TIME';
 pub const STALE_TIME: felt252 = 'STALE_TIME';
-
+pub const INVALID_INTEREST_RATE: felt252 = 'INVALID_INTEREST_RATE';
+pub const ZERO_MAX_INTEREST_RATE: felt252 = 'ZERO_MAX_INTEREST_RATE';
 
 pub fn fulfillment_exceeded_err(position_id: PositionId) -> ByteArray {
     format!("FULFILLMENT_EXCEEDED position_id: {:?}", position_id)

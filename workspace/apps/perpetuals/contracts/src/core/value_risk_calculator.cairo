@@ -1,8 +1,8 @@
 use core::num::traits::{One, Zero};
 use core::panics::panic_with_byte_array;
 use perpetuals::core::errors::{
-    position_not_deleveragable, position_not_fair_deleverage, position_not_healthy_nor_healthier,
-    position_not_liquidatable,
+    AMOUNT_OVERFLOW, position_not_deleveragable, position_not_fair_deleverage,
+    position_not_healthy_nor_healthier, position_not_liquidatable,
 };
 use perpetuals::core::types::asset::synthetic::AssetBalanceInfo;
 use perpetuals::core::types::balance::{Balance, BalanceDiff};
@@ -164,6 +164,34 @@ pub fn calculate_position_tvtr(
         asset_diff_enriched: Option::None,
     };
     calculate_position_tvtr_before(:unchanged_assets, :position_diff_enriched)
+}
+
+/// Calculates the position PnL (profit and loss) as the total value of synthetic assets
+/// plus base collateral. Similar to TV calculation but without vault and spot assets.
+///
+/// # Arguments
+///
+/// * `assets` - Span of AssetBalanceInfo for synthetic assets only (vault and spot
+/// excluded)
+/// * `collateral_balance` - Base collateral balance
+///
+/// # Returns
+///
+/// The position PnL in units of 10^-6 USD
+pub fn calculate_position_pnl(assets: Span<AssetBalanceInfo>, collateral_balance: Balance) -> i64 {
+    let mut pnl: i128 = 0_i128;
+
+    // Add base collateral value.
+    let collateral_price: Price = One::one();
+    pnl += collateral_price.mul(rhs: collateral_balance);
+
+    // Vault and spot assets should already be excluded.
+    for synthetic in assets {
+        let asset_value: i128 = (*synthetic.price).mul(rhs: *synthetic.balance);
+        pnl += asset_value;
+    }
+
+    pnl.try_into().expect(AMOUNT_OVERFLOW)
 }
 
 /// Calculates the total value and total risk change for a position, taking into account both
