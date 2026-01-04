@@ -48,7 +48,7 @@ pub mod Positions {
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
     use starkware_utils::storage::utils::AddToStorage;
-    use starkware_utils::time::time::{Timestamp, validate_expiration};
+    use starkware_utils::time::time::{Time, Timestamp, validate_expiration};
     use crate::core::components::snip::SNIP12MetadataImpl;
     use crate::core::errors::{
         INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE, INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT,
@@ -185,9 +185,11 @@ pub mod Positions {
             let mut position = self.positions.entry(position_id);
             assert(position.version.read().is_zero(), POSITION_ALREADY_EXISTS);
             assert(owner_public_key.is_non_zero(), INVALID_ZERO_PUBLIC_KEY);
+            let current_time = Time::now();
             position.version.write(POSITION_VERSION);
             position.owner_public_key.write(owner_public_key);
             position.owner_protection_enabled.write(owner_protection_enabled);
+            position.last_interest_applied_time.write(current_time);
             if owner_account.is_non_zero() {
                 position.owner_account.write(Option::Some(owner_account));
             }

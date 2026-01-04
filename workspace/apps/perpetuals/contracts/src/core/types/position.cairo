@@ -9,6 +9,7 @@ use starkware_utils::signature::stark::PublicKey;
 use starkware_utils::storage::iterable_map::{
     IterableMap, IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
 };
+use starkware_utils::time::time::Timestamp;
 
 pub const POSITION_VERSION: u8 = 1;
 
@@ -21,6 +22,7 @@ pub struct Position {
     #[rename("synthetic_balance")]
     pub asset_balances: IterableMap<AssetId, AssetBalance>,
     pub owner_protection_enabled: bool,
+    pub last_interest_applied_time: Timestamp,
 }
 
 /// Synthetic asset in a position.
