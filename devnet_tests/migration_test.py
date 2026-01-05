@@ -1,6 +1,7 @@
 import pytest
 import pytest_asyncio
 from starknet_py.contract import Contract
+import starknet_py
 from starknet_py.net.account.account import Account
 from starknet_py.net.schemas.rpc.executables_api import Optional
 from starknet_py.proxy.contract_abi_resolver import ContractAbiResolver, ProxyConfig
@@ -23,7 +24,6 @@ RECIPIENT_ADDRESS = 0x0785932B867B6A21DFD64367EDD181C1CFA83FA7CE942D005857CD5935
 
 @pytest_asyncio.fixture(autouse=True)
 async def phase_0_set_public_key(test_utils: PerpetualsTestUtils):
-
     # TODO: Not sure why but, this is needed to deploy the vault contract.
     #       After some debugging, declare + deploy costs about 1.5 STARKs
     #       so this should be too much funding but it fails with insufficient funding
@@ -76,35 +76,38 @@ async def test_migration(test_utils: PerpetualsTestUtils):
         3. Deploy New Vault Contract
         4. Upgrade Core contract (eic only, same class hash)
            (https://github.com/x10xchange/starknet-perpetual/pull/49)
-        5. Redeem from vault to POSITION_A and assert that it is successful
-        6. [Optional] Upgrade Vault contract to original code (with the replaceability component)
+        5. Assert that the token_contract for vault shares is the newly deployed vault contract
+        6. Redeem from vault to POSITION_A and assert that it is successful
+        7. [Optional] Upgrade Vault contract to original code (with the replaceability component)
 
     Phase 2- Upgrade Core contract into migration phase:
         1. Declare new Core contract (https://github.com/x10xchange/starknet-perpetual/pull/44)
         2. Upgrade Core contract with declaration and eic from previous step
         3. Deposit request from ACCOUNT_A to POSITION_A (operator does not process the request)
-        3. Withdraw request from POSITION_A to ACCOUNT_A (operator does not process the request)
-        4. Transfer request from POSITION_A to POSITION_B (operator does not process the request)
-        5. Invest in vault from POSITION_A and assert that it is successful
-        6. Store Core contract USDC.e balance
-        7. Migrate USDC.e to Native USDC in a few batches (at least 50%)
-        8. Assert USDC.e balance + Native USDC balance = Core contract USDC.e balance from step 6
+        4. Withdraw request from POSITION_A to ACCOUNT_A (operator does not process the request)
+        5. Transfer request from POSITION_A to POSITION_B (operator does not process the request)
+        6. Invest in vault from POSITION_A and assert that it is successful
+        7. Store Core contract USDC.e balance
+        8. Migrate USDC.e to Native USDC in a few batches (at least 50%)
+        9. Assert USDC.e balance + Native USDC balance = Core contract USDC.e balance from step 6
+        10. Assert Native_USDC balance = Amount of USDC.e migrated
 
     Phase 3- Upgrade Core contract to final version:
         1. Declare eic for Core contract (https://github.com/x10xchange/starknet-perpetual/pull/45)
         2. Upgrade Core contract (eic only, same class hash)
         3. Declare eic for Vault contract (https://github.com/x10xchange/starknet-perpetual/pull/45)
         4. Upgrade Vault contract (eic only, same class hash)
-        5. Assert that process_deposit on deposit request from ACCOUNT_A to POSITION_A fails
-        6. Assert that reject_deposit on deposit request from ACCOUNT_A to POSITION_A fails
-        7. Process old deposit request from ACCOUNT_A to POSITION_A and assert that it is successful
-        8. Withdraw and assert that withdraw request from POSITION_A to ACCOUNT_A is successful
-        9. Transfer and assert that transfer request from POSITION_A to POSITION_B is successful
-        10. Redeem from vault to POSITION_A and assert that it is successful
-        11. Invest in vault from POSITION_A and assert that it is successful
-        12. Assert USDC.e balance + Native USDC balance = Original USDC.e balance - withdraw amount
-        13. [Optional] Migrate the rest of the USDC.e to Native USDC and assert that it is successful
-        14. [Optional] Upgrade Core contract to original code
+        5. Assert that base collateral token contract is the new USDC contract
+        6. Assert that process_deposit on deposit request from ACCOUNT_A to POSITION_A fails
+        7. Assert that reject_deposit on deposit request from ACCOUNT_A to POSITION_A fails
+        8. Process old deposit request from ACCOUNT_A to POSITION_A and assert that it is successful
+        9. Withdraw and assert that withdraw request from POSITION_A to ACCOUNT_A is successful
+        10. Transfer and assert that transfer request from POSITION_A to POSITION_B is successful
+        11. Redeem from vault to POSITION_A and assert that it is successful
+        12. Invest in vault from POSITION_A and assert that it is successful
+        13. Assert USDC.e balance + Native USDC balance = Original USDC.e balance - withdraw amount
+        14. [Optional] Migrate the rest of the USDC.e to Native USDC and assert that it is successful
+        15. [Optional] Upgrade Core contract to original code
     """
     ### Phase 1- Deploy new vault contract ###
 
@@ -176,7 +179,9 @@ async def test_migration(test_utils: PerpetualsTestUtils):
             OLD_VAULT_ADDRESS,
         ],
     }
-    await test_utils.upgrade_perpetuals_contract(eic_data=eic_data)
+    await test_utils.upgrade_perpetuals_contract(
+        contract_name="perpetuals_Core_phase_1", eic_data=eic_data
+    )
     asset_config = await test_utils.get_asset_config(VAULT_ASSET_ID)
     assert asset_config["token_contract"] == new_vault_deploy_result.deployed_contract.address
 
@@ -192,37 +197,6 @@ async def test_migration(test_utils: PerpetualsTestUtils):
     assert collateral_balance_after_redeem > collateral_balance_after_invest
     assert vault_shares_balance_after_redeem == vault_shares_balance_after_invest - 250
 
-    # Upgrade vault to original code (with the replaceability component)
-
-    upgrade_governor_account = test_utils.known_accounts["upgrade_governor"]
-    abi, cairo_version = await ContractAbiResolver(
-        address=new_vault_deploy_result.deployed_contract.address,
-        client=upgrade_governor_account.client,
-        proxy_config=ProxyConfig(),
-    ).resolve()
-    upgrade_governor_vault_contract = Contract(
-        address=new_vault_deploy_result.deployed_contract.address,
-        abi=abi,
-        provider=upgrade_governor_account,
-        cairo_version=cairo_version,
-    )
-
-    governance_admin_account = test_utils.known_accounts["governance_admin"]
-    abi, cairo_version = await ContractAbiResolver(
-        address=new_vault_deploy_result.deployed_contract.address,
-        client=governance_admin_account.client,
-        proxy_config=ProxyConfig(),
-    ).resolve()
-    governance_admin_vault_contract = Contract(
-        address=new_vault_deploy_result.deployed_contract.address,
-        abi=abi,
-        provider=governance_admin_account,
-        cairo_version=cairo_version,
-    )
-
-    await setup_upgrade_role(upgrade_governor_account.address, governance_admin_vault_contract)
-    await upgrade_vault_contract(upgrade_governor_account, upgrade_governor_vault_contract)
-
     ### Phase 2- Upgrade Core contract into migration phase ###
 
     # Upgrade Core contract to migration phase
@@ -235,16 +209,27 @@ async def test_migration(test_utils: PerpetualsTestUtils):
         "eic_init_data": [MIGRATION_CONTRACT_ADDRESS],
     }
     await test_utils.upgrade_perpetuals_contract(
-        contract_name="perpetuals_Core_phase_2_3", eic_data=eic_data
+        contract_name="perpetuals_Core_phase_2", eic_data=eic_data
     )
 
     # Deposit, Withdraw, Transfer requests but do not process them
     account_b = await test_utils.new_account()
-    await test_utils.new_position(account_b)
-    await test_utils.deposit(account_a, 1000, process_deposit=False)
-    await test_utils.withdraw(account_a, 500, process_withdraw=False)
-    await test_utils.transfer(
-        sender=account_a, recipient=account_b, amount=500, process_transfer=False
+    position_b_id = await test_utils.new_position(account_b)
+
+    account_a_deposit_amount = 1000
+    account_a_withdraw_amount = 500
+    account_a_transfer_amount = 500
+    deposit_salt = await test_utils.deposit(
+        account_a, account_a_deposit_amount, process_deposit=False
+    )
+    withdraw_expiration, withdraw_salt = await test_utils.withdraw(
+        account_a, account_a_withdraw_amount, process_withdraw=False
+    )
+    transfer_args = await test_utils.transfer(
+        sender=account_a,
+        recipient=account_b,
+        amount=account_a_transfer_amount,
+        process_transfer=False,
     )
 
     # Invest in vault
@@ -333,6 +318,155 @@ async def test_migration(test_utils: PerpetualsTestUtils):
         old_usdc_perps_balance_after_migration + new_usdc_perps_balance_after_migration
         == old_usdc_perps_balance_before_migration
     )
+
+    # Assert that the total migrated amount is equal to the Native USDC balance
+    assert new_usdc_perps_balance_after_migration == total_migrated
+
+    ### Phase 3- Upgrade Core contract to final version ###
+
+    # Note: I removed the assertion that verifies we have migrated a third of USDC
+    # Declare eic for Core contract
+    eic_declare_result = await declare_contract(
+        "perpetuals_ReplaceCollateralEIC",
+        test_utils.known_accounts["upgrade_governor"],
+    )
+    eic_data = {"eic_hash": eic_declare_result.class_hash, "eic_init_data": []}
+    await test_utils.upgrade_perpetuals_contract(
+        contract_name="perpetuals_Core_phase_3", eic_data=eic_data
+    )
+
+    # Upgrade vault
+    upgrade_governor_account = test_utils.known_accounts["upgrade_governor"]
+    abi, cairo_version = await ContractAbiResolver(
+        address=new_vault_deploy_result.deployed_contract.address,
+        client=upgrade_governor_account.client,
+        proxy_config=ProxyConfig(),
+    ).resolve()
+    upgrade_governor_vault_contract = Contract(
+        address=new_vault_deploy_result.deployed_contract.address,
+        abi=abi,
+        provider=upgrade_governor_account,
+        cairo_version=cairo_version,
+    )
+
+    governance_admin_account = test_utils.known_accounts["governance_admin"]
+    abi, cairo_version = await ContractAbiResolver(
+        address=new_vault_deploy_result.deployed_contract.address,
+        client=governance_admin_account.client,
+        proxy_config=ProxyConfig(),
+    ).resolve()
+    governance_admin_vault_contract = Contract(
+        address=new_vault_deploy_result.deployed_contract.address,
+        abi=abi,
+        provider=governance_admin_account,
+        cairo_version=cairo_version,
+    )
+    await setup_upgrade_role(upgrade_governor_account.address, governance_admin_vault_contract)
+
+    eic_declare_result = await declare_contract(
+        "perpetuals_ReplaceCollateralVaultEIC",
+        test_utils.known_accounts["upgrade_governor"],
+    )
+    eic_data = {
+        "eic_hash": eic_declare_result.class_hash,
+        "eic_init_data": [USDC_OLD_CONTRACT_ADDRESS, USDC_NEW_CONTRACT_ADDRESS],
+    }
+
+    await upgrade_vault_contract(
+        upgrade_governor_account, upgrade_governor_vault_contract, eic_data
+    )
+
+    # Assert that the base collateral token contract is the new USDC contract
+    new_base_collateral_token_contract = await test_utils.get_base_collateral_token_contract()
+    assert new_base_collateral_token_contract == USDC_NEW_CONTRACT_ADDRESS
+
+    # Assert process_deposit and reject_deposit fails
+    with pytest.raises(starknet_py.net.client_errors.ClientError):
+        await test_utils.process_base_collateral_deposit(
+            account_a, account_a_deposit_amount, deposit_salt
+        )
+    test_utils.operator_nonce -= 1
+
+    with pytest.raises(starknet_py.net.client_errors.ClientError):
+        await test_utils.reject_deposit(account_a, account_a_deposit_amount, deposit_salt)
+    test_utils.operator_nonce -= 1
+
+    # Process old deposit
+    await test_utils.process_old_deposit(account_a, account_a_deposit_amount, deposit_salt)
+    collateral_balance_after_old_deposit = await test_utils.get_asset_balance_of_position(
+        position_a_id, await test_utils.get_collateral_asset_id()
+    )
+    assert (
+        collateral_balance_after_old_deposit
+        == collateral_balance_after_2nd_invest + account_a_deposit_amount
+    )
+
+    # Assert withdraw and transfer succeed
+    await test_utils.process_withdraw(
+        account_a, account_a_withdraw_amount, withdraw_expiration, withdraw_salt
+    )
+    collateral_balance_after_withdraw = await test_utils.get_asset_balance_of_position(
+        position_a_id, await test_utils.get_collateral_asset_id()
+    )
+    assert (
+        collateral_balance_after_withdraw
+        == collateral_balance_after_old_deposit - account_a_withdraw_amount
+    )
+    await test_utils.process_transfer(transfer_args)
+    collateral_balance_after_transfer = await test_utils.get_asset_balance_of_position(
+        position_a_id, await test_utils.get_collateral_asset_id()
+    )
+    collateral_balance_account_b = await test_utils.get_asset_balance_of_position(
+        position_b_id, await test_utils.get_collateral_asset_id()
+    )
+    assert (
+        collateral_balance_after_transfer
+        == collateral_balance_after_withdraw - account_a_transfer_amount
+    )
+    assert collateral_balance_account_b == account_a_transfer_amount
+
+    # Assert redeem from vault succeeds
+    await test_utils.redeem_from_vault(account=account_a, base_amount=-250)
+    collateral_balance_after_redeem = await test_utils.get_asset_balance_of_position(
+        position_a_id, await test_utils.get_collateral_asset_id()
+    )
+    vault_shares_balance_after_redeem = await test_utils.get_asset_balance_of_position(
+        position_a_id, VAULT_ASSET_ID
+    )
+    assert collateral_balance_after_redeem > collateral_balance_after_transfer
+    assert vault_shares_balance_after_redeem == vault_shares_balance_after_2nd_invest - 250
+
+    # Assert invest in vault succeeds
+    await test_utils.invest_in_vault(
+        account=account_a,
+        min_base_amount=500,
+        quote_amount=-1000,
+    )
+    vault_shares_balance_after_3rd_invest = await test_utils.get_asset_balance_of_position(
+        position_a_id, VAULT_ASSET_ID
+    )
+    collateral_balance_after_3rd_invest = await test_utils.get_asset_balance_of_position(
+        position_a_id, await test_utils.get_collateral_asset_id()
+    )
+    assert vault_shares_balance_after_3rd_invest >= vault_shares_balance_after_redeem + 500
+    assert collateral_balance_after_3rd_invest == collateral_balance_after_redeem - 1000
+
+    # Assert USDC.e balance + Native USDC balance = Original USDC.e balance - withdraw amount
+    old_usdc_perps_balance_after_phase_3 = await get_old_usdc_balance(
+        test_utils.known_accounts["operator"], test_utils.perpetuals_contract_address
+    )
+    new_usdc_perps_balance_after_phase_3 = await get_new_usdc_balance(
+        test_utils.known_accounts["operator"], test_utils.perpetuals_contract_address
+    )
+    assert (
+        old_usdc_perps_balance_after_phase_3 + new_usdc_perps_balance_after_phase_3
+        == old_usdc_perps_balance_before_migration - account_a_withdraw_amount
+    )
+
+    # [Optional] Migrate the rest of the USDC.e to Native USDC and assert that it is successful
+
+    # [Optional] Upgrade Core contract to original code
+    await test_utils.upgrade_perpetuals_contract()
 
 
 async def setup_upgrade_role(
