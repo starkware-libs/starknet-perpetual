@@ -58,31 +58,30 @@ pub(crate) mod DepositManager {
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::interface::IAssets;
-    use perpetuals::core::components::deposit::Deposit as DepositComponent;
+    use perpetuals::core::components::deposit::interface::DepositStatus;
+    use perpetuals::core::components::deposit::{Deposit as DepositComponent, errors, events};
+    use perpetuals::core::components::external_components::interface::EXTERNAL_COMPONENT_DEPOSITS;
+    use perpetuals::core::components::external_components::named_component::ITypedComponent;
     use perpetuals::core::components::fulfillment::fulfillment::Fulfillement as FulfillmentComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::positions::Positions as PositionsComponent;
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
+    use perpetuals::core::components::snip::SNIP12MetadataImpl;
+    use perpetuals::core::components::vaults::vaults::{IVaults, Vaults as VaultsComponent};
     use perpetuals::core::types::asset::AssetId;
-    use perpetuals::core::types::position::PositionId;
+    use perpetuals::core::types::asset::synthetic::AssetType;
+    use perpetuals::core::types::position::{PositionDiff, PositionId};
     use starknet::storage::{StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess};
     use starknet::{ContractAddress, get_contract_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
     use starkware_utils::components::roles::RolesComponent;
+    use starkware_utils::signature::stark::HashType;
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
-    use starkware_utils::time::time::Time;
-    use crate::core::components::deposit::events;
-    use crate::core::components::external_components::interface::EXTERNAL_COMPONENT_DEPOSITS;
-    use crate::core::components::external_components::named_component::ITypedComponent;
-    use crate::core::components::snip::SNIP12MetadataImpl;
-    use crate::core::components::vaults::vaults::{IVaults, Vaults as VaultsComponent};
-    use crate::core::types::asset::synthetic::AssetType;
-    use crate::core::types::position::PositionDiff;
-    use super::super::errors;
-    use super::{DepositStatus, HashType, IDepositExternal, TimeDelta, Timestamp, deposit_hash};
+    use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
+    use super::{IDepositExternal, deposit_hash};
 
 
     #[event]
@@ -110,9 +109,6 @@ pub(crate) mod DepositManager {
         RolesEvent: RolesComponent::Event,
         #[flat]
         VaultsEvent: VaultsComponent::Event,
-        Deposit: events::Deposit,
-        DepositCanceled: events::DepositCanceled,
-        DepositProcessed: events::DepositProcessed,
     }
 
     #[storage]
@@ -272,6 +268,7 @@ pub(crate) mod DepositManager {
             self.deposits.registered_deposits.write(deposit_hash, DepositStatus::PROCESSED);
             self.positions.apply_diff(:position_id, :position_diff);
             self
+                .deposits
                 .emit(
                     events::DepositProcessed {
                         position_id,
@@ -360,6 +357,7 @@ pub(crate) mod DepositManager {
             );
 
             self
+                .deposits
                 .emit(
                     events::Deposit {
                         position_id,
@@ -423,6 +421,7 @@ pub(crate) mod DepositManager {
                 errors::TRANSFER_FAILED,
             );
             self
+                .deposits
                 .emit(
                     events::DepositCanceled {
                         position_id,

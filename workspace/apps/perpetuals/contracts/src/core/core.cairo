@@ -9,14 +9,29 @@ pub mod Core {
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::AssetsComponent::InternalTrait as AssetsInternal;
     use perpetuals::core::components::assets::errors::{NOT_SYNTHETIC, NO_SUCH_ASSET};
+    use perpetuals::core::components::assets::interface::IAssets;
+    use perpetuals::core::components::deleverage::deleverage_manager::IDeleverageManagerDispatcherTrait;
     use perpetuals::core::components::deposit::Deposit;
     use perpetuals::core::components::deposit::Deposit::InternalTrait as DepositInternal;
+    use perpetuals::core::components::external_components::external_component_manager::ExternalComponents as ExternalComponentsComponent;
+    use perpetuals::core::components::external_components::external_component_manager::ExternalComponents::InternalTrait as ExternalComponentsInternalTrait;
+    use perpetuals::core::components::fulfillment::fulfillment::Fulfillement;
+    use perpetuals::core::components::fulfillment::interface::IFulfillment;
+    use perpetuals::core::components::liquidation::liquidation_manager::ILiquidationManagerDispatcherTrait;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalTrait as OperatorNonceInternal;
     use perpetuals::core::components::positions::Positions;
     use perpetuals::core::components::positions::Positions::{
         FEE_POSITION, InternalTrait as PositionsInternalTrait,
     };
+    use perpetuals::core::components::snip::SNIP12MetadataImpl;
+    use perpetuals::core::components::transfer::events as transfer_events;
+    use perpetuals::core::components::transfer::transfer_manager::ITransferManagerDispatcherTrait;
+    use perpetuals::core::components::vaults::events as vault_events;
+    use perpetuals::core::components::vaults::vaults::{IVaults, Vaults as VaultsComponent};
+    use perpetuals::core::components::vaults::vaults_contract::IVaultExternalDispatcherTrait;
+    use perpetuals::core::components::withdrawal::events as withdraw_events;
+    use perpetuals::core::components::withdrawal::withdrawal_manager::IWithdrawalManagerDispatcherTrait;
     use perpetuals::core::errors::{
         AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_ZERO_TIMEOUT, LENGTH_MISMATCH,
         ORDER_IS_NOT_EXPIRED, TRADE_ASSET_NOT_SYNTHETIC, TRANSFER_FAILED,
@@ -24,11 +39,13 @@ pub mod Core {
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
     use perpetuals::core::types::asset::AssetId;
+    use perpetuals::core::types::asset::synthetic::AssetType;
     use perpetuals::core::types::balance::Balance;
     use perpetuals::core::types::order::{ForcedTrade, LimitOrder, Order};
     use perpetuals::core::types::position::{PositionDiff, PositionId, PositionTrait};
     use perpetuals::core::types::price::PriceMulTrait;
     use perpetuals::core::types::vault::ConvertPositionToVault;
+    use perpetuals::core::utils::{validate_signature, validate_trade};
     use perpetuals::core::value_risk_calculator::PositionTVTR;
     use starknet::event::EventEmitter;
     use starknet::storage::{
@@ -50,22 +67,6 @@ pub mod Core {
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
     use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
-    use crate::core::components::assets::interface::IAssets;
-    use crate::core::components::deleverage::deleverage_manager::IDeleverageManagerDispatcherTrait;
-    use crate::core::components::deposit::events as deposit_events;
-    use crate::core::components::external_components::external_component_manager::ExternalComponents as ExternalComponentsComponent;
-    use crate::core::components::external_components::external_component_manager::ExternalComponents::InternalTrait as ExternalComponentsInternalTrait;
-    use crate::core::components::fulfillment::fulfillment::Fulfillement;
-    use crate::core::components::fulfillment::interface::IFulfillment;
-    use crate::core::components::liquidation::liquidation_manager::ILiquidationManagerDispatcherTrait;
-    use crate::core::components::snip::SNIP12MetadataImpl;
-    use crate::core::components::transfer::transfer_manager::ITransferManagerDispatcherTrait;
-    use crate::core::components::vaults::events as vault_events;
-    use crate::core::components::vaults::vaults::{IVaults, Vaults as VaultsComponent};
-    use crate::core::components::vaults::vaults_contract::IVaultExternalDispatcherTrait;
-    use crate::core::components::withdrawal::withdrawal_manager::IWithdrawalManagerDispatcherTrait;
-    use crate::core::types::asset::synthetic::AssetType;
-    use crate::core::utils::{validate_signature, validate_trade};
 
 
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
@@ -186,24 +187,24 @@ pub mod Core {
         RequestApprovalsEvent: RequestApprovalsComponent::Event,
         #[flat]
         PositionsEvent: Positions::Event,
-        Deleverage: events::Deleverage,
-        AssetPositionReduced: events::AssetPositionReduced,
-        Liquidate: events::Liquidate,
-        Trade: events::Trade,
-        Withdraw: events::Withdraw,
-        WithdrawRequest: events::WithdrawRequest,
-        ForcedTradeRequest: events::ForcedTradeRequest,
-        ForcedTrade: events::ForcedTrade,
         #[flat]
         FulfillmentEvent: Fulfillement::Event,
         #[flat]
         ExternalComponentsEvent: ExternalComponentsComponent::Event,
         #[flat]
         VaultsEvent: VaultsComponent::Event,
-        //duplicated for ABI
-        Deposit: deposit_events::Deposit,
-        DepositCanceled: deposit_events::DepositCanceled,
-        DepositProcessed: deposit_events::DepositProcessed,
+        Deleverage: events::Deleverage,
+        AssetPositionReduced: events::AssetPositionReduced,
+        Liquidate: events::Liquidate,
+        Trade: events::Trade,
+        Withdraw: withdraw_events::Withdraw,
+        WithdrawRequest: withdraw_events::WithdrawRequest,
+        ForcedWithdraw: withdraw_events::ForcedWithdraw,
+        ForcedWithdrawRequest: withdraw_events::ForcedWithdrawRequest,
+        Transfer: transfer_events::Transfer,
+        TransferRequest: transfer_events::TransferRequest,
+        ForcedTradeRequest: events::ForcedTradeRequest,
+        ForcedTrade: events::ForcedTrade,
         InvestInVault: vault_events::InvestInVault,
     }
 

@@ -2,8 +2,9 @@ use perpetuals::core::components::assets::events as assets_events;
 use perpetuals::core::components::deposit::events as deposit_events;
 use perpetuals::core::components::positions::events as positions_events;
 use perpetuals::core::components::snip::SNIP12MetadataImpl;
-use perpetuals::core::components::withdrawal::withdrawal_manager::{
-    ForcedWithdraw, ForcedWithdrawRequest,
+use perpetuals::core::components::transfer::events::{Transfer, TransferRequest};
+use perpetuals::core::components::withdrawal::events::{
+    ForcedWithdraw, ForcedWithdrawRequest, Withdraw, WithdrawRequest,
 };
 use perpetuals::core::events;
 use perpetuals::core::types::asset::AssetId;
@@ -17,7 +18,6 @@ use starknet::ContractAddress;
 use starkware_utils::signature::stark::PublicKey;
 use starkware_utils::time::time::Timestamp;
 use starkware_utils_testing::test_utils::assert_expected_event_emitted;
-use crate::core::components::transfer::transfer_manager::{Transfer, TransferRequest};
 
 
 pub fn assert_new_position_event_with_expected(
@@ -129,7 +129,7 @@ pub fn assert_withdraw_request_event_with_expected(
     withdraw_request_hash: felt252,
     salt: felt252,
 ) {
-    let expected_event = events::WithdrawRequest {
+    let expected_event = WithdrawRequest {
         position_id, recipient, collateral_id, amount, expiration, withdraw_request_hash, salt,
     };
     assert_expected_event_emitted(
@@ -150,7 +150,7 @@ pub fn assert_withdraw_event_with_expected(
     withdraw_request_hash: felt252,
     salt: felt252,
 ) {
-    let expected_event = events::Withdraw {
+    let expected_event = Withdraw {
         position_id, recipient, collateral_id, amount, expiration, withdraw_request_hash, salt,
     };
     assert_expected_event_emitted(
