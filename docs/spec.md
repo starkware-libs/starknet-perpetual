@@ -4329,3 +4329,61 @@ Only the Operator can execute.
 **Emits:**
 
 **Errors:**
+
+#### Update System Time
+
+Updates the system time stored in the contract.
+
+fn update_system_time(
+    ref self: ContractState,
+    operator_nonce: u64,
+    new_timestamp: Timestamp,
+)
+
+**Access Control:**
+
+Only the Operator can execute.
+
+**Validations:**
+
+- The contract must not be paused.
+- The operator_nonce must be valid.
+- The new system time must be strictly greater than the current system time.
+- The new system time must not exceed the current Starknet block timestamp.
+
+**Logic:**
+
+- Updates the system time stored in the contract.
+
+**Emits:**
+
+No events are emitted.
+
+**Errors:**
+
+- SYSTEM_TIME_MUST_INCREASE – if the new timestamp is not strictly greater than the current system time.  
+- SYSTEM_TIME_EXCEED_BLOCK_TIME – if the new timestamp exceeds the current Starknet block timestamp.  
+
+---
+
+#### Get System Time
+
+Returns the current system time stored in the contract.
+
+fn get_system_time(self: @ContractState) -> Timestamp
+
+**Access Control:**
+
+- Publicly callable.
+
+**Logic:**
+
+- Reads and returns the current system time from storage.
+
+**Emits:**
+
+- None.
+
+**Errors:**
+
+- None.

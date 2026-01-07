@@ -19,7 +19,8 @@ pub mod Core {
     };
     use perpetuals::core::errors::{
         AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_ZERO_TIMEOUT, LENGTH_MISMATCH,
-        ORDER_IS_NOT_EXPIRED, TRADE_ASSET_NOT_SYNTHETIC, TRANSFER_FAILED,
+        ORDER_IS_NOT_EXPIRED, SYSTEM_TIME_EXCEED_BLOCK_TIME, SYSTEM_TIME_MUST_INCREASE,
+        TRADE_ASSET_NOT_SYNTHETIC, TRANSFER_FAILED,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
@@ -161,6 +162,12 @@ pub mod Core {
         forced_action_timelock: TimeDelta,
         // Cost for executing forced actions.
         premium_cost: u64,
+        // This storage cell holds the system time.
+        // System time update invariants:
+        // - The stored time is strictly monotonically increasing: every update must increase the
+        // previous value.
+        // - The stored time must not exceed the current Starknet block timestamp.
+        system_time: Timestamp,
     }
 
     #[event]
@@ -952,6 +959,44 @@ pub mod Core {
                         order_b_hash: order_b.get_message_hash(public_key: public_key_b),
                     },
                 );
+        }
+
+        /// Updates the system time stored in the contract.
+        ///
+        /// Validations:
+        /// - The contract must not be paused.
+        /// - Only the operator can call this function.
+        /// - The operator_nonce must be valid.
+        /// - The new system time must be strictly greater than the current system time.
+        /// - The new system time must not exceed the current Starknet block timestamp.
+        ///
+        /// Execution:
+        /// - Updates the system time.
+        /// - Emits no events.
+        fn update_system_time(
+            ref self: ContractState, operator_nonce: u64, new_timestamp: Timestamp,
+        ) {
+            // The contract must not be paused.
+            self.pausable.assert_not_paused();
+
+            // Only the operator can call this function.
+            self.operator_nonce.use_checked_nonce(:operator_nonce);
+
+            // The new system time must be strictly greater than the current system time.
+            let current_system_time = self.system_time.read();
+            assert(new_timestamp > current_system_time, SYSTEM_TIME_MUST_INCREASE);
+
+            // The new system time must not exceed the current Starknet block timestamp.
+            let now = Time::now();
+            assert(new_timestamp <= now, SYSTEM_TIME_EXCEED_BLOCK_TIME);
+
+            // Update the system time.
+            self.system_time.write(new_timestamp);
+        }
+
+        /// Returns the current system time stored in the contract.
+        fn get_system_time(self: @ContractState) -> Timestamp {
+            self.system_time.read()
         }
     }
 
