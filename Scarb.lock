@@ -5,23 +5,6 @@ version = 1
 name = "fulfillment"
 version = "0.2.0"
 dependencies = [
- "openzeppelin",
- "snforge_std",
- "starkware_utils",
- "starkware_utils_testing",
-]
-
-[[package]]
-name = "openzeppelin"
-version = "3.0.0"
-source = "registry+https://scarbs.xyz/"
-checksum = "sha256:ded6f53e0b50a3583f72c556d9ca508e627d175c6f01a2f5124f2e9a052ac985"
-dependencies = [
- "openzeppelin_access",
- "openzeppelin_account",
- "openzeppelin_finance",
- "openzeppelin_governance",
- "openzeppelin_interfaces",
  "openzeppelin_introspection",
  "openzeppelin_merkle_tree",
  "openzeppelin_presets",
