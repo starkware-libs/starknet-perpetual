@@ -5,7 +5,7 @@ members = ["workspace/apps/perpetuals/contracts", "workspace/vault/", "workspace
 starknet = "2.15.0"
 assert_macros = "2.15.0"
 openzeppelin = "3.0.0"
-snforge_std = "0.54.1"
+snforge_std = "0.51.1"
 starkware_utils = { git = "https://github.com/starkware-libs/starkware-starknet-utils", branch = "main" }
 starkware_utils_testing = { git = "https://github.com/starkware-libs/starkware-starknet-utils", branch = "main" }
 
