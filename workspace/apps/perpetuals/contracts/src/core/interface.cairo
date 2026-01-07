@@ -166,4 +166,6 @@ pub trait ICore<TContractState> {
         order_b: Order,
     );
     fn forced_trade(ref self: TContractState, order_a: Order, order_b: Order);
+    fn update_system_time(ref self: TContractState, operator_nonce: u64, new_timestamp: Timestamp);
+    fn get_system_time(self: @TContractState) -> Timestamp;
 }
