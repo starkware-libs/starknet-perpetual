@@ -421,6 +421,16 @@ pub(crate) mod VaultsManager {
             let vault_config = self.vaults.get_vault_config_for_asset(order.base_asset_id);
             let vault_asset = self.assets.get_asset_config(vault_config.asset_id);
 
+            let vault_token_contract = vault_asset.token_contract.expect('TODO');
+            let vault_dispatcher = IProtocolVaultDispatcher {
+                contract_address: vault_token_contract,
+            };
+            let vault_erc4626_dispatcher = IERC4626Dispatcher {
+                contract_address: vault_token_contract,
+            };
+            let vault_erc20Dispatcher = IERC20Dispatcher { contract_address: vault_token_contract };
+
+            
             let vault_position_id: PositionId = vault_config.position_id.into();
             let redeeming_position_id = order.source_position;
             let receiving_position_id = order.receive_position;
@@ -463,8 +473,8 @@ pub(crate) mod VaultsManager {
                     .update_fulfillment(
                         position_id: redeeming_position_id,
                         hash: order_hash,
-                        order_base_amount: order.base_amount.try_into().unwrap(),
-                        actual_base_amount: actual_shares_user.try_into().unwrap(),
+                        order_base_amount: order.base_amount,
+                        actual_base_amount: actual_shares_user,
                     );
             }
 
@@ -479,21 +489,9 @@ pub(crate) mod VaultsManager {
                 .update_fulfillment(
                     position_id: vault_position_id,
                     hash: vault_order_hash,
-                    order_base_amount: vault_approval.base_amount.try_into().unwrap(),
-                    actual_base_amount: -actual_shares_user.try_into().unwrap(),
+                    order_base_amount: vault_approval.base_amount,
+                    actual_base_amount: -actual_shares_user,
                 );
-
-            let vault_dispatcher = IProtocolVaultDispatcher {
-                contract_address: vault_asset.token_contract.expect('NOT_ERC20'),
-            };
-
-            let vault_erc4626_dispatcher = IERC4626Dispatcher {
-                contract_address: vault_asset.token_contract.expect('NOT_ERC4626'),
-            };
-
-            let vault_erc20Dispatcher = IERC20Dispatcher {
-                contract_address: vault_asset.token_contract.expect('NOT_ERC20'),
-            };
 
             let pnl_collateral_dispatcher = self.assets.get_base_collateral_token_contract();
             let perps_contract_balance_before = pnl_collateral_dispatcher
@@ -601,11 +599,7 @@ pub(crate) mod VaultsManager {
                 //spot have constant risk factors
                 let risk_factor = self.assets.get_asset_risk_factor(asset_id, 1_i64.into(), price);
 
-                let value_of_shares_sold: u128 = price
-                    .mul(qty)
-                    .abs()
-                    .try_into()
-                    .expect('REDEEM_VAULT_SHARES_OVERFLOW');
+                let value_of_shares_sold: u128 = price.mul(qty).abs();
 
                 let risk_of_shares_sold: u128 = risk_factor.mul(value_of_shares_sold);
                 let collateral_received: u128 = actual_collateral_user.abs().try_into().unwrap();
