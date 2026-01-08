@@ -1501,7 +1501,7 @@ fn test_rf_update_invalid_less_frequent_array() {
 
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     // Test:
-    asset_dispatcher
+    asset_dispatcher 
         .update_asset_risk_factor(
             operator_nonce: 0,
             asset_id: synthetic_id_1,
