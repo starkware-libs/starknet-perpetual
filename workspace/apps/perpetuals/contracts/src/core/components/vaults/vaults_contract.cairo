@@ -588,12 +588,6 @@ pub(crate) mod VaultsManager {
                     position: vault_position, asset_id: self.assets.get_collateral_id(),
                 );
 
-            self
-                .positions
-                .validate_asset_balance_is_not_negative(
-                    position: redeeming_position, asset_id: order.base_asset_id,
-                );
-
             // user health checks
             if (self.positions.is_liquidatable(redeeming_position_id)) {
                 let (asset_id, qty) = redeeming_position_diff.asset_diff.unwrap();
@@ -634,6 +628,12 @@ pub(crate) mod VaultsManager {
                 .positions
                 .apply_diff(
                     position_id: redeeming_position_id, position_diff: redeeming_position_diff,
+                );
+
+            self
+                .positions
+                .validate_asset_balance_is_not_negative(
+                    position: redeeming_position, asset_id: order.base_asset_id,
                 );
 
             // no need to validate health as can only receive collateral
