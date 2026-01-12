@@ -1366,3 +1366,57 @@ fn test_redeem_cannot_be_called_except_by_perps_contract() {
             owner: vault_config.deployed_vault.owning_account.address,
         );
 }
+
+#[test]
+#[should_panic(expected: 'ASSET_BALANCE_NEGATIVE')]
+fn test_redeem_vault_shares_negative() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let vault_user = state.new_user_with_position_id(333_u32.into());
+    let redeeming_user = state.new_user_with_position_id(555_u32.into());
+    let user = state.new_user_with_position_id(111_u32.into());
+    let vault_init_deposit = state
+        .facade
+        .deposit(vault_user.account, vault_user.position_id, 400_u64);
+    state.facade.process_deposit(vault_init_deposit);
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user);
+
+    state.facade.price_tick(@vault_config.asset_info, 1);
+    state.facade.process_deposit(state.facade.deposit(user.account, user.position_id, 10000_u64));
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(redeeming_user.account, redeeming_user.position_id, 10000_u64),
+        );
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit_into_vault(
+                    vault: vault_config,
+                    amount_to_invest: 1000,
+                    min_shares_to_receive: 500,
+                    depositing_user: user,
+                    receiving_user: user,
+                ),
+        );
+
+    // Redeeming user position before redeem:
+    // 10000 x USDC @ 1usd
+    // 0 x vault_shares @ 1usd
+    // total value = 10000 + 0 = 10000
+    // total risk = 0
+    state
+        .facade
+        .redeem_from_vault(
+            vault: vault_config,
+            withdrawing_user: redeeming_user,
+            receiving_user: redeeming_user,
+            shares_to_burn_user: 400,
+            value_of_shares_user: 400,
+            shares_to_burn_vault: 400,
+            value_of_shares_vault: 400,
+            actual_shares_user: 400,
+            actual_collateral_user: 400,
+        );
+}
