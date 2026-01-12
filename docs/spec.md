@@ -32,6 +32,7 @@ classDiagram
         invest_in_vault()
         redeem_from_vault()
         liquidate_vault_shares()
+        liquidate_spot_asset()
     }
     class Position{
         version: u8,
@@ -4131,6 +4132,108 @@ Only the Operator can execute.
 - INVALID_QUOTE_FEE_AMOUNT
 - SYNTHETIC_NOT_ACTIVE
 - NOT_SYNTHETIC
+- INVALID_QUOTE_AMOUNT_SIGN
+- INVALID_ACTUAL_BASE_SIGN
+- INVALID_ACTUAL_QUOTE_SIGN
+- ILLEGAL_BASE_TO_QUOTE_RATIO
+- ILLEGAL_FEE_TO_QUOTE_RATIO
+- POSITION_IS_NOT_LIQUIDATABLE
+- POSITION_IS_NOT_HEALTHIER
+- POSITION_NOT_HEALTHY_NOR_HEALTHIER
+
+### Liquidate Spot Asset
+When a user position [is liquidatable](#liquidatable), the system can match the liquidated position with a signed order without a signature of the liquidated position to make it [healthier](#is-healthier).
+
+```rust
+    fn liquidate_spot_asset(
+        ref self: ContractState,
+        operator_nonce: u64,
+        liquidated_position_id: PositionId,
+        liquidated_asset_id: AssetId,
+        liquidator_order: LimitOrder,
+        liquidator_signature: Signature,
+        actual_amount_spot_collateral: i64,
+        actual_amount_base_collateral: i64,
+        actual_liquidator_fee: u64,
+        liquidated_fee_amount: u64,
+    );
+```
+
+**Access Control:**
+
+Only the Operator can execute.
+
+**Hash:**
+
+[get\_message\_hash](#get-message-hash) on [LimitOrder](#limitorder) with position `public_key`.
+
+**Validations:**
+
+1. [Pausable check](#pausable)
+2. [Operator Nonce check](#operator-nonce)
+3. [Funding validation](#funding)
+4. [Price validation](#price)
+5. [public key signature](#public-key-signature) on
+6. All fees amounts are non negative (actuals and order)
+7. [Expiration validation](#expiration)
+8. [Spot asset check](#asset)
+9. Liquidator order is not from the same position as the liquidated position.
+10. Positions are not `FEE_POSITION`.
+11. Positions are not `INSURANCE_FUND_POSITION`.
+12. `liquidator_order.quote_asset_id` and `liquidator_order.fee_asset_id` are the collateral asset id.
+13. `liquidator_order.base.asset_id` is registered and active spot asset.
+14. `liquidated_position_id.is_liquidatable()==true`
+15. `|liquidator_order.quote_amount| > liquidator_order.fee_amount.`
+16. `liquidator_order.quote_amount` and `liquidator_order.base_amount` have opposite signs and are non-zero.
+17. `liquidator_order.base_amount` and `actual_amount_spot_collateral` have opposite signs.
+18. `liquidator_order.quote.amount` and `actual_amount_base_collateral` have opposite signs.
+19. `actual_amount_spot_collateral` is negative and `actual_amount_base_collateral` is positive.
+20. `|fulfillment[liquidator_order_hash]|+|actual_amount_spot_collateral|≤|liquidator_order.base.amount|`
+21. `actual_liquidator_fee / |actual_amount_base_collateral| ≤ liquidator_order.fee.amount / |liquidator_order.quote.amount|`
+22. `actual_amount_spot_collateral / |actual_amount_base_collateral| ≤ - liquidator_order.base.amount / |liquidator_order.quote.amount|`
+23. Check interest amounts in range for both positions.
+24. Check liquidated position spot asset balance is bigger than `actual_amount_spot_collateral` in absolute value
+
+
+**Logic:**
+
+1. Run validations
+2. Add `actual_amount_spot_collateral` to the `liquidated_position_id` spot asset id.
+3. Subtract `actual_amount_spot_collateral` from the `liquidator_order.position_id` spot asset id.
+4. Add `actual_amount_base_collateral` to the `liquidated_position_id` collateral.
+5. Subtract `actual_amount_base_collateral` from the `liquidator_order.position_id` collateral.
+6. Subtract `actual_liquidator_fee` from the `liquidator_order.position_id` collateral.
+7. Add `actual_liquidator_fee` to the `fee_position` collateral.
+8. Subtract `liquidated_fee_amount` from the `liquidated_position_id` collateral.
+9. Add `liquidated_fee_amount` to the `insurance_fund` collateral.
+10. Add interest amounts to collateral balances for both positions, including timestamps.
+11. `fulfillment[liquidator_order_hash] += |actual_amount_base_liquidated|`
+12. [Fundamental validation](#fundamental) for both positions.
+
+**Emits:**
+
+[Liquidate](#liquidate)
+
+**Errors:**
+
+- PAUSED
+- ONLY\_OPERATOR
+- INVALID\_NONCE
+- FUNDING\_EXPIRED
+- INVALID\_ASSET\_TYPE
+- SYNTHETIC\_EXPIRED\_PRICE
+- INVALID\_POSITION
+- INVALID_STARK_KEY_SIGNATURE
+- FULFILLMENT_EXCEEDED
+- INVALID_TRADE_SAME_POSITIONS
+- CANT_TRADE_WITH_FEE_POSITION
+- INSURANCE_FUND_POSITION
+- INVALID\_ZERO\_AMOUNT
+- ORDER\_EXPIRED
+- INVALID_TRADE_WRONG_AMOUNT_SIGN
+- INVALID_AMOUNT_SIGN
+- INVALID_QUOTE_FEE_AMOUNT
+- SYNTHETIC_NOT_ACTIVE
 - INVALID_QUOTE_AMOUNT_SIGN
 - INVALID_ACTUAL_BASE_SIGN
 - INVALID_ACTUAL_QUOTE_SIGN

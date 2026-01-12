@@ -994,6 +994,34 @@ pub mod Core {
         fn get_system_time(self: @ContractState) -> Timestamp {
             self.system_time.read()
         }
+        fn liquidate_spot_asset(
+            ref self: ContractState,
+            operator_nonce: u64,
+            liquidated_position_id: PositionId,
+            liquidator_order: LimitOrder,
+            liquidator_signature: Signature,
+            actual_amount_spot_collateral: i64,
+            actual_amount_base_collateral: i64,
+            actual_liquidator_fee: u64,
+            liquidated_fee_amount: u64,
+        ) {
+            self.pausable.assert_not_paused();
+            self.assets.validate_assets_integrity();
+            self.operator_nonce.use_checked_nonce(:operator_nonce);
+
+            self
+                .external_components
+                ._get_liquidation_manager_dispatcher()
+                .liquidate_spot_asset(
+                    :liquidated_position_id,
+                    :liquidator_order,
+                    :liquidator_signature,
+                    :actual_amount_spot_collateral,
+                    :actual_amount_base_collateral,
+                    :actual_liquidator_fee,
+                    :liquidated_fee_amount,
+                );
+        }
     }
 
     #[generate_trait]

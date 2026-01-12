@@ -168,4 +168,15 @@ pub trait ICore<TContractState> {
     fn forced_trade(ref self: TContractState, operator_nonce: u64, order_a: Order, order_b: Order);
     fn update_system_time(ref self: TContractState, operator_nonce: u64, new_timestamp: Timestamp);
     fn get_system_time(self: @TContractState) -> Timestamp;
+    fn liquidate_spot_asset(
+        ref self: TContractState,
+        operator_nonce: u64,
+        liquidated_position_id: PositionId,
+        liquidator_order: LimitOrder,
+        liquidator_signature: Signature,
+        actual_amount_spot_collateral: i64,
+        actual_amount_base_collateral: i64,
+        actual_liquidator_fee: u64,
+        liquidated_fee_amount: u64,
+    );
 }

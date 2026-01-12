@@ -1,7 +1,7 @@
 use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::position::PositionId;
 use starkware_utils::signature::stark::Signature;
-use crate::core::types::order::Order;
+use crate::core::types::order::{LimitOrder, Order};
 
 
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
@@ -35,6 +35,17 @@ pub trait ILiquidationManager<TContractState> {
         liquidator_order: Order,
         actual_amount_base_liquidated: i64,
         actual_amount_quote_liquidated: i64,
+        actual_liquidator_fee: u64,
+        liquidated_fee_amount: u64,
+    );
+
+    fn liquidate_spot_asset(
+        ref self: TContractState,
+        liquidated_position_id: PositionId,
+        liquidator_order: LimitOrder,
+        liquidator_signature: Signature,
+        actual_amount_spot_collateral: i64,
+        actual_amount_base_collateral: i64,
         actual_liquidator_fee: u64,
         liquidated_fee_amount: u64,
     );
@@ -72,13 +83,16 @@ pub(crate) mod LiquidationManager {
     use crate::core::components::assets::errors::{NO_SUCH_ASSET, SYNTHETIC_NOT_EXISTS};
     use crate::core::components::external_components::interface::EXTERNAL_COMPONENT_LIQUIDATIONS;
     use crate::core::components::external_components::named_component::ITypedComponent;
-    use crate::core::errors::CANT_LIQUIDATE_IF_POSITION;
+    use crate::core::errors::{
+        CANT_LIQUIDATE_IF_POSITION, CANT_TRADE_WITH_FEE_POSITION, INVALID_SAME_POSITIONS,
+    };
     use crate::core::types::asset::synthetic::AssetType;
     use crate::core::types::order::ValidateableOrderTrait;
     use crate::core::types::position::{Position, PositionDiff};
     use crate::core::utils::{validate_signature, validate_trade};
     use crate::core::value_risk_calculator::liquidated_position_validations;
-    use super::{ILiquidationManager, Liquidate, Order, Signature};
+    use super::{ILiquidationManager, LimitOrder, Liquidate, Order, Signature};
+
 
     #[event]
     #[derive(Drop, starknet::Event)]
@@ -202,13 +216,7 @@ pub(crate) mod LiquidationManager {
             };
 
             /// Validations:
-            self
-                ._validate_liquidate(
-                    :liquidated_order,
-                    :liquidator_order,
-                    :liquidator_signature,
-                    :actual_liquidator_fee,
-                );
+            self._validate_liquidate(:liquidated_order, :liquidator_order, :actual_liquidator_fee);
 
             // Liquidator signature validation:
             let liquidator_position = self.positions.get_position_snapshot(liquidator_position_id);
@@ -255,6 +263,122 @@ pub(crate) mod LiquidationManager {
                         actual_amount_quote_liquidated,
                         actual_liquidator_fee,
                         insurance_fund_fee_asset_id: self.assets.get_collateral_id(),
+                        insurance_fund_fee_amount: liquidated_fee_amount,
+                        liquidator_order_hash: liquidator_order_hash,
+                    },
+                );
+        }
+
+        /// Executes a spot asset liquidation of a user position.
+        ///
+        /// Validations:
+        /// - The contract must not be paused.
+        /// - The `operator_nonce` must be valid.
+        /// - The funding validation interval has not passed since the last funding tick.
+        /// - The prices of all assets in the system are valid.
+        /// - Validates liquidated position is liquidatable.
+        /// - Validates the liquidated and liquidator positions are not Insurance Fund Position.
+        /// - Validates liquidated asset is a spot asset.
+        /// - Validates the sign of 'actual amount spot collateral' is negative.
+        /// - Validates the liquidated position has enough spot collateral.
+        /// - Validates the liquidated position is healthy or healthier after the execution.
+        /// - Validates the liquidator position is healthy or healthier after the execution.
+        ///
+        /// Execution:
+        /// - Subtract the fees from each position's collateral.
+        /// - Add the fees to the `fee_position`.
+        /// - Update orders' position, based on `actual_amount_spot_collateral`.
+        /// - Adjust collateral balances.
+        /// - Update liquidator order fulfillment.
+        fn liquidate_spot_asset(
+            ref self: ContractState,
+            liquidated_position_id: PositionId,
+            liquidator_order: LimitOrder,
+            liquidator_signature: Signature,
+            actual_amount_spot_collateral: i64,
+            actual_amount_base_collateral: i64,
+            actual_liquidator_fee: u64,
+            liquidated_fee_amount: u64,
+        ) {
+            /// Validations:
+            let collateral_id = self.assets.get_collateral_id();
+            let entry = (@self).assets.asset_config.entry(liquidator_order.base_asset_id).as_ptr();
+            let liquidated_asset_type = SyntheticTrait::get_asset_type(entry).expect(NO_SUCH_ASSET);
+            if liquidated_asset_type != AssetType::SPOT_COLLATERAL {
+                panic_with_felt252('INVALID_ASSET_TYPE');
+            }
+
+            let liquidator_position_id = liquidator_order.source_position;
+            let liquidator_position = self.positions.get_position_snapshot(liquidator_position_id);
+
+            assert(
+                liquidator_order.receive_position != INSURANCE_FUND_POSITION,
+                CANT_LIQUIDATE_IF_POSITION,
+            );
+            assert(
+                liquidator_order.receive_position != liquidated_position_id, INVALID_SAME_POSITIONS,
+            );
+            assert(liquidator_order.receive_position != FEE_POSITION, CANT_TRADE_WITH_FEE_POSITION);
+
+            let liquidated_order = LimitOrder {
+                source_position: liquidated_position_id,
+                receive_position: liquidated_position_id,
+                base_asset_id: liquidator_order.base_asset_id,
+                base_amount: actual_amount_spot_collateral,
+                quote_asset_id: collateral_id,
+                quote_amount: actual_amount_base_collateral,
+                fee_asset_id: collateral_id,
+                fee_amount: liquidated_fee_amount,
+                salt: Zero::zero(),
+                expiration: Time::now(),
+            };
+
+            self._validate_liquidate(:liquidated_order, :liquidator_order, :actual_liquidator_fee);
+
+            // Liquidator signature validation:
+            let liquidator_order_hash = validate_signature(
+                public_key: liquidator_position.get_owner_public_key(),
+                message: liquidator_order,
+                signature: liquidator_signature,
+            );
+
+            // Validate and update fulfillment.
+            self
+                .fulfillment_tracking
+                .update_fulfillment(
+                    position_id: liquidator_position_id,
+                    hash: liquidator_order_hash,
+                    order_base_amount: liquidator_order.base_amount,
+                    // Passing the negative of actual amounts to `liquidator_order` as it is linked
+                    // to liquidated_order.
+                    actual_base_amount: -liquidated_order.base_amount,
+                );
+
+            self
+                ._execute_liquidate(
+                    :liquidated_position_id,
+                    :liquidator_position_id,
+                    :liquidated_order,
+                    :liquidator_order,
+                    :liquidated_fee_amount,
+                    :actual_liquidator_fee,
+                );
+
+            self
+                .emit(
+                    Liquidate {
+                        liquidated_position_id,
+                        liquidator_order_position_id: liquidator_position_id,
+                        liquidator_order_base_asset_id: liquidator_order.base_asset_id,
+                        liquidator_order_base_amount: liquidator_order.base_amount,
+                        liquidator_order_quote_asset_id: liquidator_order.quote_asset_id,
+                        liquidator_order_quote_amount: liquidator_order.quote_amount,
+                        liquidator_order_fee_asset_id: liquidator_order.fee_asset_id,
+                        liquidator_order_fee_amount: liquidator_order.fee_amount,
+                        actual_amount_base_liquidated: actual_amount_spot_collateral,
+                        actual_amount_quote_liquidated: actual_amount_base_collateral,
+                        actual_liquidator_fee: actual_liquidator_fee,
+                        insurance_fund_fee_asset_id: collateral_id,
                         insurance_fund_fee_amount: liquidated_fee_amount,
                         liquidator_order_hash: liquidator_order_hash,
                     },
@@ -321,7 +445,6 @@ pub(crate) mod LiquidationManager {
             ref self: ContractState,
             liquidated_order: T,
             liquidator_order: T,
-            liquidator_signature: Signature,
             actual_liquidator_fee: u64,
         ) {
             let liquidated_position_id = liquidated_order.position_id();
@@ -367,13 +490,45 @@ pub(crate) mod LiquidationManager {
                     (liquidated_order.base_asset_id(), liquidated_order.base_amount().into()),
                 ),
             };
-            // Passing the negative of actual amounts to order_b as it is linked to order_a.
-            let liquidator_position_diff = PositionDiff {
-                collateral_diff: -liquidated_order.quote_amount().into()
-                    - actual_liquidator_fee.into(),
-                asset_diff: Option::Some(
-                    (liquidated_order.base_asset_id(), -liquidated_order.base_amount().into()),
-                ),
+
+            let (
+                liquidator_position_diff, optional_liquidator_receive_position_diff,
+            ): (PositionDiff, Option<PositionDiff>) =
+                if liquidator_order
+                .receive_position() != liquidator_order
+                .position_id() {
+                (
+                    PositionDiff {
+                        collateral_diff: -liquidated_order.quote_amount().into()
+                            - actual_liquidator_fee.into(),
+                        asset_diff: Option::None,
+                    },
+                    Option::Some(
+                        PositionDiff {
+                            collateral_diff: Zero::zero(),
+                            asset_diff: Option::Some(
+                                (
+                                    liquidated_order.base_asset_id(),
+                                    -liquidated_order.base_amount().into(),
+                                ),
+                            ),
+                        },
+                    ),
+                )
+            } else {
+                (
+                    PositionDiff {
+                        collateral_diff: -liquidated_order.quote_amount().into()
+                            - actual_liquidator_fee.into(),
+                        asset_diff: Option::Some(
+                            (
+                                liquidated_order.base_asset_id(),
+                                -liquidated_order.base_amount().into(),
+                            ),
+                        ),
+                    },
+                    Option::None,
+                )
             };
 
             /// Validations - Fundamentals:
@@ -419,6 +574,16 @@ pub(crate) mod LiquidationManager {
                 .apply_diff(
                     position_id: INSURANCE_FUND_POSITION, position_diff: insurance_position_diff,
                 );
+
+            if let Option::Some(liquidator_receive_position_diff) =
+                optional_liquidator_receive_position_diff {
+                self
+                    .positions
+                    .apply_diff(
+                        position_id: liquidator_order.receive_position(),
+                        position_diff: liquidator_receive_position_diff,
+                    );
+            }
         }
     }
 }
