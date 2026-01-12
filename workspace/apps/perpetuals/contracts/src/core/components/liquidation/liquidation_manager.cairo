@@ -38,6 +38,18 @@ pub trait ILiquidationManager<TContractState> {
         actual_liquidator_fee: u64,
         liquidated_fee_amount: u64,
     );
+
+    fn liquidate_spot_asset(
+        ref self: TContractState,
+        liquidated_position_id: PositionId,
+        liquidated_asset_id: AssetId,
+        liquidator_order: LimitOrder,
+        liquidator_signature: Signature,
+        actual_amount_spot_collateral: i64,
+        actual_amount_base_collateral: i64,
+        actual_liquidator_fee: u64,
+        liquidated_fee_amount: u64,
+    );
 }
 
 #[starknet::contract]
@@ -57,6 +69,7 @@ pub(crate) mod LiquidationManager {
     use perpetuals::core::components::positions::Positions::{
         FEE_POSITION, INSURANCE_FUND_POSITION, InternalTrait as PositionsInternal,
     };
+    use perpetuals::core::components::positions::interface::IPositions;
     use perpetuals::core::components::snip::SNIP12MetadataImpl;
     use perpetuals::core::types::position::{PositionId, PositionTrait};
     use starknet::storage::StoragePath;
@@ -76,7 +89,7 @@ pub(crate) mod LiquidationManager {
     use crate::core::types::position::{Position, PositionDiff};
     use crate::core::utils::{validate_signature, validate_trade};
     use crate::core::value_risk_calculator::liquidated_position_validations;
-    use super::{ILiquidationManager, LimitOrder, Liquidate, Order, Signature};
+    use super::{AssetId, ILiquidationManager, LimitOrder, Liquidate, Order, Signature};
 
 
     #[event]
@@ -255,6 +268,134 @@ pub(crate) mod LiquidationManager {
                         actual_amount_quote_liquidated,
                         actual_liquidator_fee,
                         insurance_fund_fee_asset_id: self.assets.get_collateral_id(),
+                        insurance_fund_fee_amount: liquidated_fee_amount,
+                        liquidator_order_hash: liquidator_order_hash,
+                    },
+                );
+        }
+
+        /// Executes a spot asset liquidation of a user position.
+        ///
+        /// Validations:
+        /// - The contract must not be paused.
+        /// - The `operator_nonce` must be valid.
+        /// - The funding validation interval has not passed since the last funding tick.
+        /// - The prices of all assets in the system are valid.
+        /// - Validates liquidated position is liquidatable.
+        /// - Validates the liquidated and liquidator positions are not Insurance Fund Position.
+        /// - Validates liquidated position has no synthetic assets.
+        /// - Validates liquidated position has no vault share collateral.
+        /// - Validates liquidated asset is a spot asset.
+        /// - Validates the sign of 'actual amount spot collateral' is negative.
+        /// - Validates the liquidated position has enough spot collateral.
+        /// - Validates the liquidated position is healthy or healthier after the execution.
+        /// - Validates the liquidator position is healthy or healthier after the execution.
+        ///
+        /// Execution:
+        /// - Subtract the fees from each position's collateral.
+        /// - Add the fees to the `fee_position`.
+        /// - Update orders' position, based on `actual_amount_spot_collateral`.
+        /// - Adjust collateral balances.
+        /// - Update liquidator order fulfillment.
+        fn liquidate_spot_asset(
+            ref self: ContractState,
+            liquidated_position_id: PositionId,
+            liquidated_asset_id: AssetId,
+            liquidator_order: LimitOrder,
+            liquidator_signature: Signature,
+            actual_amount_spot_collateral: i64,
+            actual_amount_base_collateral: i64,
+            actual_liquidator_fee: u64,
+            liquidated_fee_amount: u64,
+        ) {
+            /// Validations:
+            let collateral_id = self.assets.get_collateral_id();
+            let liquidated_asset_config = self.assets.get_asset_config(liquidated_asset_id);
+            if liquidated_asset_config.asset_type != AssetType::SPOT_COLLATERAL {
+                panic_with_felt252('INVALID_ASSET_TYPE');
+            }
+
+            let liquidator_position_id = liquidator_order.source_position;
+            let liquidator_position = self.positions.get_position_snapshot(liquidator_position_id);
+            let liquidated_position_data = self
+                .positions
+                .get_position_assets(position_id: liquidated_position_id);
+
+            for asset_info in liquidated_position_data.assets {
+                let asset_config = self.assets.get_asset_config(*asset_info.id);
+                if (asset_config.asset_type == AssetType::SYNTHETIC
+                    || asset_config.asset_type == AssetType::VAULT_SHARE_COLLATERAL)
+                    && asset_info.balance.is_non_zero() {
+                    panic_with_felt252('POSITION_HAS_OTHER_ASSETS');
+                }
+            }
+
+            let liquidated_order = LimitOrder {
+                source_position: liquidated_position_id,
+                receive_position: liquidated_position_id,
+                base_asset_id: liquidated_asset_id,
+                base_amount: actual_amount_spot_collateral,
+                quote_asset_id: collateral_id,
+                quote_amount: actual_amount_base_collateral,
+                fee_asset_id: collateral_id,
+                fee_amount: liquidated_fee_amount,
+                salt: Zero::zero(),
+                expiration: Time::now(),
+            };
+
+            let (liquidated_position_diff, liquidator_position_diff) = self
+                ._validate_liquidate(
+                    :liquidated_order,
+                    :liquidator_order,
+                    :liquidator_signature,
+                    :liquidator_position,
+                    :actual_liquidator_fee,
+                );
+
+            // Liquidator signature validation:
+            let liquidator_order_hash = validate_signature(
+                public_key: liquidator_position.get_owner_public_key(),
+                message: liquidator_order,
+                signature: liquidator_signature,
+            );
+
+            // Validate and update fulfillment.
+            self
+                .fulfillment_tracking
+                .update_fulfillment(
+                    position_id: liquidator_position_id,
+                    hash: liquidator_order_hash,
+                    order_base_amount: liquidator_order.base_amount,
+                    // Passing the negative of actual amounts to `liquidator_order` as it is linked
+                    // to liquidated_order.
+                    actual_base_amount: -liquidated_order.base_amount,
+                );
+
+            self
+                ._execute_liquidate(
+                    :liquidated_position_id,
+                    :liquidator_position_id,
+                    :liquidated_position_diff,
+                    :liquidator_position_diff,
+                    :liquidated_fee_amount,
+                    :actual_liquidator_fee,
+                );
+
+            self
+                .emit(
+                    Liquidate {
+                        liquidated_position_id,
+                        liquidator_order_position_id: liquidator_position_id,
+                        liquidator_order_base_asset_id: liquidator_order.base_asset_id,
+                        liquidator_order_base_amount: liquidator_order.base_amount,
+                        liquidator_order_quote_asset_id: liquidator_order.quote_asset_id,
+                        liquidator_order_quote_amount: liquidator_order.quote_amount,
+                        liquidator_order_fee_asset_id: liquidator_order.fee_asset_id,
+                        liquidator_order_fee_amount: liquidator_order.fee_amount,
+                        actual_amount_base_liquidated: actual_amount_spot_collateral,
+                        actual_amount_quote_liquidated: actual_amount_base_collateral,
+                        actual_liquidator_fee: actual_liquidator_fee,
+                        insurance_fund_fee_asset_id: collateral_id,
                         insurance_fund_fee_amount: liquidated_fee_amount,
                         liquidator_order_hash: liquidator_order_hash,
                     },
