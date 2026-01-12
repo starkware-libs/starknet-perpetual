@@ -28,6 +28,8 @@ pub trait ValidateableOrderTrait<T> {
     fn fee_amount(self: @T) -> u64;
     // The expiration time of the order.
     fn expiration(self: @T) -> Timestamp;
+    // The receive position of the order.
+    fn receive_position(self: @T) -> PositionId;
 
     fn validate_against_actual_amounts(
         self: @T, actual_amount_base: i64, actual_amount_quote: i64, actual_fee: u64,
@@ -112,6 +114,9 @@ pub impl LimitOrderValidationTraitImpl of ValidateableOrderTrait<LimitOrder> {
     }
     fn expiration(self: @LimitOrder) -> Timestamp {
         *self.expiration
+    }
+    fn receive_position(self: @LimitOrder) -> PositionId {
+        *self.receive_position
     }
 }
 
@@ -214,6 +219,9 @@ impl OrderValidationTraitImpl of ValidateableOrderTrait<Order> {
     }
     fn expiration(self: @Order) -> Timestamp {
         *self.expiration
+    }
+    fn receive_position(self: @Order) -> PositionId {
+        *self.position_id
     }
 }
 
