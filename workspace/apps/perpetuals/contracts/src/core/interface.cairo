@@ -166,4 +166,13 @@ pub trait ICore<TContractState> {
         order_b: Order,
     );
     fn forced_trade(ref self: TContractState, order_a: Order, order_b: Order);
+    fn liquidate_spot_asset(
+        ref self: TContractState,
+        operator_nonce: u64,
+        liquidated_position_id: PositionId,
+        liquidated_asset_id: AssetId,
+        actual_amount_spot_collateral: i64,
+        actual_amount_base_collateral: i64,
+        liquidated_fee_amount: u64,
+    );
 }
