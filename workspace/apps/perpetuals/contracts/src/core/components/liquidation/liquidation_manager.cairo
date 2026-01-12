@@ -25,6 +25,15 @@ pub struct Liquidate {
     pub liquidator_order_hash: felt252,
 }
 
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct LiquidateSpotAsset {
+    #[key]
+    pub liquidated_position_id: PositionId,
+    pub liquidated_asset_id: AssetId,
+    pub actual_amount_spot_collateral: i64,
+    pub liquidated_fee_amount: u64,
+}
+
 #[starknet::interface]
 pub trait ILiquidationManager<TContractState> {
     fn liquidate(
@@ -38,12 +47,21 @@ pub trait ILiquidationManager<TContractState> {
         actual_liquidator_fee: u64,
         liquidated_fee_amount: u64,
     );
+
+    fn liquidate_spot_asset(
+        ref self: TContractState,
+        liquidated_position_id: PositionId,
+        liquidated_asset_id: AssetId,
+        actual_amount_spot_collateral: i64,
+        liquidated_fee_amount: u64,
+    );
 }
 
 #[starknet::contract]
 pub(crate) mod LiquidationManager {
     use core::num::traits::Zero;
     use core::panic_with_felt252;
+    use core::panics::panic_with_byte_array;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
@@ -57,8 +75,11 @@ pub(crate) mod LiquidationManager {
     use perpetuals::core::components::positions::Positions::{
         FEE_POSITION, INSURANCE_FUND_POSITION, InternalTrait as PositionsInternal,
     };
+    use perpetuals::core::components::positions::interface::IPositions;
     use perpetuals::core::components::snip::SNIP12MetadataImpl;
+    use perpetuals::core::types::balance::Balance;
     use perpetuals::core::types::position::{PositionId, PositionTrait};
+    use perpetuals::core::types::price::{Price, PriceMulTrait};
     use starknet::storage::StoragePath;
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalImpl as PausableInternal;
@@ -72,16 +93,18 @@ pub(crate) mod LiquidationManager {
     use crate::core::components::external_components::interface::EXTERNAL_COMPONENT_LIQUIDATIONS;
     use crate::core::components::external_components::named_component::ITypedComponent;
     use crate::core::errors::CANT_LIQUIDATE_IF_POSITION;
+    use crate::core::types::asset::synthetic::AssetType;
     use crate::core::types::position::{Position, PositionDiff};
     use crate::core::utils::{validate_signature, validate_trade};
     use crate::core::value_risk_calculator::liquidated_position_validations;
-    use super::{ILiquidationManager, Liquidate, Order};
+    use super::{AssetId, ILiquidationManager, Liquidate, LiquidateSpotAsset, Order};
 
 
     #[event]
     #[derive(Drop, starknet::Event)]
     pub enum Event {
         Liquidate: Liquidate,
+        LiquidateSpotAsset: LiquidateSpotAsset,
         #[flat]
         FulfillmentEvent: FulfillmentComponent::Event,
         #[flat]
@@ -318,6 +341,125 @@ pub(crate) mod LiquidationManager {
                         insurance_fund_fee_asset_id: collateral_id,
                         insurance_fund_fee_amount: liquidated_fee_amount,
                         liquidator_order_hash: liquidator_order_hash,
+                    },
+                );
+        }
+
+        /// Executes a spot asset liquidation of a user position.
+        ///
+        /// Validations:
+        /// - The contract must not be paused.
+        /// - The `operator_nonce` must be valid.
+        /// - The funding validation interval has not passed since the last funding tick.
+        /// - The prices of all assets in the system are valid.
+        /// - Validates liquidated position is liquidatable.
+        /// - Validates the liquidated position is not Insurance Fund Position.
+        /// - Validates liquidated position has no synthetic assets.
+        /// - Validates liquidated position has no vault share collateral.
+        /// - Validates liquidated asset is a spot asset.
+        /// - Ensures the fee amount is positive.
+        /// - Ensures the sign of actual amount spot collateral is negative.
+        ///
+        /// Execution:
+        /// - Add 'actual_amount_base_collateral' to the base collateral balance of the liquidated
+        /// position.
+        /// - Subtract the fee from the base collateral balance of the liquidated position.
+        /// - Subtract the actual amount spot collateral from the spot collateral balance of the
+        /// liquidated position.
+        /// - Add the fee to the `fee_position`.
+        /// - Perform fundamental validation for the liquidated position after the execution.
+        fn liquidate_spot_asset(
+            ref self: ContractState,
+            liquidated_position_id: PositionId,
+            liquidated_asset_id: AssetId,
+            actual_amount_spot_collateral: i64,
+            liquidated_fee_amount: u64,
+        ) {
+            // Validations.
+            assert(
+                self.positions.is_liquidatable(position_id: liquidated_position_id),
+                'POSITION_NOT_LIQUIDATABLE',
+            );
+            assert(liquidated_position_id != INSURANCE_FUND_POSITION, CANT_LIQUIDATE_IF_POSITION);
+            if (actual_amount_spot_collateral >= 0) {
+                let err = format!(
+                    "INVALID_ACTUAL_SHARES_AMOUNT: {}", actual_amount_spot_collateral,
+                );
+                panic_with_byte_array(err: @err);
+            }
+
+            if (liquidated_fee_amount <= 0) {
+                let err = format!("INVALID_FEE_AMOUNT: {}", liquidated_fee_amount);
+                panic_with_byte_array(err: @err);
+            }
+
+            let liquidated_asset_config = self.assets.get_asset_config(liquidated_asset_id);
+            if liquidated_asset_config.asset_type != AssetType::SPOT_COLLATERAL {
+                panic_with_felt252('INVALID_ASSET_TYPE');
+            }
+
+            let liquidated_position_data = self
+                .positions
+                .get_position_assets(position_id: liquidated_position_id);
+            let liquidated_position = self
+                .positions
+                .get_position_snapshot(position_id: liquidated_position_id);
+
+            for asset_info in liquidated_position_data.assets {
+                let asset_config = self.assets.get_asset_config(*asset_info.id);
+                if (asset_config.asset_type == AssetType::SYNTHETIC
+                    || asset_config.asset_type == AssetType::VAULT_SHARE_COLLATERAL)
+                    && asset_info.balance.is_non_zero() {
+                    panic_with_felt252('POSITION_HAS_SYNTHETIC_ASSETS');
+                }
+            }
+
+            //Execution:
+            let liquidated_asset_market_price: Price = self
+                .assets
+                .get_timely_data(liquidated_asset_id)
+                .price;
+            let actual_amount_spot_collateral_balance: Balance = actual_amount_spot_collateral
+                .into();
+            let calculated_base_collateral_amount = liquidated_asset_market_price
+                .mul(rhs: actual_amount_spot_collateral_balance);
+
+            let liquidated_position_diff = PositionDiff {
+                collateral_diff: calculated_base_collateral_amount.try_into().unwrap()
+                    - liquidated_fee_amount.into(),
+                asset_diff: Option::Some(
+                    (liquidated_asset_id, actual_amount_spot_collateral.into()),
+                ),
+            };
+            let fee_position_diff = PositionDiff {
+                collateral_diff: liquidated_fee_amount.into(), asset_diff: Option::None,
+            };
+
+            /// Validations - Fundamentals:
+            self
+                .positions
+                .validate_healthy_or_healthier_position(
+                    position_id: liquidated_position_id,
+                    position: liquidated_position,
+                    position_diff: liquidated_position_diff,
+                    tvtr_before: Default::default(),
+                );
+
+            // Apply Diffs.
+            self
+                .positions
+                .apply_diff(
+                    position_id: liquidated_position_id, position_diff: liquidated_position_diff,
+                );
+            self.positions.apply_diff(position_id: FEE_POSITION, position_diff: fee_position_diff);
+
+            self
+                .emit(
+                    LiquidateSpotAsset {
+                        liquidated_position_id,
+                        liquidated_asset_id,
+                        actual_amount_spot_collateral,
+                        liquidated_fee_amount,
                     },
                 );
         }

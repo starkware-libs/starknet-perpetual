@@ -72,6 +72,12 @@ pub impl BalanceIntoI1128 of Into<Balance, i128> {
     }
 }
 
+pub impl TryIntoI128 of TryInto<i128, Balance> {
+    fn try_into(self: i128) -> Option<Balance> {
+        Some(Balance { value: self.try_into().unwrap() })
+    }
+}
+
 pub impl BalanceZeroImpl of Zero<Balance> {
     fn zero() -> Balance {
         Balance { value: 0 }

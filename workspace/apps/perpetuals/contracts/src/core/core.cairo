@@ -953,6 +953,29 @@ pub mod Core {
                     },
                 );
         }
+
+        fn liquidate_spot_asset(
+            ref self: ContractState,
+            operator_nonce: u64,
+            liquidated_position_id: PositionId,
+            liquidated_asset_id: AssetId,
+            actual_amount_spot_collateral: i64,
+            liquidated_fee_amount: u64,
+        ) {
+            self.pausable.assert_not_paused();
+            self.assets.validate_assets_integrity();
+            self.operator_nonce.use_checked_nonce(:operator_nonce);
+
+            self
+                .external_components
+                ._get_liquidation_manager_dispatcher()
+                .liquidate_spot_asset(
+                    :liquidated_position_id,
+                    :liquidated_asset_id,
+                    :actual_amount_spot_collateral,
+                    :liquidated_fee_amount,
+                );
+        }
     }
 
     #[generate_trait]
