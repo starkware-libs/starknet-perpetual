@@ -173,6 +173,23 @@ pub struct Order {
     pub salt: felt252,
 }
 
+pub impl OrderIntoLimitOrderImpl of Into<Order, LimitOrder> {
+    fn into(self: Order) -> LimitOrder {
+        LimitOrder {
+            source_position: self.position_id,
+            receive_position: self.position_id,
+            base_asset_id: self.base_asset_id,
+            base_amount: self.base_amount,
+            quote_asset_id: self.quote_asset_id,
+            quote_amount: self.quote_amount,
+            fee_asset_id: self.fee_asset_id,
+            fee_amount: self.fee_amount,
+            expiration: self.expiration,
+            salt: self.salt,
+        }
+    }
+}
+
 impl OrderValidationTraitImpl of ValidateableOrderTrait<Order> {
     fn position_id(self: @Order) -> PositionId {
         *self.position_id
