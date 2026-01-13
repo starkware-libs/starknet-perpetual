@@ -67,7 +67,7 @@ pub mod Positions {
 
     #[storage]
     pub struct Storage {
-        positions: Map<PositionId, Position>,
+        pub positions: Map<PositionId, Position>,
     }
 
     #[event]

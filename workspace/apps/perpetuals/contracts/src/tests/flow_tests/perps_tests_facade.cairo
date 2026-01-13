@@ -2091,6 +2091,15 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             .funding_tick(:operator_nonce, :funding_ticks, timestamp: Time::now());
     }
 
+    fn apply_interests(
+        ref self: PerpsTestsFacade, position_ids: Span<PositionId>, interest_amounts: Span<i64>,
+    ) {
+        let operator_nonce = self.get_nonce();
+        self.operator.set_as_caller(self.perpetuals_contract);
+        ICoreDispatcher { contract_address: self.perpetuals_contract }
+            .apply_interests(:operator_nonce, :position_ids, :interest_amounts);
+    }
+
     fn get_position_asset_balance(
         self: @PerpsTestsFacade, position_id: PositionId, synthetic_id: AssetId,
     ) -> Balance {
