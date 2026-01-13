@@ -1,7 +1,7 @@
 use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::position::PositionId;
 use starkware_utils::signature::stark::Signature;
-use crate::core::types::order::Order;
+use crate::core::types::order::{LimitOrder, Order};
 
 
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
@@ -72,10 +72,11 @@ pub(crate) mod LiquidationManager {
     use crate::core::components::external_components::interface::EXTERNAL_COMPONENT_LIQUIDATIONS;
     use crate::core::components::external_components::named_component::ITypedComponent;
     use crate::core::errors::CANT_LIQUIDATE_IF_POSITION;
+    use crate::core::types::asset::synthetic::AssetType;
     use crate::core::types::position::{Position, PositionDiff};
     use crate::core::utils::{validate_signature, validate_trade};
     use crate::core::value_risk_calculator::liquidated_position_validations;
-    use super::{ILiquidationManager, Liquidate, Order};
+    use super::{ILiquidationManager, LimitOrder, Liquidate, Order, Signature};
 
 
     #[event]
@@ -184,11 +185,10 @@ pub(crate) mod LiquidationManager {
             actual_liquidator_fee: u64,
             liquidated_fee_amount: u64,
         ) {
-            assert(liquidated_position_id != INSURANCE_FUND_POSITION, CANT_LIQUIDATE_IF_POSITION);
             let liquidator_position_id = liquidator_order.position_id;
-            assert(liquidator_position_id != INSURANCE_FUND_POSITION, CANT_LIQUIDATE_IF_POSITION);
-
+            let liquidator_position = self.positions.get_position_snapshot(liquidator_position_id);
             let collateral_id = self.assets.get_collateral_id();
+
             let liquidated_order = Order {
                 position_id: liquidated_position_id,
                 base_asset_id: liquidator_order.base_asset_id,
@@ -202,26 +202,17 @@ pub(crate) mod LiquidationManager {
                 expiration: Time::now(),
             };
 
-            let liquidated_asset = self.assets.get_asset_config(liquidated_order.base_asset_id);
+            /// Validations:
+            let (liquidated_position_diff, liquidator_position_diff) = self
+                ._validate_liquidate(
+                    liquidated_order: liquidated_order.into(),
+                    liquidator_order: liquidator_order.into(),
+                    liquidator_signature: liquidator_signature,
+                    liquidator_position: liquidator_position,
+                    actual_liquidator_fee: actual_liquidator_fee,
+                );
 
-            // Validations.
-            validate_trade(
-                order_a: liquidated_order,
-                order_b: liquidator_order,
-                actual_amount_base_a: actual_amount_base_liquidated,
-                actual_amount_quote_a: actual_amount_quote_liquidated,
-                actual_fee_a: liquidated_fee_amount,
-                actual_fee_b: actual_liquidator_fee,
-                asset: Some(liquidated_asset),
-                collateral_id: collateral_id,
-            );
-
-            let liquidator_position = self.positions.get_position_snapshot(liquidator_position_id);
-            let liquidated_position = self
-                .positions
-                .get_position_snapshot(position_id: liquidated_position_id);
-
-            // Signatures validation:
+            // Liquidator signature validation:
             let liquidator_order_hash = validate_signature(
                 public_key: liquidator_position.get_owner_public_key(),
                 message: liquidator_order,
@@ -237,68 +228,17 @@ pub(crate) mod LiquidationManager {
                     order_base_amount: liquidator_order.base_amount,
                     // Passing the negative of actual amounts to `liquidator_order` as it is linked
                     // to liquidated_order.
-                    actual_base_amount: -actual_amount_base_liquidated,
-                );
-
-            /// Execution:
-            let liquidated_position_diff = PositionDiff {
-                collateral_diff: actual_amount_quote_liquidated.into()
-                    - liquidated_fee_amount.into(),
-                asset_diff: Option::Some(
-                    (liquidator_order.base_asset_id, actual_amount_base_liquidated.into()),
-                ),
-            };
-            // Passing the negative of actual amounts to order_b as it is linked to order_a.
-            let liquidator_position_diff = PositionDiff {
-                collateral_diff: -actual_amount_quote_liquidated.into()
-                    - actual_liquidator_fee.into(),
-                asset_diff: Option::Some(
-                    (liquidator_order.base_asset_id, -actual_amount_base_liquidated.into()),
-                ),
-            };
-            let insurance_position_diff = PositionDiff {
-                collateral_diff: liquidated_fee_amount.into(), asset_diff: Option::None,
-            };
-            let fee_position_diff = PositionDiff {
-                collateral_diff: actual_liquidator_fee.into(), asset_diff: Option::None,
-            };
-
-            /// Validations - Fundamentals:
-            self
-                ._validate_liquidated_position(
-                    position_id: liquidated_position_id,
-                    position: liquidated_position,
-                    position_diff: liquidated_position_diff,
-                );
-            self
-                .positions
-                .validate_healthy_or_healthier_position(
-                    position_id: liquidator_position_id,
-                    position: liquidator_position,
-                    position_diff: liquidator_position_diff,
-                    tvtr_before: Default::default(),
-                );
-
-            // Apply Diffs.
-            self
-                .positions
-                .apply_diff(
-                    position_id: liquidated_position_id, position_diff: liquidated_position_diff,
+                    actual_base_amount: -liquidated_order.base_amount,
                 );
 
             self
-                .positions
-                .apply_diff(
-                    position_id: liquidator_order.position_id,
-                    position_diff: liquidator_position_diff,
-                );
-
-            self.positions.apply_diff(position_id: FEE_POSITION, position_diff: fee_position_diff);
-
-            self
-                .positions
-                .apply_diff(
-                    position_id: INSURANCE_FUND_POSITION, position_diff: insurance_position_diff,
+                ._execute_liquidate(
+                    liquidated_position_id: liquidated_position_id,
+                    liquidator_position_id: liquidator_position_id,
+                    liquidated_position_diff: liquidated_position_diff,
+                    liquidator_position_diff: liquidator_position_diff,
+                    liquidated_fee_amount: liquidated_fee_amount,
+                    actual_liquidator_fee: actual_liquidator_fee,
                 );
 
             self
@@ -331,18 +271,34 @@ pub(crate) mod LiquidationManager {
             position: StoragePath<Position>,
             position_diff: PositionDiff,
         ) {
-            let (synthetic_diff_id, synthetic_diff_balance) = if let Option::Some((id, balance)) =
+            let (asset_diff_id, asset_diff_balance) = if let Option::Some((id, balance)) =
                 position_diff
                 .asset_diff {
                 (id, balance)
             } else {
                 panic_with_felt252(SYNTHETIC_NOT_EXISTS)
             };
-            self
-                .positions
-                ._validate_synthetic_shrinks(
-                    :position, asset_id: synthetic_diff_id, amount: synthetic_diff_balance.into(),
-                );
+            let asset_config = self.assets.get_asset_config(asset_diff_id);
+            match asset_config.asset_type {
+                AssetType::SYNTHETIC => {
+                    self
+                        .positions
+                        ._validate_synthetic_shrinks(
+                            :position, asset_id: asset_diff_id, amount: asset_diff_balance.into(),
+                        );
+                },
+                AssetType::SPOT_COLLATERAL => {
+                    self
+                        .positions
+                        ._validate_spot_collateral_shrinks(
+                            :position, asset_id: asset_diff_id, amount: asset_diff_balance.into(),
+                        );
+                },
+                AssetType::VAULT_SHARE_COLLATERAL => {
+                    panic_with_felt252('USE_LIQUIDATE_VAULT_SHARES');
+                },
+            }
+
             let (provisional_delta, unchanged_assets) = self
                 .positions
                 .derive_funding_delta_and_unchanged_assets(:position, :position_diff);
@@ -360,6 +316,109 @@ pub(crate) mod LiquidationManager {
             liquidated_position_validations(
                 :position_id, :unchanged_assets, :position_diff_enriched,
             );
+        }
+
+        fn _validate_liquidate(
+            ref self: ContractState,
+            liquidated_order: LimitOrder,
+            liquidator_order: LimitOrder,
+            liquidator_signature: Signature,
+            liquidator_position: StoragePath<Position>,
+            actual_liquidator_fee: u64,
+        ) -> (PositionDiff, PositionDiff) {
+            let liquidated_position_id = liquidated_order.source_position;
+            assert(liquidated_position_id != INSURANCE_FUND_POSITION, CANT_LIQUIDATE_IF_POSITION);
+            let liquidator_position_id = liquidator_order.source_position;
+            assert(liquidator_position_id != INSURANCE_FUND_POSITION, CANT_LIQUIDATE_IF_POSITION);
+
+            let liquidated_asset = self.assets.get_asset_config(liquidated_order.base_asset_id);
+
+            validate_trade(
+                order_a: liquidated_order,
+                order_b: liquidator_order,
+                actual_amount_base_a: liquidated_order.base_amount,
+                actual_amount_quote_a: liquidated_order.quote_amount,
+                actual_fee_a: liquidated_order.fee_amount,
+                actual_fee_b: actual_liquidator_fee,
+                asset: Some(liquidated_asset),
+                collateral_id: liquidated_order.quote_asset_id,
+            );
+
+            let liquidated_position = self
+                .positions
+                .get_position_snapshot(position_id: liquidated_position_id);
+
+            let liquidated_position_diff = PositionDiff {
+                collateral_diff: liquidated_order.quote_amount.into()
+                    - liquidated_order.fee_amount.into(),
+                asset_diff: Option::Some(
+                    (liquidated_order.base_asset_id, liquidated_order.base_amount.into()),
+                ),
+            };
+            // Passing the negative of actual amounts to order_b as it is linked to order_a.
+            let liquidator_position_diff = PositionDiff {
+                collateral_diff: -liquidated_order.quote_amount.into()
+                    - actual_liquidator_fee.into(),
+                asset_diff: Option::Some(
+                    (liquidated_order.base_asset_id, -liquidated_order.base_amount.into()),
+                ),
+            };
+
+            /// Validations - Fundamentals:
+            self
+                ._validate_liquidated_position(
+                    position_id: liquidated_position_id,
+                    position: liquidated_position,
+                    position_diff: liquidated_position_diff,
+                );
+            self
+                .positions
+                .validate_healthy_or_healthier_position(
+                    position_id: liquidator_position_id,
+                    position: liquidator_position,
+                    position_diff: liquidator_position_diff,
+                    tvtr_before: Default::default(),
+                );
+
+            (liquidated_position_diff, liquidator_position_diff)
+        }
+
+        fn _execute_liquidate(
+            ref self: ContractState,
+            liquidated_position_id: PositionId,
+            liquidator_position_id: PositionId,
+            liquidated_position_diff: PositionDiff,
+            liquidator_position_diff: PositionDiff,
+            liquidated_fee_amount: u64,
+            actual_liquidator_fee: u64,
+        ) {
+            let insurance_position_diff = PositionDiff {
+                collateral_diff: liquidated_fee_amount.into(), asset_diff: Option::None,
+            };
+            let fee_position_diff = PositionDiff {
+                collateral_diff: actual_liquidator_fee.into(), asset_diff: Option::None,
+            };
+
+            // Apply Diffs.
+            self
+                .positions
+                .apply_diff(
+                    position_id: liquidated_position_id, position_diff: liquidated_position_diff,
+                );
+
+            self
+                .positions
+                .apply_diff(
+                    position_id: liquidator_position_id, position_diff: liquidator_position_diff,
+                );
+
+            self.positions.apply_diff(position_id: FEE_POSITION, position_diff: fee_position_diff);
+
+            self
+                .positions
+                .apply_diff(
+                    position_id: INSURANCE_FUND_POSITION, position_diff: insurance_position_diff,
+                );
         }
     }
 }
