@@ -658,6 +658,19 @@ pub mod Positions {
             assert(amount.abs() <= position_base_balance.abs(), INVALID_BASE_CHANGE);
         }
 
+        fn _validate_spot_collateral_shrinks(
+            self: @ComponentState<TContractState>,
+            position: StoragePath<Position>,
+            asset_id: AssetId,
+            amount: i64,
+        ) {
+            let position_spot_balance: i64 = self
+                .get_synthetic_balance(:position, synthetic_id: asset_id)
+                .into();
+            assert(amount >= 0_i64.into(), INVALID_AMOUNT_SIGN);
+            assert(amount.abs() <= position_spot_balance.abs(), INVALID_BASE_CHANGE);
+        }
+
         fn _validate_imposed_reduction_trade(
             ref self: ComponentState<TContractState>,
             position_id_a: PositionId,
