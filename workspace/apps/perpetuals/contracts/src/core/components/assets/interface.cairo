@@ -1,6 +1,6 @@
 use openzeppelin::interfaces::erc20::IERC20Dispatcher;
 use perpetuals::core::types::asset::AssetId;
-use perpetuals::core::types::asset::synthetic::{AssetConfig, TimelyData};
+use perpetuals::core::types::asset::synthetic::{AssetConfig, AssetType, TimelyData};
 use perpetuals::core::types::funding::FundingTick;
 use perpetuals::core::types::price::SignedPrice;
 use perpetuals::core::types::risk_factor::RiskFactor;

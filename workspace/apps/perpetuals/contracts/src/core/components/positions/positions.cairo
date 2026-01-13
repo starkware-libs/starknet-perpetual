@@ -13,8 +13,8 @@ pub mod Positions {
     use perpetuals::core::components::positions::errors::{
         ALREADY_INITIALIZED, CALLER_IS_NOT_OWNER_ACCOUNT, INVALID_ZERO_OWNER_ACCOUNT,
         INVALID_ZERO_PUBLIC_KEY, NO_OWNER_ACCOUNT, POSITION_ALREADY_EXISTS, POSITION_DOESNT_EXIST,
-        POSITION_HAS_OWNER_ACCOUNT, SAME_PUBLIC_KEY, SET_POSITION_OWNER_EXPIRED,
-        SET_PUBLIC_KEY_EXPIRED,
+        POSITION_HAS_OWNER_ACCOUNT, POSITION_SPOT_BALANCE_NEGATIVE, SAME_PUBLIC_KEY,
+        SET_POSITION_OWNER_EXPIRED, SET_PUBLIC_KEY_EXPIRED,
     };
     use perpetuals::core::components::positions::events;
     use perpetuals::core::components::positions::interface::IPositions;
@@ -656,6 +656,20 @@ pub mod Positions {
 
             assert(!have_same_sign(amount, position_base_balance), INVALID_AMOUNT_SIGN);
             assert(amount.abs() <= position_base_balance.abs(), INVALID_BASE_CHANGE);
+        }
+
+        fn _validate_spot_collateral_shrink_non_negative(
+            self: @ComponentState<TContractState>,
+            position: StoragePath<Position>,
+            asset_id: AssetId,
+            amount: i64,
+        ) {
+            let position_spot_balance: i64 = self
+                .get_synthetic_balance(:position, synthetic_id: asset_id)
+                .into();
+            assert(position_spot_balance >= 0, POSITION_SPOT_BALANCE_NEGATIVE);
+            assert(amount < 0, INVALID_AMOUNT_SIGN);
+            assert(amount.abs() <= position_spot_balance.abs(), INVALID_BASE_CHANGE);
         }
 
         fn _validate_imposed_reduction_trade(
