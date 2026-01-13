@@ -1,9 +1,10 @@
+use core::num::traits::Pow;
 use perpetuals::core::types::funding::{FUNDING_SCALE, FundingIndex, FundingTick};
 use perpetuals::tests::constants::*;
 use perpetuals::tests::flow_tests::infra::*;
 use perpetuals::tests::flow_tests::perps_tests_facade::*;
 use snforge_std::TokenTrait;
-use starkware_utils::constants::MAX_U128;
+use starkware_utils::constants::{HOUR, MAX_U128};
 use super::perps_tests_facade::PerpsTestsFacadeTrait;
 
 #[test]
@@ -2545,4 +2546,245 @@ fn test_spot_collateral_deposit_transfer_withdraw() {
     assert_eq!(balance_user_1, 30000_i64);
     // user_2: 40000 (transfer) - 40000 (withdraw) = 0
     assert_eq!(balance_user_2, 0_i64);
+}
+
+#[test]
+fn test_apply_interest_to_position_with_zero_balance() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let user = state.new_user_with_position();
+
+    // Deposit some collateral
+    let deposit_info = state
+        .facade
+        .deposit(depositor: user.account, position_id: user.position_id, quantized_amount: 10_000);
+    state.facade.process_deposit(deposit_info: deposit_info);
+
+    // Apply zero interest to position with balance (first time, timestamp is zero)
+    let position_ids = array![user.position_id].span();
+    let interest_amounts = array![0_i64].span();
+    state.facade.apply_interests(:position_ids, :interest_amounts);
+
+    // Balance should remain unchanged
+    state.facade.validate_collateral_balance(user.position_id, 10_000_i64.into());
+}
+
+#[test]
+fn test_apply_interest_to_position_with_balance() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let user = state.new_user_with_position();
+
+    // Deposit collateral
+    let deposit_info = state
+        .facade
+        .deposit(depositor: user.account, position_id: user.position_id, quantized_amount: 10_000);
+    state.facade.process_deposit(deposit_info: deposit_info);
+
+    // Apply zero interest first time (sets timestamp)
+    let position_ids = array![user.position_id].span();
+    let interest_amounts = array![0_i64].span();
+    state.facade.apply_interests(:position_ids, :interest_amounts);
+
+    // Advance time by 1 hour
+    advance_time(seconds: HOUR);
+
+    // Calculate valid interest amount
+    // max_interest_rate_per_sec = 1200 (from constants)
+    // interest_rate_scale = 2^32
+    // max_allowed = balance * time_diff * max_rate / scale
+    // max_allowed = 10_000 * 3600 * 1200 / 2^32
+    // max_allowed ≈ 10_000 * 3600 * 1200 / 4_294_967_296 ≈ 10.05
+    let balance: u128 = 10_000;
+    let time_diff: u128 = HOUR.into();
+    let max_rate: u128 = 1200;
+    let scale: u128 = 2_u128.pow(32);
+    let max_allowed: u128 = (balance * time_diff * max_rate) / scale;
+
+    // Apply valid interest (positive)
+    let valid_interest: i64 = (max_allowed / 2).try_into().unwrap(); // Use half of max to be safe
+    let interest_amounts = array![valid_interest].span();
+    state.facade.apply_interests(:position_ids, :interest_amounts);
+
+    // Balance should increase
+    let expected_balance: i64 = 10_000 + valid_interest;
+    state.facade.validate_collateral_balance(user.position_id, expected_balance.into());
+}
+
+#[test]
+fn test_apply_interest_to_multiple_positions() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let user_a = state.new_user_with_position();
+    let user_b = state.new_user_with_position();
+
+    // Deposit collateral to both users
+    let deposit_info_a = state
+        .facade
+        .deposit(
+            depositor: user_a.account, position_id: user_a.position_id, quantized_amount: 10_000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_info_a);
+
+    let deposit_info_b = state
+        .facade
+        .deposit(
+            depositor: user_b.account, position_id: user_b.position_id, quantized_amount: 5_000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_info_b);
+
+    // Apply zero interest first time (sets timestamp)
+    let position_ids = array![user_a.position_id, user_b.position_id].span();
+    let interest_amounts = array![0_i64, 0_i64].span();
+    state.facade.apply_interests(:position_ids, :interest_amounts);
+
+    // Advance time by 1 hour
+    advance_time(seconds: HOUR);
+
+    // Calculate valid interest amounts for both positions
+    let balance_a: u128 = 10_000;
+    let balance_b: u128 = 5_000;
+    let time_diff: u128 = HOUR.into();
+    let max_rate: u128 = 1200;
+    let scale: u128 = 2_u128.pow(32);
+    let max_allowed_a: u128 = (balance_a * time_diff * max_rate) / scale;
+    let max_allowed_b: u128 = (balance_b * time_diff * max_rate) / scale;
+
+    // Apply valid interest to both positions
+    let interest_a: i64 = (max_allowed_a / 2).try_into().unwrap();
+    let interest_b: i64 = (max_allowed_b / 2).try_into().unwrap();
+    let interest_amounts = array![interest_a, interest_b].span();
+    state.facade.apply_interests(:position_ids, :interest_amounts);
+
+    // Validate balances
+    let expected_balance_a: i64 = 10_000 + interest_a;
+    let expected_balance_b: i64 = 5_000 + interest_b;
+    state.facade.validate_collateral_balance(user_a.position_id, expected_balance_a.into());
+    state.facade.validate_collateral_balance(user_b.position_id, expected_balance_b.into());
+}
+
+#[test]
+#[should_panic(expected: ('INVALID_INTEREST_RATE',))]
+fn test_apply_interest_exceeds_max_rate() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let user = state.new_user_with_position();
+
+    // Deposit collateral
+    let deposit_info = state
+        .facade
+        .deposit(depositor: user.account, position_id: user.position_id, quantized_amount: 10_000);
+    state.facade.process_deposit(deposit_info: deposit_info);
+
+    // Apply zero interest first time (sets timestamp)
+    let position_ids = array![user.position_id].span();
+    let interest_amounts = array![0_i64].span();
+    state.facade.apply_interests(:position_ids, :interest_amounts);
+
+    // Advance time by 1 hour
+    advance_time(seconds: HOUR);
+
+    // Calculate max allowed interest
+    let balance: u128 = 10_000;
+    let time_diff: u128 = HOUR.into();
+    let max_rate: u128 = 1200;
+    let scale: u128 = 2_u128.pow(32);
+    let max_allowed: u128 = (balance * time_diff * max_rate) / scale;
+
+    // Try to apply interest that exceeds max rate
+    let invalid_interest: i64 = (max_allowed + 1).try_into().unwrap();
+    let interest_amounts = array![invalid_interest].span();
+    state.facade.apply_interests(:position_ids, :interest_amounts);
+}
+
+#[test]
+#[should_panic(expected: ('INVALID_INTEREST_RATE',))]
+fn test_apply_non_zero_interest_to_zero_balance() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let user = state.new_user_with_position();
+
+    // Don't deposit anything, balance is zero
+
+    // Try to apply non-zero interest to zero balance (first time)
+    let position_ids = array![user.position_id].span();
+    let interest_amounts = array![100_i64].span();
+    state.facade.apply_interests(:position_ids, :interest_amounts);
+}
+
+#[test]
+fn test_apply_negative_interest() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let user = state.new_user_with_position();
+
+    // Deposit collateral
+    let deposit_info = state
+        .facade
+        .deposit(depositor: user.account, position_id: user.position_id, quantized_amount: 10_000);
+    state.facade.process_deposit(deposit_info: deposit_info);
+
+    // Apply zero interest first time (sets timestamp)
+    let position_ids = array![user.position_id].span();
+    let interest_amounts = array![0_i64].span();
+    state.facade.apply_interests(:position_ids, :interest_amounts);
+
+    // Advance time by 1 hour
+    advance_time(seconds: HOUR);
+
+    // Calculate valid interest amount (negative)
+    let balance: u128 = 10_000;
+    let time_diff: u128 = HOUR.into();
+    let max_rate: u128 = 1200;
+    let scale: u128 = 2_u128.pow(32);
+    let max_allowed: u128 = (balance * time_diff * max_rate) / scale;
+
+    // Apply valid negative interest
+    let valid_interest: i64 = -(max_allowed / 2).try_into().unwrap();
+    let interest_amounts = array![valid_interest].span();
+    state.facade.apply_interests(:position_ids, :interest_amounts);
+
+    // Balance should decrease
+    let expected_balance: i64 = 10_000 + valid_interest;
+    state.facade.validate_collateral_balance(user.position_id, expected_balance.into());
+}
+
+#[test]
+fn test_apply_interest_sequential_updates() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let user = state.new_user_with_position();
+
+    // Deposit collateral
+    let deposit_info = state
+        .facade
+        .deposit(depositor: user.account, position_id: user.position_id, quantized_amount: 10_000);
+    state.facade.process_deposit(deposit_info: deposit_info);
+
+    // Apply zero interest first time (sets timestamp)
+    let position_ids = array![user.position_id].span();
+    let interest_amounts = array![0_i64].span();
+    state.facade.apply_interests(:position_ids, :interest_amounts);
+
+    // Advance time by 1 hour
+    advance_time(seconds: HOUR);
+
+    // Calculate and apply first interest
+    let balance: u128 = 10_000;
+    let time_diff: u128 = HOUR.into();
+    let max_rate: u128 = 1200;
+    let scale: u128 = 2_u128.pow(32);
+    let max_allowed: u128 = (balance * time_diff * max_rate) / scale;
+    let interest_1: i64 = (max_allowed / 2).try_into().unwrap();
+    let interest_amounts = array![interest_1].span();
+    state.facade.apply_interests(:position_ids, :interest_amounts);
+
+    let balance_after_first: i64 = 10_000 + interest_1;
+    state.facade.validate_collateral_balance(user.position_id, balance_after_first.into());
+
+    // Advance time by another hour
+    advance_time(seconds: HOUR);
+
+    // Calculate and apply second interest (based on new balance)
+    let new_balance: u128 = balance_after_first.try_into().unwrap();
+    let max_allowed_2: u128 = (new_balance * time_diff * max_rate) / scale;
+    let interest_2: i64 = (max_allowed_2 / 2).try_into().unwrap();
+    let interest_amounts = array![interest_2].span();
+    state.facade.apply_interests(:position_ids, :interest_amounts);
+
+    let expected_final_balance: i64 = balance_after_first + interest_2;
+    state.facade.validate_collateral_balance(user.position_id, expected_final_balance.into());
 }
