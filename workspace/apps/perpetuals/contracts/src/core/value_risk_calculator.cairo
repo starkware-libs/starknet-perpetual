@@ -10,7 +10,7 @@ use perpetuals::core::types::position::{
     AssetEnrichedPositionDiff, PositionDiffEnriched, PositionId,
 };
 use perpetuals::core::types::price::{Price, PriceMulTrait};
-use perpetuals::core::types::risk_factor::RiskFactorMulTrait;
+use perpetuals::core::types::risk_factor::{RiskFactor, RiskFactorMulTrait};
 use starkware_utils::math::abs::Abs;
 use starkware_utils::math::fraction::FractionTrait;
 
@@ -190,10 +190,19 @@ pub fn calculate_position_tvtr_change(
 
     if let Option::Some(asset_diff) = synthetic_enriched_position_diff.asset_diff_enriched {
         // asset_value is in units of 10^-6 USD.
-        let asset_value_before = asset_diff.price.mul(rhs: asset_diff.balance_before);
-        let asset_value_after = asset_diff.price.mul(rhs: asset_diff.balance_after);
-        let asset_risk_before = asset_diff.risk_factor_before.mul(asset_value_before.abs());
-        let asset_risk_after = asset_diff.risk_factor_after.mul(asset_value_after.abs());
+        let (asset_value_before, asset_risk_before) = calculate_asset_value_and_risk(
+            asset_diff.asset_type,
+            asset_diff.price,
+            asset_diff.balance_before,
+            asset_diff.risk_factor_before,
+        );
+
+        let (asset_value_after, asset_risk_after) = calculate_asset_value_and_risk(
+            asset_diff.asset_type,
+            asset_diff.price,
+            asset_diff.balance_after,
+            asset_diff.risk_factor_after,
+        );
 
         total_value_after = total_value_after + asset_value_after - asset_value_before;
         total_risk_after = total_risk_after + asset_risk_after - asset_risk_before;
@@ -212,34 +221,42 @@ pub fn calculate_position_tvtr_change(
     }
 }
 
+pub fn calculate_asset_value_and_risk(
+    asset_type: AssetType, price: Price, balance: Balance, risk_factor: RiskFactor,
+) -> (i128, u128) {
+    let asset_value: i128 = (price).mul(rhs: balance);
+    let asset_risk: u128 = (risk_factor).mul(asset_value.abs());
+
+    if asset_type == AssetType::SYNTHETIC {
+        return (asset_value, asset_risk);
+    } else {
+        return (asset_value - asset_risk.try_into().unwrap(), 0);
+    }
+}
+
 pub fn calculate_position_tvtr_before(
     unchanged_assets: Span<AssetBalanceInfo>, position_diff_enriched: PositionDiffEnriched,
 ) -> PositionTVTR {
     let mut total_value = 0_i128;
     let mut total_risk = 0_u128;
     for synthetic in unchanged_assets {
-        // asset_value is in units of 10^-6 USD.
-        let asset_value: i128 = (*synthetic.price).mul(rhs: *synthetic.balance);
-        let asset_risk: u128 = (*synthetic.risk_factor).mul(asset_value.abs());
-        let value_to_add: i128 = if (*synthetic.asset_type == AssetType::SYNTHETIC) {
-            asset_value
-        } else {
-            asset_value - asset_risk.try_into().unwrap()
-        };
-        let risk_to_add = if (*synthetic.asset_type == AssetType::SYNTHETIC) {
-            asset_risk
-        } else {
-            0
-        };
+        let (value_to_add, risk_to_add) = calculate_asset_value_and_risk(
+            *synthetic.asset_type, *synthetic.price, *synthetic.balance, *synthetic.risk_factor,
+        );
         total_value += value_to_add;
         total_risk += risk_to_add;
     }
 
     if let Option::Some(asset_diff) = position_diff_enriched.asset_diff_enriched {
         // asset_value is in units of 10^-6 USD.
-        let asset_value_before = asset_diff.price.mul(rhs: asset_diff.balance_before);
-        total_value += asset_value_before;
-        total_risk += asset_diff.risk_factor_before.mul(asset_value_before.abs());
+        let (value_to_add, risk_to_add) = calculate_asset_value_and_risk(
+            asset_diff.asset_type,
+            asset_diff.price,
+            asset_diff.balance_before,
+            asset_diff.risk_factor_before,
+        );
+        total_value += value_to_add;
+        total_risk += risk_to_add;
     }
 
     // Collateral price is always "One" in Perps - "One" is 10^-6 USD which means 2^28 same as the
@@ -331,6 +348,7 @@ mod tests {
             price: asset.price,
             risk_factor_before: RISK_FACTOR_1(),
             risk_factor_after: RISK_FACTOR_1(),
+            asset_type: asset.asset_type,
         };
         let position_diff_enriched = PositionDiffEnriched {
             collateral_enriched: Default::default(), asset_diff_enriched: Option::Some(asset_diff),
@@ -386,6 +404,7 @@ mod tests {
             price: asset.price,
             risk_factor_before: RISK_FACTOR_1(),
             risk_factor_after: RISK_FACTOR_1(),
+            asset_type: asset.asset_type,
         };
         let position_diff_enriched = PositionDiffEnriched {
             collateral_enriched: Default::default(), asset_diff_enriched: Option::Some(asset_diff),
@@ -475,6 +494,7 @@ mod tests {
             price: asset_1.price,
             risk_factor_before: RISK_FACTOR_1(),
             risk_factor_after: RISK_FACTOR_1(),
+            asset_type: asset_1.asset_type,
         };
 
         let position_diff_enriched = PositionDiffEnriched {
@@ -677,6 +697,7 @@ mod tests {
                     price: asset_3.price,
                     risk_factor_before: RISK_FACTOR_3(),
                     risk_factor_after: RISK_FACTOR_3(),
+                    asset_type: asset_3.asset_type,
                 },
             ),
         };
@@ -721,6 +742,7 @@ mod tests {
                     price: asset.price,
                     risk_factor_before: RISK_FACTOR_1(),
                     risk_factor_after: RISK_FACTOR_1(),
+                    asset_type: asset.asset_type,
                 },
             ),
         };
@@ -788,6 +810,7 @@ mod tests {
                     price: asset.price,
                     risk_factor_before: RISK_FACTOR_1(),
                     risk_factor_after: RISK_FACTOR_1(),
+                    asset_type: asset.asset_type,
                 },
             ),
         };

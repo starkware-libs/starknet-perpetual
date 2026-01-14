@@ -481,6 +481,7 @@ pub mod Positions {
                     price,
                     risk_factor_before,
                     risk_factor_after,
+                    asset_type: assets.get_asset_type(:asset_id),
                 };
                 Option::Some(asset_diff_enriched)
             } else {
