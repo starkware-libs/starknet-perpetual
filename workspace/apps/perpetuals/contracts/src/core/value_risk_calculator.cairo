@@ -4,7 +4,7 @@ use perpetuals::core::errors::{
     position_not_deleveragable, position_not_fair_deleverage, position_not_healthy_nor_healthier,
     position_not_liquidatable,
 };
-use perpetuals::core::types::asset::synthetic::AssetBalanceInfo;
+use perpetuals::core::types::asset::synthetic::{AssetBalanceInfo, AssetType};
 use perpetuals::core::types::balance::{Balance, BalanceDiff};
 use perpetuals::core::types::position::{
     AssetEnrichedPositionDiff, PositionDiffEnriched, PositionId,
@@ -220,8 +220,19 @@ pub fn calculate_position_tvtr_before(
     for synthetic in unchanged_assets {
         // asset_value is in units of 10^-6 USD.
         let asset_value: i128 = (*synthetic.price).mul(rhs: *synthetic.balance);
-        total_value += asset_value;
-        total_risk += (*synthetic.risk_factor).mul(asset_value.abs());
+        let asset_risk: u128 = (*synthetic.risk_factor).mul(asset_value.abs());
+        let value_to_add: i128 = if (*synthetic.asset_type == AssetType::SYNTHETIC) {
+            asset_value
+        } else {
+            asset_value - asset_risk.try_into().unwrap()
+        };
+        let risk_to_add = if (*synthetic.asset_type == AssetType::SYNTHETIC) {
+            asset_risk
+        } else {
+            0
+        };
+        total_value += value_to_add;
+        total_risk += risk_to_add;
     }
 
     if let Option::Some(asset_diff) = position_diff_enriched.asset_diff_enriched {
@@ -310,6 +321,7 @@ mod tests {
             price: PRICE_1(),
             risk_factor: RISK_FACTOR_1(),
             cached_funding_index: FundingIndex { value: 38654705 },
+            asset_type: AssetType::SYNTHETIC,
         };
         let position_data = array![].span();
         let asset_diff = AssetBalanceDiffEnriched {
@@ -364,6 +376,7 @@ mod tests {
             price: PRICE_1(),
             risk_factor: RISK_FACTOR_1(),
             cached_funding_index: FundingIndex { value: 38654705 },
+            asset_type: AssetType::SYNTHETIC,
         };
         let position_data = array![].span();
         let asset_diff = AssetBalanceDiffEnriched {
@@ -418,6 +431,7 @@ mod tests {
             price: PRICE_1(),
             risk_factor: RISK_FACTOR_1(),
             cached_funding_index: FundingIndex { value: 38654705 },
+            asset_type: AssetType::SYNTHETIC,
         };
         let asset_2 = AssetBalanceInfo {
             id: SYNTHETIC_ASSET_ID_2(),
@@ -425,6 +439,7 @@ mod tests {
             price: PRICE_2(),
             risk_factor: RISK_FACTOR_2(),
             cached_funding_index: FundingIndex { value: 38654705 },
+            asset_type: AssetType::SYNTHETIC,
         };
         let asset_3 = AssetBalanceInfo {
             id: SYNTHETIC_ASSET_ID_3(),
@@ -432,6 +447,7 @@ mod tests {
             price: PRICE_3(),
             risk_factor: RISK_FACTOR_3(),
             cached_funding_index: FundingIndex { value: 38654705 },
+            asset_type: AssetType::SYNTHETIC,
         };
         let asset_4 = AssetBalanceInfo {
             id: SYNTHETIC_ASSET_ID_4(),
@@ -439,6 +455,7 @@ mod tests {
             price: PRICE_4(),
             risk_factor: RISK_FACTOR_4(),
             cached_funding_index: FundingIndex { value: 38654705 },
+            asset_type: AssetType::SYNTHETIC,
         };
         let asset_5 = AssetBalanceInfo {
             id: SYNTHETIC_ASSET_ID_5(),
@@ -446,6 +463,7 @@ mod tests {
             price: PRICE_5(),
             risk_factor: RISK_FACTOR_5(),
             cached_funding_index: FundingIndex { value: 38654705 },
+            asset_type: AssetType::SYNTHETIC,
         };
         let position_data = array![asset_2, asset_3, asset_4, asset_5].span();
 
@@ -515,6 +533,7 @@ mod tests {
             price: PRICE_1(),
             risk_factor: RISK_FACTOR_1(),
             cached_funding_index: FundingIndex { value: 38654705 },
+            asset_type: AssetType::SYNTHETIC,
         };
         let position_data = array![asset].span();
 
@@ -599,6 +618,7 @@ mod tests {
             price: PRICE_1(),
             risk_factor: RISK_FACTOR_1(),
             cached_funding_index: FundingIndex { value: 0 },
+            asset_type: AssetType::SYNTHETIC,
         };
         let unchanged_assets = array![asset].span();
         let position_diff_enriched = Default::default();
@@ -624,6 +644,7 @@ mod tests {
             price: PRICE_1(),
             risk_factor: RISK_FACTOR_1(),
             cached_funding_index: FundingIndex { value: 0 },
+            asset_type: AssetType::SYNTHETIC,
         };
 
         let asset_2 = AssetBalanceInfo {
@@ -632,6 +653,7 @@ mod tests {
             price: PRICE_2(),
             risk_factor: RISK_FACTOR_2(),
             cached_funding_index: FundingIndex { value: 0 },
+            asset_type: AssetType::SYNTHETIC,
         };
         let asset_3 = AssetBalanceInfo {
             id: SYNTHETIC_ASSET_ID_3(),
@@ -639,6 +661,7 @@ mod tests {
             price: PRICE_3(),
             risk_factor: RISK_FACTOR_3(),
             cached_funding_index: FundingIndex { value: 0 },
+            asset_type: AssetType::SYNTHETIC,
         };
         let unchanged_assets = array![asset_1, asset_2].span();
         let position_diff_enriched = PositionDiffEnriched {
@@ -682,6 +705,7 @@ mod tests {
             price: PRICE_1(),
             risk_factor: RISK_FACTOR_1(),
             cached_funding_index: FundingIndex { value: 0 },
+            asset_type: AssetType::SYNTHETIC,
         };
         let unchanged_assets = array![].span();
         let position_diff_enriched = PositionDiffEnriched {
@@ -731,6 +755,7 @@ mod tests {
             price: PRICE_1(),
             risk_factor: RISK_FACTOR_1(),
             cached_funding_index: FundingIndex { value: 0 },
+            asset_type: AssetType::SYNTHETIC,
         };
         let unchanged_assets = array![asset].span();
         let position_diff_enriched = Default::default();
@@ -750,6 +775,7 @@ mod tests {
             price: PRICE_1(),
             risk_factor: RISK_FACTOR_1(),
             cached_funding_index: FundingIndex { value: 0 },
+            asset_type: AssetType::SYNTHETIC,
         };
         let unchanged_assets = array![].span();
         let position_diff_enriched = PositionDiffEnriched {

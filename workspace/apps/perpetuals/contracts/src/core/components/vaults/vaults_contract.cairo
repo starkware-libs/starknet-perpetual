@@ -608,13 +608,14 @@ pub(crate) mod VaultsManager {
                     .expect('REDEEM_VAULT_SHARES_OVERFLOW');
 
                 let risk_of_shares_sold: u128 = risk_factor.mul(value_of_shares_sold);
+                let risk_adjusted_value_of_shares: u128 = value_of_shares_sold
+                    - risk_of_shares_sold;
                 let collateral_received: u128 = actual_collateral_user.abs().try_into().unwrap();
 
-                if collateral_received < value_of_shares_sold - risk_of_shares_sold {
+                if collateral_received < risk_adjusted_value_of_shares {
                     let err = format!(
-                        "Illegal transition value_of_shares_sold={}, risk_of_shares_sold={}, collateral_received={}",
-                        value_of_shares_sold,
-                        risk_of_shares_sold,
+                        "Illegal transition value_of_shares_sold={}, collateral_received={}",
+                        risk_adjusted_value_of_shares,
                         collateral_received,
                     );
                     panic_with_byte_array(err: @err);

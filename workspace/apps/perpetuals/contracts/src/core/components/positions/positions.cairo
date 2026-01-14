@@ -583,6 +583,7 @@ pub mod Positions {
                 }
 
                 let risk_factor = assets.get_asset_risk_factor(synthetic_id, balance, price);
+                let asset_type = assets.get_asset_type(synthetic_id);
                 unchanged_assets
                     .append(
                         AssetBalanceInfo {
@@ -591,6 +592,7 @@ pub mod Positions {
                             price,
                             risk_factor,
                             cached_funding_index: synthetic.funding_index,
+                            asset_type,
                         },
                     );
             }

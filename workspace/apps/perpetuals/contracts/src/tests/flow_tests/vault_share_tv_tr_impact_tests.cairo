@@ -106,6 +106,7 @@ fn test_shares_should_contribute_to_tv_tr_after_activation() {
         .deposit(vault_user.account, vault_user.position_id, 5000_u64);
     state.facade.process_deposit(vault_init_deposit);
     let vault_config = state.facade.register_vault_share_spot_asset(vault_user);
+    //vault shares have 10% risk factor
 
     state
         .facade
@@ -132,17 +133,15 @@ fn test_shares_should_contribute_to_tv_tr_after_activation() {
         );
 
     state.facade.price_tick(@vault_config.asset_info, 12);
-
+    //expected total value is 12 * 1000 - 10% of 12 * 1000 = 12 * 1000 - 1200 = 10800
     state
         .facade
         .validate_total_value(
-            position_id: depositing_user.position_id, expected_total_value: 12 * 1000,
+            position_id: depositing_user.position_id, expected_total_value: 10800,
         );
 
     state
         .facade
-        .validate_total_risk(
-            position_id: depositing_user.position_id, expected_total_risk: 1200 // 10%
-        );
+        .validate_total_risk(position_id: depositing_user.position_id, expected_total_risk: 0);
 }
 

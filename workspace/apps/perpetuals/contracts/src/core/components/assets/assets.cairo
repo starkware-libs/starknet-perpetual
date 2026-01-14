@@ -513,6 +513,11 @@ pub mod AssetsComponent {
             return self.get_synthetic_risk_factor_for_value(asset_id, synthetic_value);
         }
 
+        fn get_asset_type(self: @ComponentState<TContractState>, asset_id: AssetId) -> AssetType {
+            let entry = self.asset_config.entry(asset_id).as_ptr();
+            SyntheticTrait::at_asset_type(entry)
+        }
+
         /// Get the risk factor of a synthetic asset.
         ///   - synthetic_value = |price * balance|
         ///   - If the synthetic value is less than or equal to the first tier boundary, return the

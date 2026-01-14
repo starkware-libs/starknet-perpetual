@@ -74,6 +74,7 @@ pub struct AssetBalanceInfo {
     pub price: Price,
     pub risk_factor: RiskFactor,
     pub cached_funding_index: FundingIndex,
+    pub asset_type: AssetType,
 }
 
 #[derive(Copy, Debug, Default, Drop, Serde)]

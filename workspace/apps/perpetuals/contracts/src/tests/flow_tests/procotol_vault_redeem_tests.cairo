@@ -663,31 +663,31 @@ fn test_redeem_from_protocol_vault_allows_redeem_when_improving_tv_tr() {
         );
 
     //redeeming user has
-    // 1000 x vault_shares @ 1usd
+    // 1000 x vault_shares @ 1usd - 10% risk = 900
     // 2 x BTC @ 1000usd
     // - 2000 usd collateral cost of trade
-    // 1000 * 0.1 vault_share risk
+    // 0 vault_share risk
     // 2000 * 0.3 btc risk
-    // total risk = 700usd
-    // total value = 1000 + 2000 - 2000 = 1000
-    // TV/TR = 1000/700 = 1.4285 = healthy
+    // total risk = 600
+    // total value = 900 + 2000 - 2000 = 1000
+    // TV/TR = 900/600 = 1.5 = healthy
 
-    state.facade.validate_total_value(redeeming_user.position_id, 1000);
-    state.facade.validate_total_risk(redeeming_user.position_id, 700);
+    state.facade.validate_total_value(redeeming_user.position_id, 900);
+    state.facade.validate_total_risk(redeeming_user.position_id, 600);
 
     state.facade.price_tick(@synthetic_info, 500);
     //redeeming user has
-    // 1000 x vault_shares @ 1usd
+    // 1000 x vault_shares @ 1usd - 10% risk = 900
     // 2 x BTC @ 500usd
     // - 2000 usd collateral cost of trade
-    // 1000 * 0.1 vault_share risk
+    // 0 vault_share risk
     // 1000 * 0.3 btc risk
-    // total risk = 400
-    // total value = 1000 + 1000 - 2000 = 0
-    // TV/TR = 0/400 = 0 = unhealthy
+    // total risk = 300
+    // total value = 900 + 1000 - 2000 = -100
+    // TV/TR = -100/300 = -0 = unhealthy
 
-    state.facade.validate_total_value(redeeming_user.position_id, 0);
-    state.facade.validate_total_risk(redeeming_user.position_id, 400);
+    state.facade.validate_total_value(redeeming_user.position_id, -100);
+    state.facade.validate_total_risk(redeeming_user.position_id, 300);
 
     let value_of_shares: u64 = 400;
     state
@@ -703,12 +703,25 @@ fn test_redeem_from_protocol_vault_allows_redeem_when_improving_tv_tr() {
             actual_shares_user: 400,
             actual_collateral_user: value_of_shares,
         );
+
+    //we sold 400 shares for $400
+    // user now has
+    // 600 x vault_shares @ 1usd - 10% risk = 540
+    // 400 USD
+    // 2 x BTC @ 500usd
+    // - 2000 usd collateral cost of trade
+    // 0 vault_share risk
+    // 1000 * 0.3 btc risk
+    // total risk = 300
+    // total value = 540 + 400 + 1000 - 2000 = -60
+    // TV/TR = -60/300 = -0.2 = unhealthy
+
+    state.facade.validate_total_value(redeeming_user.position_id, -60);
+    state.facade.validate_total_risk(redeeming_user.position_id, 300);
 }
 
 #[test]
-#[should_panic(
-    expected: "Illegal transition value_of_shares_sold=400, risk_of_shares_sold=40, collateral_received=300",
-)]
+#[should_panic(expected: "Illegal transition value_of_shares_sold=360, collateral_received=300")]
 fn test_redeem_from_protocol_vault_fails_redeem_when_worsening_tv_tr() {
     let mut state: FlowTestBase = FlowTestBaseTrait::new();
     let vault_user = state.new_user_with_position_id(333_u32.into());
@@ -791,31 +804,31 @@ fn test_redeem_from_protocol_vault_fails_redeem_when_worsening_tv_tr() {
         );
 
     //redeeming user has
-    // 1000 x vault_shares @ 1usd
+    // 1000 x vault_shares @ 1usd - 10% risk = 900
     // 2 x BTC @ 1000usd
     // - 2000 usd collateral cost of trade
-    // 1000 * 0.1 vault_share risk
+    // 0 vault_share risk
     // 2000 * 0.3 btc risk
-    // total risk = 700usd
-    // total value = 1000 + 2000 - 2000 = 1000
-    // TV/TR = 1000/700 = 1.4285 = healthy
+    // total risk = 600
+    // total value = 900 + 2000 - 2000 = 900
+    // TV/TR = 900/600 = 1.5 = healthy
 
-    state.facade.validate_total_value(redeeming_user.position_id, 1000);
-    state.facade.validate_total_risk(redeeming_user.position_id, 700);
+    state.facade.validate_total_value(redeeming_user.position_id, 900);
+    state.facade.validate_total_risk(redeeming_user.position_id, 600);
 
-    state.facade.price_tick(@synthetic_info, 500);
+    state.facade.price_tick(@synthetic_info, 600);
     //redeeming user has
-    // 1000 x vault_shares @ 1usd
-    // 2 x BTC @ 500usd
+    // 1000 x vault_shares @ 1usd - 10% risk = 900
+    // 2 x BTC @ 600usd
     // - 2000 usd collateral cost of trade
-    // 1000 * 0.1 vault_share risk
-    // 1000 * 0.3 btc risk
-    // total risk = 400
-    // total value = 1000 + 1000 - 2000 = 0
-    // TV/TR = 0/400 = 0 = unhealthy
+    // 0 vault_share risk
+    // 1200 * 0.3 btc risk
+    // total risk = 360
+    // total value = 900 + 1200 - 2000 = 100
+    // TV/TR = 100/360 = 0.27 = unhealthy
 
-    state.facade.validate_total_value(redeeming_user.position_id, 0);
-    state.facade.validate_total_risk(redeeming_user.position_id, 400);
+    state.facade.validate_total_value(redeeming_user.position_id, 100);
+    state.facade.validate_total_risk(redeeming_user.position_id, 360);
 
     let value_of_shares: u64 = 300;
     state
@@ -917,31 +930,31 @@ fn test_liquidate_vault_shares_succeeds_when_improving_tv_tr() {
         );
 
     //redeeming user has
-    // 1000 x vault_shares @ 1usd
+    // 1000 x vault_shares @ 1usd - 10% risk = 900
     // 2 x BTC @ 1000usd
     // - 2000 usd collateral cost of trade
-    // 1000 * 0.1 vault_share risk
+    // 0 vault_share risk
     // 2000 * 0.3 btc risk
-    // total risk = 700usd
-    // total value = 1000 + 2000 - 2000 = 1000
-    // TV/TR = 1000/700 = 1.4285 = healthy
+    // total risk = 600
+    // total value = 900 + 2000 - 2000 = 900
+    // TV/TR = 900/600 = 1.5 = healthy
 
-    state.facade.validate_total_value(redeeming_user.position_id, 1000);
-    state.facade.validate_total_risk(redeeming_user.position_id, 700);
+    state.facade.validate_total_value(redeeming_user.position_id, 900);
+    state.facade.validate_total_risk(redeeming_user.position_id, 600);
 
-    state.facade.price_tick(@synthetic_info, 500);
+    state.facade.price_tick(@synthetic_info, 600);
     //redeeming user has
-    // 1000 x vault_shares @ 1usd
-    // 2 x BTC @ 500usd
+    // 1000 x vault_shares @ 1usd - 10% risk = 900
+    // 2 x BTC @ 600usd
     // - 2000 usd collateral cost of trade
-    // 1000 * 0.1 vault_share risk
-    // 1000 * 0.3 btc risk
-    // total risk = 400
-    // total value = 1000 + 1000 - 2000 = 0
-    // TV/TR = 0/400 = 0 = unhealthy
+    // 0 vault_share risk
+    // 1200 * 0.3 btc risk
+    // total risk = 360
+    // total value = 900 + 1200 - 2000 = 100
+    // TV/TR = 100/360 = 0.27 = unhealthy
 
-    state.facade.validate_total_value(redeeming_user.position_id, 0);
-    state.facade.validate_total_risk(redeeming_user.position_id, 400);
+    state.facade.validate_total_value(redeeming_user.position_id, 100);
+    state.facade.validate_total_risk(redeeming_user.position_id, 360);
 
     state
         .facade
@@ -1038,31 +1051,31 @@ fn test_liquidate_vault_shares_succeeds_when_improving_tv_tr_starting_with_negat
         );
 
     //redeeming user has
-    // 1000 x vault_shares @ 1usd
+    // 1000 x vault_shares @ 1usd - 10% risk = 900
     // 2 x BTC @ 1000usd
     // - 2000 usd collateral cost of trade
-    // 1000 * 0.1 vault_share risk
+    // 0 vault_share risk
     // 2000 * 0.3 btc risk
-    // total risk = 700usd
-    // total value = 1000 + 2000 - 2000 = 1000
-    // TV/TR = 1000/700 = 1.4285 = healthy
+    // total risk = 600
+    // total value = 900 + 2000 - 2000 = 900
+    // TV/TR = 900/600 = 1.5 = healthy
 
-    state.facade.validate_total_value(redeeming_user.position_id, 1000);
-    state.facade.validate_total_risk(redeeming_user.position_id, 700);
+    state.facade.validate_total_value(redeeming_user.position_id, 900);
+    state.facade.validate_total_risk(redeeming_user.position_id, 600);
 
     state.facade.price_tick(@synthetic_info, 450);
     //redeeming user has
-    // 1000 x vault_shares @ 1usd
+    // 1000 x vault_shares @ 1usd - 10% risk = 900
     // 2 x BTC @ 450usd
     // - 2000 usd collateral cost of trade
-    // 1000 * 0.1 vault_share risk
+    // 0 vault_share risk
     // 900 * 0.3 btc risk
-    // total risk = 370
-    // total value = 1000 + 900 - 2000 = -100
-    // TV/TR = -100/370 = -0.27 = unhealthy
+    // total risk = 270
+    // total value = 900 + 900 - 2000 = -200
+    // TV/TR = -200/270 = -0.74 = unhealthy
 
-    state.facade.validate_total_value(redeeming_user.position_id, -100);
-    state.facade.validate_total_risk(redeeming_user.position_id, 370);
+    state.facade.validate_total_value(redeeming_user.position_id, -200);
+    state.facade.validate_total_risk(redeeming_user.position_id, 270);
 
     state
         .facade
@@ -1077,9 +1090,7 @@ fn test_liquidate_vault_shares_succeeds_when_improving_tv_tr_starting_with_negat
 }
 
 #[test]
-#[should_panic(
-    expected: "Illegal transition value_of_shares_sold=400, risk_of_shares_sold=40, collateral_received=359",
-)]
+#[should_panic(expected: "Illegal transition value_of_shares_sold=360, collateral_received=359")]
 fn test_liquidate_vault_shares_fails_when_not_improving_tv_tr_starting_with_negative_tv() {
     let mut state: FlowTestBase = FlowTestBaseTrait::new();
     let vault_user = state.new_user_with_position_id(333_u32.into());
@@ -1162,31 +1173,31 @@ fn test_liquidate_vault_shares_fails_when_not_improving_tv_tr_starting_with_nega
         );
 
     //redeeming user has
-    // 1000 x vault_shares @ 1usd
+    // 1000 x vault_shares @ 1usd - 10% risk = 900
     // 2 x BTC @ 1000usd
     // - 2000 usd collateral cost of trade
-    // 1000 * 0.1 vault_share risk
+    // 0 vault_share risk
     // 2000 * 0.3 btc risk
-    // total risk = 700usd
-    // total value = 1000 + 2000 - 2000 = 1000
-    // TV/TR = 1000/700 = 1.4285 = healthy
+    // total risk = 600
+    // total value = 900 + 2000 - 2000 = 900
+    // TV/TR = 900/600 = 1.5 = healthy
 
-    state.facade.validate_total_value(redeeming_user.position_id, 1000);
-    state.facade.validate_total_risk(redeeming_user.position_id, 700);
+    state.facade.validate_total_value(redeeming_user.position_id, 900);
+    state.facade.validate_total_risk(redeeming_user.position_id, 600);
 
     state.facade.price_tick(@synthetic_info, 450);
     //redeeming user has
-    // 1000 x vault_shares @ 1usd
+    // 1000 x vault_shares @ 1usd - 10% risk = 900
     // 2 x BTC @ 450usd
     // - 2000 usd collateral cost of trade
-    // 1000 * 0.1 vault_share risk
+    // 0 vault_share risk
     // 900 * 0.3 btc risk
-    // total risk = 370
-    // total value = 1000 + 900 - 2000 = -100
-    // TV/TR = -100/370 = -0.27 = unhealthy
+    // total risk = 270
+    // total value = 900 + 900 - 2000 = -200
+    // TV/TR = -200/270 = -0.74 = unhealthy
 
-    state.facade.validate_total_value(redeeming_user.position_id, -100);
-    state.facade.validate_total_risk(redeeming_user.position_id, 370);
+    state.facade.validate_total_value(redeeming_user.position_id, -200);
+    state.facade.validate_total_risk(redeeming_user.position_id, 270);
 
     state
         .facade
@@ -1202,9 +1213,7 @@ fn test_liquidate_vault_shares_fails_when_not_improving_tv_tr_starting_with_nega
 
 
 #[test]
-#[should_panic(
-    expected: "llegal transition value_of_shares_sold=400, risk_of_shares_sold=40, collateral_received=300",
-)]
+#[should_panic(expected: "Illegal transition value_of_shares_sold=360, collateral_received=300")]
 fn test_liquidate_vault_shares_fails_when_worsening_tv_tr() {
     let mut state: FlowTestBase = FlowTestBaseTrait::new();
     let vault_user = state.new_user_with_position_id(333_u32.into());
@@ -1287,31 +1296,31 @@ fn test_liquidate_vault_shares_fails_when_worsening_tv_tr() {
         );
 
     //redeeming user has
-    // 1000 x vault_shares @ 1usd
+    // 1000 x vault_shares @ 1usd - 10% risk = 900
     // 2 x BTC @ 1000usd
     // - 2000 usd collateral cost of trade
-    // 1000 * 0.1 vault_share risk
+    // 0 vault_share risk
     // 2000 * 0.3 btc risk
-    // total risk = 700usd
-    // total value = 1000 + 2000 - 2000 = 1000
-    // TV/TR = 1000/700 = 1.4285 = healthy
+    // total risk = 600
+    // total value = 900 + 2000 - 2000 = 900
+    // TV/TR = 900/600 = 1.5 = healthy
 
-    state.facade.validate_total_value(redeeming_user.position_id, 1000);
-    state.facade.validate_total_risk(redeeming_user.position_id, 700);
+    state.facade.validate_total_value(redeeming_user.position_id, 900);
+    state.facade.validate_total_risk(redeeming_user.position_id, 600);
 
-    state.facade.price_tick(@synthetic_info, 500);
+    state.facade.price_tick(@synthetic_info, 600);
     //redeeming user has
-    // 1000 x vault_shares @ 1usd
-    // 2 x BTC @ 500usd
+    // 1000 x vault_shares @ 1usd - 10% risk = 900
+    // 2 x BTC @ 600usd
     // - 2000 usd collateral cost of trade
-    // 1000 * 0.1 vault_share risk
-    // 1000 * 0.3 btc risk
-    // total risk = 400
-    // total value = 1000 + 1000 - 2000 = 0
-    // TV/TR = 0/400 = 0 = unhealthy
+    // 0 vault_share risk
+    // 1200 * 0.3 btc risk
+    // total risk = 360
+    // total value = 900 + 1200 - 2000 = 100
+    // TV/TR = 100/360 = 0.27 = unhealthy
 
-    state.facade.validate_total_value(redeeming_user.position_id, 0);
-    state.facade.validate_total_risk(redeeming_user.position_id, 400);
+    state.facade.validate_total_value(redeeming_user.position_id, 100);
+    state.facade.validate_total_risk(redeeming_user.position_id, 360);
 
     state
         .facade

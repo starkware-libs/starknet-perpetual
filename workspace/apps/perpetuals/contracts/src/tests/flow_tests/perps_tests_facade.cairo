@@ -1447,6 +1447,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                             price: *synthetic.price,
                             risk_factor: *synthetic.risk_factor,
                             cached_funding_index: FundingIndex { value: 0 },
+                            asset_type: AssetType::SYNTHETIC,
                         },
                     );
             } else {
@@ -1466,6 +1467,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                             price: *synthetic.price,
                             risk_factor: *synthetic.risk_factor,
                             cached_funding_index: FundingIndex { value: 0 },
+                            asset_type: AssetType::SYNTHETIC,
                         },
                     );
             } else {
