@@ -13,8 +13,9 @@ dependencies = [
 
 [[package]]
 name = "openzeppelin"
-version = "3.0.0-alpha.2"
-source = "git+https://github.com/OpenZeppelin/cairo-contracts?rev=0e51722f231c0913915945d3df89e43cbb5cfc38#0e51722f231c0913915945d3df89e43cbb5cfc38"
+version = "3.0.0"
+source = "registry+https://scarbs.xyz/"
+checksum = "sha256:ded6f53e0b50a3583f72c556d9ca508e627d175c6f01a2f5124f2e9a052ac985"
 dependencies = [
  "openzeppelin_access",
  "openzeppelin_account",
@@ -32,8 +33,9 @@ dependencies = [
 
 [[package]]
 name = "openzeppelin_access"
-version = "3.0.0-alpha.2"
-source = "git+https://github.com/OpenZeppelin/cairo-contracts?rev=0e51722f231c0913915945d3df89e43cbb5cfc38#0e51722f231c0913915945d3df89e43cbb5cfc38"
+version = "3.0.0"
+source = "registry+https://scarbs.xyz/"
+checksum = "sha256:2c7fab22d2601fca4f456c81272637f2563a423652d1671383bbe3d007803977"
 dependencies = [
  "openzeppelin_interfaces",
  "openzeppelin_introspection",
@@ -41,8 +43,9 @@ dependencies = [
 
 [[package]]
 name = "openzeppelin_account"
-version = "3.0.0-alpha.2"
-source = "git+https://github.com/OpenZeppelin/cairo-contracts?rev=0e51722f231c0913915945d3df89e43cbb5cfc38#0e51722f231c0913915945d3df89e43cbb5cfc38"
+version = "3.0.0"
+source = "registry+https://scarbs.xyz/"
+checksum = "sha256:b46f41be21fff6692d32949664d2f0dd1919c741346a676d6e0f1fe2ea576999"
 dependencies = [
  "openzeppelin_interfaces",
  "openzeppelin_introspection",
@@ -51,8 +54,9 @@ dependencies = [
 
 [[package]]
 name = "openzeppelin_finance"
-version = "3.0.0-alpha.2"
-source = "git+https://github.com/OpenZeppelin/cairo-contracts?rev=0e51722f231c0913915945d3df89e43cbb5cfc38#0e51722f231c0913915945d3df89e43cbb5cfc38"
+version = "3.0.0"
+source = "registry+https://scarbs.xyz/"
+checksum = "sha256:f77f4f5262666d8033f16b3a7df839ed2abb699a09ad33099c7bb6bf2807fec1"
 dependencies = [
  "openzeppelin_access",
  "openzeppelin_interfaces",
@@ -61,11 +65,11 @@ dependencies = [
 
 [[package]]
 name = "openzeppelin_governance"
-version = "3.0.0-alpha.2"
-source = "git+https://github.com/OpenZeppelin/cairo-contracts?rev=0e51722f231c0913915945d3df89e43cbb5cfc38#0e51722f231c0913915945d3df89e43cbb5cfc38"
+version = "3.0.0"
+source = "registry+https://scarbs.xyz/"
+checksum = "sha256:b76c87f72b1481a62e3c6904a9a3da5cfc4de8b5a86a4742de30f1e2984c7e2b"
 dependencies = [
  "openzeppelin_access",
- "openzeppelin_account",
  "openzeppelin_interfaces",
  "openzeppelin_introspection",
  "openzeppelin_token",
@@ -75,25 +79,29 @@ dependencies = [
 [[package]]
 name = "openzeppelin_interfaces"
 version = "2.1.0"
-source = "git+https://github.com/OpenZeppelin/cairo-contracts?rev=0e51722f231c0913915945d3df89e43cbb5cfc38#0e51722f231c0913915945d3df89e43cbb5cfc38"
+source = "registry+https://scarbs.xyz/"
+checksum = "sha256:f69fdb36eb894a0e0732385e723c5ff56d8cb4c1d49b29446c77eefac00b02a5"
 
 [[package]]
 name = "openzeppelin_introspection"
-version = "3.0.0-alpha.2"
-source = "git+https://github.com/OpenZeppelin/cairo-contracts?rev=0e51722f231c0913915945d3df89e43cbb5cfc38#0e51722f231c0913915945d3df89e43cbb5cfc38"
+version = "3.0.0"
+source = "registry+https://scarbs.xyz/"
+checksum = "sha256:ee491981a69736cde220f8b7dd290b6d8620c85ee6b83c81f665f5bef78b62b1"
 dependencies = [
  "openzeppelin_interfaces",
 ]
 
 [[package]]
 name = "openzeppelin_merkle_tree"
-version = "3.0.0-alpha.2"
-source = "git+https://github.com/OpenZeppelin/cairo-contracts?rev=0e51722f231c0913915945d3df89e43cbb5cfc38#0e51722f231c0913915945d3df89e43cbb5cfc38"
+version = "3.0.0"
+source = "registry+https://scarbs.xyz/"
+checksum = "sha256:3417680a1f672bd6cfb54962481f6b96d72f6510be2658d17c8356709b5c950a"
 
 [[package]]
 name = "openzeppelin_presets"
-version = "3.0.0-alpha.2"
-source = "git+https://github.com/OpenZeppelin/cairo-contracts?rev=0e51722f231c0913915945d3df89e43cbb5cfc38#0e51722f231c0913915945d3df89e43cbb5cfc38"
+version = "3.0.0"
+source = "registry+https://scarbs.xyz/"
+checksum = "sha256:1facc433476df1c36ecb33e3a10b6a5fb219c670c437b43696788843fbc0bc25"
 dependencies = [
  "openzeppelin_access",
  "openzeppelin_account",
@@ -107,19 +115,20 @@ dependencies = [
 
 [[package]]
 name = "openzeppelin_security"
-version = "3.0.0-alpha.2"
-source = "git+https://github.com/OpenZeppelin/cairo-contracts?rev=0e51722f231c0913915945d3df89e43cbb5cfc38#0e51722f231c0913915945d3df89e43cbb5cfc38"
+version = "3.0.0"
+source = "registry+https://scarbs.xyz/"
+checksum = "sha256:470f2debae50e03f1435874bc697a0825c257edcad4d1a0cc134e40360e6aba8"
 dependencies = [
  "openzeppelin_interfaces",
 ]
 
 [[package]]
 name = "openzeppelin_token"
-version = "3.0.0-alpha.2"
-source = "git+https://github.com/OpenZeppelin/cairo-contracts?rev=0e51722f231c0913915945d3df89e43cbb5cfc38#0e51722f231c0913915945d3df89e43cbb5cfc38"
+version = "3.0.0"
+source = "registry+https://scarbs.xyz/"
+checksum = "sha256:5ce19d297251d9f11acc38a3e3e2faeb2e73b003c8de2f02c7c5d06d9161a5fc"
 dependencies = [
  "openzeppelin_access",
- "openzeppelin_account",
  "openzeppelin_interfaces",
  "openzeppelin_introspection",
  "openzeppelin_utils",
@@ -127,13 +136,15 @@ dependencies = [
 
 [[package]]
 name = "openzeppelin_upgrades"
-version = "3.0.0-alpha.2"
-source = "git+https://github.com/OpenZeppelin/cairo-contracts?rev=0e51722f231c0913915945d3df89e43cbb5cfc38#0e51722f231c0913915945d3df89e43cbb5cfc38"
+version = "3.0.0"
+source = "registry+https://scarbs.xyz/"
+checksum = "sha256:1b148d5da1ae90a056b455e8865260423c5491a82777377abfdc68fd8e7d0675"
 
 [[package]]
 name = "openzeppelin_utils"
-version = "3.0.0-alpha.2"
-source = "git+https://github.com/OpenZeppelin/cairo-contracts?rev=0e51722f231c0913915945d3df89e43cbb5cfc38#0e51722f231c0913915945d3df89e43cbb5cfc38"
+version = "2.1.0"
+source = "registry+https://scarbs.xyz/"
+checksum = "sha256:4d5504fef1c5a6d9fee6a3ae392004a4a24b4b3ccb790c5e5217da96beb73e08"
 dependencies = [
  "openzeppelin_interfaces",
 ]
@@ -151,15 +162,15 @@ dependencies = [
 
 [[package]]
 name = "snforge_scarb_plugin"
-version = "0.49.0"
+version = "0.55.0"
 source = "registry+https://scarbs.xyz/"
-checksum = "sha256:903150f0e9542e4277d417029eea4c03af0db398b581f9f7ae3ebbdac9afc657"
+checksum = "sha256:638535780a23d1491c2438e64045c479d16de6a69e41ad17ac065272c485873b"
 
 [[package]]
 name = "snforge_std"
-version = "0.49.0"
+version = "0.55.0"
 source = "registry+https://scarbs.xyz/"
-checksum = "sha256:73d73653cc4356ec51b92a6bec9d8385b20318170c2f2ade7891e5185a0e7e64"
+checksum = "sha256:a04b0bf731f02307506dad368713099e701565edd9b98b044ca54b932c29ef74"
 dependencies = [
  "snforge_scarb_plugin",
 ]
@@ -167,7 +178,7 @@ dependencies = [
 [[package]]
 name = "starkware_utils"
 version = "1.0.0"
-source = "git+https://github.com/starkware-libs/starkware-starknet-utils?branch=oz-3.0.0-alpha.2#eed7b88804c0f73741e081779f1cbe1ace465522"
+source = "git+https://github.com/starkware-libs/starkware-starknet-utils?branch=main#0a71c9440dc59cdbba59e2c339436833983e9ce6"
 dependencies = [
  "openzeppelin",
 ]
@@ -175,7 +186,7 @@ dependencies = [
 [[package]]
 name = "starkware_utils_testing"
 version = "1.0.0"
-source = "git+https://github.com/starkware-libs/starkware-starknet-utils?branch=oz-3.0.0-alpha.2#eed7b88804c0f73741e081779f1cbe1ace465522"
+source = "git+https://github.com/starkware-libs/starkware-starknet-utils?branch=main#0a71c9440dc59cdbba59e2c339436833983e9ce6"
 dependencies = [
  "openzeppelin",
  "snforge_std",
