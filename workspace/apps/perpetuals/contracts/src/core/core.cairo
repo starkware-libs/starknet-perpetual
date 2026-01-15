@@ -895,7 +895,9 @@ pub mod Core {
         /// - Processes the forced trade.
         /// - Marks the forced request as completed and clears the pending entry.
         /// - Emits a `ForcedTrade` event.
-        fn forced_trade(ref self: ContractState, order_a: Order, order_b: Order) {
+        fn forced_trade(
+            ref self: ContractState, operator_nonce: u64, order_a: Order, order_b: Order,
+        ) {
             let position_a = self.positions.get_position_snapshot(position_id: order_a.position_id);
             let position_b = self.positions.get_position_snapshot(position_id: order_b.position_id);
             let public_key_a = position_a.get_owner_public_key();
@@ -913,6 +915,8 @@ pub mod Core {
                 let now = Time::now();
                 let forced_action_timelock = self.forced_action_timelock.read();
                 assert(request_time.add(forced_action_timelock) <= now, FORCED_WAIT_REQUIRED);
+            } else {
+                self.operator_nonce.use_checked_nonce(:operator_nonce);
             }
 
             // Execute trade.

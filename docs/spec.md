@@ -3952,6 +3952,7 @@ Executes a forced trade after the timelock period has elapsed (or immediately if
 ```rust
 fn forced_trade(
     ref self: ContractState,
+    operator_nonce: u64,
     order_a: Order,
     order_b: Order,
 )
@@ -3969,7 +3970,7 @@ fn forced_trade(
 3. The forced trade request exists and is not consumed.
 4. If the caller is not the operator, the timelock period has elapsed: `request_time + forced_action_timelock <= now`.
 5. Execute regular trade validations (same as [Trade](#trade)) with the following differences:
-   - No operator nonce check.
+   - only if the caller is the operator, [Operator Nonce check](#operator-nonce).
    - No signature validation (signatures were validated during request).
    - Actual amounts are set to order amounts: `actual_amount_base_a = order_a.base_amount`, `actual_amount_quote_a = order_a.quote_amount`.
    - Fees are set to zero: `actual_fee_a = 0`, `actual_fee_b = 0`.

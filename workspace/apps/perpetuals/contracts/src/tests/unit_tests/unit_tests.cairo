@@ -5665,7 +5665,7 @@ fn test_successful_forced_trade_after_timelock() {
 
     // Test: Execute forced trade after timelock
     cheat_caller_address_once(contract_address: test_address(), caller_address: user_b.address);
-    state.forced_trade(:order_a, :order_b);
+    state.forced_trade(operator_nonce: 0, :order_a, :order_b);
 
     // Catch the event.
     let events = spy.get_events().emitted_by(test_address()).events;
@@ -5790,7 +5790,7 @@ fn test_forced_trade_user_after_operator_executed() {
 
     // Operator executes forced trade first (allowed before timelock).
     cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.operator);
-    state.forced_trade(:order_a, :order_b);
+    state.forced_trade(operator_nonce: 3, :order_a, :order_b);
 
     // After timelock the user tries to execute the same forced trade again.
     let timelock = FORCED_ACTION_TIMELOCK;
@@ -5798,7 +5798,7 @@ fn test_forced_trade_user_after_operator_executed() {
         block_timestamp: Time::now().add(delta: Time::seconds(timelock)).into(),
     );
     cheat_caller_address_once(contract_address: test_address(), caller_address: user_b.address);
-    state.forced_trade(:order_a, :order_b);
+    state.forced_trade(operator_nonce: 0, :order_a, :order_b);
 }
 
 #[test]
@@ -5868,7 +5868,7 @@ fn test_successful_forced_trade_by_operator_before_timelock() {
 
     // Test: Operator can execute before timelock
     cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.operator);
-    state.forced_trade(:order_a, :order_b);
+    state.forced_trade(operator_nonce: 3, :order_a, :order_b);
 }
 
 #[test]
@@ -5943,11 +5943,11 @@ fn test_forced_trade_operator_after_user_executed() {
         block_timestamp: Time::now().add(delta: Time::seconds(timelock)).into(),
     );
     cheat_caller_address_once(contract_address: test_address(), caller_address: user_b.address);
-    state.forced_trade(:order_a, :order_b);
+    state.forced_trade(operator_nonce: 0, :order_a, :order_b);
 
     // Operator tries to execute the same forced trade again.
     cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.operator);
-    state.forced_trade(:order_a, :order_b);
+    state.forced_trade(operator_nonce: 0, :order_a, :order_b);
 }
 
 #[test]
@@ -6012,7 +6012,7 @@ fn test_forced_trade_before_timelock_non_operator() {
 
     // Test: Try to execute before timelock (non-operator)
     cheat_caller_address_once(contract_address: test_address(), caller_address: user_b.address);
-    state.forced_trade(:order_a, :order_b);
+    state.forced_trade(operator_nonce: 0, :order_a, :order_b);
 }
 
 #[test]
