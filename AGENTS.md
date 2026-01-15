@@ -179,4 +179,4 @@ Executes signed user intents, processes deposits, performs liquidations, updates
 
 ---
 
-**Cairo:** 2.x (Edition 2024_07) | **Starknet:** 2.12.2 | **Last Updated:** 2025-10-22
+**Cairo:** 2.x (Edition 2024_07) | **Starknet:** 2.15.1 | **Last Updated:** 2025-01-15
