@@ -1,6 +1,13 @@
 from typing import Optional
 import asyncio
 import os
+import re
+from starknet_py.net.schemas import common
+
+# Patch NumberAsHex to support negative numbers in hints (e.g. -0x1f)
+# TODO : Remove once starknet_py supports this natively
+common.NumberAsHex.REGEX_PATTERN = r"^-?0x[a-fA-F0-9]+$"
+
 from starknet_py.net.account.account import Account
 from starknet_py.net.models.address import Address
 from starknet_py.net.client_models import Call

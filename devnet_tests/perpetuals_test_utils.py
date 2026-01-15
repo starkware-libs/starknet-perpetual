@@ -21,6 +21,13 @@ from starknet_py.contract import DeclareResult, DeployResult
 from starknet_py.net.account.account import Account
 from starknet_py.net.models.chains import StarknetChainId
 
+import re
+from starknet_py.net.schemas import common
+
+# Patch NumberAsHex to support negative numbers in hints (e.g. -0x1f)
+# TODO : Remove once starknet_py supports this natively
+common.NumberAsHex.REGEX_PATTERN = r"^-?0x[a-fA-F0-9]+$"
+
 
 ### Constants ###
 

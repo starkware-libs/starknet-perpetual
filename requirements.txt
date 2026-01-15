@@ -5,6 +5,6 @@ asyncio
 pytest-xdist
 requests
 dataclasses
-starknet-py==0.29.0-rc.1
+starknet-py==0.29.0
 matplotlib>=3.5.0
 git+https://github.com/starkware-libs/starkware-starknet-utils.git@main#egg=test_utils&subdirectory=python
