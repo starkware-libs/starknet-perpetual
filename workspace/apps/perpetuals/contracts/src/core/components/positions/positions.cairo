@@ -481,7 +481,7 @@ pub mod Positions {
                     price,
                     risk_factor_before,
                     risk_factor_after,
-                    asset_type: assets.get_asset_type(:asset_id),
+                    asset_type: assets.get_asset_type_unsafe(:asset_id),
                 };
                 Option::Some(asset_diff_enriched)
             } else {
@@ -584,7 +584,7 @@ pub mod Positions {
                 }
 
                 let risk_factor = assets.get_asset_risk_factor(synthetic_id, balance, price);
-                let asset_type = assets.get_asset_type(synthetic_id);
+                let asset_type = assets.get_asset_type_unsafe(synthetic_id);
                 unchanged_assets
                     .append(
                         AssetBalanceInfo {

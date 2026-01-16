@@ -513,7 +513,9 @@ pub mod AssetsComponent {
             return self.get_synthetic_risk_factor_for_value(asset_id, synthetic_value);
         }
 
-        fn get_asset_type(self: @ComponentState<TContractState>, asset_id: AssetId) -> AssetType {
+        fn get_asset_type_unsafe(
+            self: @ComponentState<TContractState>, asset_id: AssetId,
+        ) -> AssetType {
             let entry = self.asset_config.entry(asset_id).as_ptr();
             SyntheticTrait::at_asset_type(entry)
         }
