@@ -90,3 +90,12 @@ pub struct AssetQuorumUpdated {
     pub new_quorum: u8,
     pub old_quorum: u8,
 }
+
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct RiskFactorIncreaseRequest {
+    #[key]
+    pub asset_id: AssetId,
+    pub risk_factor_tiers: Span<u16>,
+    pub risk_factor_first_tier_boundary: u128,
+    pub risk_factor_tier_size: u128,
+}

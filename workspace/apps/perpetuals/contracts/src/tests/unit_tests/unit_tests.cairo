@@ -970,7 +970,7 @@ fn test_rf_update_valid_same_short_array() {
 
 
 #[test]
-#[should_panic(expected: 'INVALID_RF_VALUE')]
+#[should_panic(expected: 'RF_INCREASE_REQUEST_NOT_FOUND')]
 fn test_rf_update_invalid_same_short_array() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -1013,7 +1013,7 @@ fn test_rf_update_invalid_same_short_array() {
 }
 
 #[test]
-#[should_panic(expected: 'INVALID_RF_VALUE')]
+#[should_panic(expected: 'RF_INCREASE_REQUEST_NOT_FOUND')]
 fn test_rf_update_invalid_super_short_array() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -1143,7 +1143,7 @@ fn test_rf_update_valid_same_super_short_array_increase() {
 }
 
 #[test]
-#[should_panic(expected: 'INVALID_RF_VALUE')]
+#[should_panic(expected: 'RF_INCREASE_REQUEST_NOT_FOUND')]
 fn test_rf_update_invalid_same_short_array_increase() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -1238,7 +1238,7 @@ fn test_rf_update_valid_lower_array() {
 }
 
 #[test]
-#[should_panic(expected: 'INVALID_RF_VALUE')]
+#[should_panic(expected: 'RF_INCREASE_REQUEST_NOT_FOUND')]
 fn test_rf_update_invalid_higher_last_element_array() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -1281,7 +1281,7 @@ fn test_rf_update_invalid_higher_last_element_array() {
 }
 
 #[test]
-#[should_panic(expected: 'INVALID_RF_VALUE')]
+#[should_panic(expected: 'RF_INCREASE_REQUEST_NOT_FOUND')]
 fn test_rf_update_invalid_median_last_element_array() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -1369,7 +1369,7 @@ fn test_rf_update_valid_more_frequent_array() {
 
 
 #[test]
-#[should_panic(expected: 'INVALID_RF_VALUE')]
+#[should_panic(expected: 'RF_INCREASE_REQUEST_NOT_FOUND')]
 fn test_rf_update_invalid_more_frequent_array() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -1468,7 +1468,7 @@ fn test_rf_update_valid_less_frequent_array() {
 }
 
 #[test]
-#[should_panic(expected: 'INVALID_RF_VALUE')]
+#[should_panic(expected: 'RF_INCREASE_REQUEST_NOT_FOUND')]
 fn test_rf_update_invalid_less_frequent_array() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -1581,7 +1581,7 @@ fn test_rf_update_valid_different_step_size() {
 
 
 #[test]
-#[should_panic(expected: 'INVALID_RF_VALUE')]
+#[should_panic(expected: 'RF_INCREASE_REQUEST_NOT_FOUND')]
 fn test_rf_update_invalid_different_step_size() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
