@@ -51,6 +51,13 @@ pub trait IAssetsExternal<TContractState> {
         risk_factor_first_tier_boundary: u128,
         risk_factor_tier_size: u128,
     );
+    fn update_asset_risk_factor_request(
+        ref self: TContractState,
+        asset_id: AssetId,
+        risk_factor_tiers: Span<u16>,
+        risk_factor_first_tier_boundary: u128,
+        risk_factor_tier_size: u128,
+    );
     fn deactivate_synthetic(ref self: TContractState, synthetic_id: AssetId);
     fn remove_oracle_from_asset(
         ref self: TContractState, asset_id: AssetId, oracle_public_key: PublicKey,
@@ -99,8 +106,8 @@ pub(crate) mod AssetsManager {
         INVALID_ZERO_ASSET_ID, INVALID_ZERO_ASSET_NAME, INVALID_ZERO_ORACLE_NAME,
         INVALID_ZERO_PUBLIC_KEY, INVALID_ZERO_QUORUM, INVALID_ZERO_RF_FIRST_BOUNDRY,
         INVALID_ZERO_RF_TIERS_LEN, INVALID_ZERO_RF_TIER_SIZE, NOT_SYNTHETIC, ORACLE_ALREADY_EXISTS,
-        ORACLE_NAME_TOO_LONG, ORACLE_NOT_EXISTS, SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS,
-        UNSORTED_RISK_FACTOR_TIERS,
+        ORACLE_NAME_TOO_LONG, ORACLE_NOT_EXISTS, RF_INCREASE_REQUEST_NOT_FOUND, RF_REQUEST_MISMATCH,
+        SYNTHETIC_NOT_ACTIVE, SYNTHETIC_NOT_EXISTS, UNSORTED_RISK_FACTOR_TIERS,
     };
     use crate::core::components::assets::events;
     use crate::core::components::external_components::interface::EXTERNAL_COMPONENT_ASSETS;
@@ -131,6 +138,7 @@ pub(crate) mod AssetsManager {
         OracleRemoved: events::OracleRemoved,
         AssetQuorumUpdated: events::AssetQuorumUpdated,
         SyntheticAssetDeactivated: events::SyntheticAssetDeactivated,
+        RiskFactorIncreaseRequest: events::RiskFactorIncreaseRequest,
     }
 
     #[storage]
@@ -414,6 +422,7 @@ pub(crate) mod AssetsManager {
         /// - Each risk factor in risk_factor_tiers is less or equal to 1000.
         /// - After update postitions risk must be the same or lower.
         /// - Non-synthetic assets must have exactly 1 risk factor tier.
+        /// - If increasing risk factors, a matching governor request must exist.
         ///
         /// Execution:
         /// - Clear existing risk factor tiers.
@@ -426,7 +435,7 @@ pub(crate) mod AssetsManager {
             risk_factor_first_tier_boundary: u128,
             risk_factor_tier_size: u128,
         ) {
-            // Basic input validations
+            // Input Validation
             assert(asset_id.is_non_zero(), INVALID_ZERO_ASSET_ID);
             assert(risk_factor_tiers.len().is_non_zero(), INVALID_ZERO_RF_TIERS_LEN);
             assert(risk_factor_first_tier_boundary.is_non_zero(), INVALID_ZERO_RF_FIRST_BOUNDRY);
@@ -436,65 +445,183 @@ pub(crate) mod AssetsManager {
                 assert(collateral_id != asset_id, ASSET_REGISTERED_AS_COLLATERAL);
             }
 
-            let mut old_asset_config = self.assets.get_asset_config(asset_id);
-            let mut bound = risk_factor_first_tier_boundary;
-
-            // Validate that non-synthetic assets have exactly 1 risk factor tier
+            let old_asset_config = self.assets.get_asset_config(asset_id);
             if old_asset_config.asset_type != AssetType::SYNTHETIC {
                 assert(risk_factor_tiers.len() == 1, INVALID_NON_SYNTHETIC_RF_TIERS);
             }
 
+            // Check if Risk Factors are Increasing
+            let mut is_increasing = false;
+            let mut bound = risk_factor_first_tier_boundary;
             for i in 0..risk_factor_tiers.len() {
-                let mut old_factor = self
+                let old_factor = self
                     .assets
                     .get_synthetic_risk_factor_for_value(
                         synthetic_id: asset_id, synthetic_value: bound - 1,
                     );
-                assert(old_factor.value >= *risk_factor_tiers.at(i), INVALID_RF_VALUE);
-                old_factor = self
-                    .assets
-                    .get_synthetic_risk_factor_for_value(
-                        synthetic_id: asset_id, synthetic_value: bound,
-                    );
+
+                // Check if this tier is increasing
+                if old_factor.value < *risk_factor_tiers.at(i) {
+                    is_increasing = true;
+                    break;
+                }
+
+                // Validate the next tier boundary if it exists (to ensure it's also not increasing)
                 if i + 1 < risk_factor_tiers.len() {
-                    assert(old_factor.value >= *risk_factor_tiers.at(i + 1), INVALID_RF_VALUE);
+                    let old_factor_next = self
+                        .assets
+                        .get_synthetic_risk_factor_for_value(
+                            synthetic_id: asset_id, synthetic_value: bound,
+                        );
+                    assert(old_factor_next.value >= *risk_factor_tiers.at(i + 1), INVALID_RF_VALUE);
                 }
 
                 bound += risk_factor_tier_size;
             }
 
-            old_asset_config.risk_factor_tier_size = risk_factor_tier_size;
-            old_asset_config.risk_factor_first_tier_boundary = risk_factor_first_tier_boundary;
-            let synthetic_entry = self.assets.asset_config.entry(asset_id);
-            synthetic_entry.write(Option::Some(old_asset_config));
+            // === Validate and Clear Increase Request (if increasing) ===
+            if is_increasing {
+                let request_asset_id = self.assets.risk_factor_increase_request_asset_id.read();
+                assert(request_asset_id.is_non_zero(), RF_INCREASE_REQUEST_NOT_FOUND);
+                assert(request_asset_id == asset_id, RF_REQUEST_MISMATCH);
 
-            let mut prev_risk_factor = 0_u16;
+                let request_first_boundary = self
+                    .assets
+                    .risk_factor_increase_request_first_tier_boundary
+                    .read();
+                let request_tier_size = self.assets.risk_factor_increase_request_tier_size.read();
+                let request_tiers = self.assets.risk_factor_increase_request_tiers;
+
+                assert(request_first_boundary.is_non_zero(), RF_INCREASE_REQUEST_NOT_FOUND);
+                assert(request_tier_size.is_non_zero(), RF_INCREASE_REQUEST_NOT_FOUND);
+                assert(
+                    request_first_boundary == risk_factor_first_tier_boundary, RF_REQUEST_MISMATCH,
+                );
+                assert(request_tier_size == risk_factor_tier_size, RF_REQUEST_MISMATCH);
+
+                let request_tiers_len: u64 = request_tiers.len();
+                let provided_tiers_len: usize = risk_factor_tiers.len();
+                assert(request_tiers_len == provided_tiers_len.into(), RF_REQUEST_MISMATCH);
+
+                // Verify each tier matches
+                let tiers_len: usize = risk_factor_tiers.len();
+                for i in 0..tiers_len {
+                    let requested_tier: u16 = request_tiers.at(i.into()).read();
+                    assert(requested_tier == *risk_factor_tiers.at(i), RF_REQUEST_MISMATCH);
+                }
+
+                // Clear request after validation
+                let mut request_tiers_mut = self.assets.risk_factor_increase_request_tiers;
+                while true {
+                    if request_tiers_mut.pop().is_none() {
+                        break;
+                    }
+                }
+                self.assets.risk_factor_increase_request_asset_id.write(Zero::zero());
+                self.assets.risk_factor_increase_request_first_tier_boundary.write(Zero::zero());
+                self.assets.risk_factor_increase_request_tier_size.write(Zero::zero());
+            }
+
+            // === Apply Update to Storage ===
+            let mut updated_config = old_asset_config;
+            updated_config.risk_factor_tier_size = risk_factor_tier_size;
+            updated_config.risk_factor_first_tier_boundary = risk_factor_first_tier_boundary;
+            self.assets.asset_config.write(asset_id, Option::Some(updated_config));
+
+            // Clear and update risk factor tiers
             let entry = self.assets.risk_factor_tiers.entry(asset_id);
             while true {
                 if entry.pop().is_none() {
                     break;
                 }
             }
+
+            let mut prev_risk_factor = 0_u16;
             for risk_factor in risk_factor_tiers {
                 assert(prev_risk_factor < *risk_factor, UNSORTED_RISK_FACTOR_TIERS);
-                self
-                    .assets
-                    .risk_factor_tiers
-                    .entry(asset_id) // New function checks that `risk_factor` is lower than 100.
-                    .push(RiskFactorTrait::new(*risk_factor));
+                entry.push(RiskFactorTrait::new(*risk_factor));
                 prev_risk_factor = *risk_factor;
             }
 
-            // Emit event
+            // === Emit Event ===
             self
                 .emit(
                     events::AssetChanged {
-                        asset_id: asset_id,
-                        risk_factor_tiers: risk_factor_tiers,
-                        risk_factor_first_tier_boundary: risk_factor_first_tier_boundary,
-                        risk_factor_tier_size: risk_factor_tier_size,
-                        resolution_factor: old_asset_config.resolution_factor,
-                        quorum: old_asset_config.quorum,
+                        asset_id,
+                        risk_factor_tiers,
+                        risk_factor_first_tier_boundary,
+                        risk_factor_tier_size,
+                        resolution_factor: updated_config.resolution_factor,
+                        quorum: updated_config.quorum,
+                    },
+                );
+        }
+
+        /// Request an increase in asset risk factors.
+        /// Validations:
+        /// - Only the app governor can call this function.
+        /// - Basic input validations (non-zero values, etc.).
+        ///
+        /// Execution:
+        /// - Store the requested risk factor parameters.
+        /// - Emit event.
+        fn update_asset_risk_factor_request(
+            ref self: ContractState,
+            asset_id: AssetId,
+            risk_factor_tiers: Span<u16>,
+            risk_factor_first_tier_boundary: u128,
+            risk_factor_tier_size: u128,
+        ) {
+            // Basic input validations
+            assert(asset_id.is_non_zero(), INVALID_ZERO_ASSET_ID);
+            assert(risk_factor_tiers.len().is_non_zero(), INVALID_ZERO_RF_TIERS_LEN);
+            assert(risk_factor_first_tier_boundary.is_non_zero(), INVALID_ZERO_RF_FIRST_BOUNDRY);
+            assert(risk_factor_tier_size.is_non_zero(), INVALID_ZERO_RF_TIER_SIZE);
+
+            // Validate that the asset exists
+            let asset_config = self.assets.get_asset_config(asset_id);
+
+            // Validate that non-synthetic assets have exactly 1 risk factor tier
+            if asset_config.asset_type != AssetType::SYNTHETIC {
+                assert(risk_factor_tiers.len() == 1, INVALID_NON_SYNTHETIC_RF_TIERS);
+            }
+
+            // Validate risk factor tiers are sorted
+            let mut prev_risk_factor = 0_u16;
+            for risk_factor in risk_factor_tiers {
+                assert(prev_risk_factor < *risk_factor, UNSORTED_RISK_FACTOR_TIERS);
+                prev_risk_factor = *risk_factor;
+            }
+
+            // Store the request - convert Span to Vec and store in single storage (overwrites
+            // previous request)
+            let mut request_tiers = self.assets.risk_factor_increase_request_tiers;
+            // Clear existing tiers if any
+            while true {
+                if request_tiers.pop().is_none() {
+                    break;
+                }
+            }
+            // Add new tiers
+            for tier in risk_factor_tiers {
+                request_tiers.push(*tier);
+            }
+            // Store asset_id and parameters (overwrites any previous request)
+            self.assets.risk_factor_increase_request_asset_id.write(asset_id);
+            self
+                .assets
+                .risk_factor_increase_request_first_tier_boundary
+                .write(risk_factor_first_tier_boundary);
+            self.assets.risk_factor_increase_request_tier_size.write(risk_factor_tier_size);
+
+            // Emit event - it's accessible through the flat AssetsEvent
+            self
+                .emit(
+                    events::RiskFactorIncreaseRequest {
+                        asset_id,
+                        risk_factor_tiers,
+                        risk_factor_first_tier_boundary,
+                        risk_factor_tier_size,
                     },
                 );
         }
