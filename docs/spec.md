@@ -80,6 +80,7 @@ classDiagram
         add_synthetic_asset()
         add_vault_collateral_asset()
         update_asset_risk_factor()
+        update_asset_risk_factor_request()
         deactivate_synthetic()
         funding_tick()
         price_tick()
@@ -1362,6 +1363,7 @@ pub enum Event {
     PriceTick: events::PriceTick,
     OracleRemoved: events::OracleRemoved,
     AssetQuorumUpdated: events::AssetQuorumUpdated,
+    RiskFactorIncreaseRequest: events::RiskFactorIncreaseRequest,
 }
 ```
 
@@ -1423,6 +1425,19 @@ pub struct AssetChanged {
     pub risk_factor_tier_size: u128,
     pub resolution_factor: u64,
     pub quorum: u8,
+}
+```
+
+###### RiskFactorIncreaseRequest
+
+```rust
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct RiskFactorIncreaseRequest {
+    #[key]
+    pub asset_id: AssetId,
+    pub risk_factor_tiers: Span<u16>,
+    pub risk_factor_first_tier_boundary: u128,
+    pub risk_factor_tier_size: u128,
 }
 ```
 
@@ -1846,6 +1861,8 @@ Only APP\_GOVERNOR can execute.
 
 Update asset risk factors. This function must be sequenced by the operator to prevent liquidation failures if submitted out of order.
 
+Risk factors can be decreased by the operator without any request. Risk factors can only be increased if there is a matching request from the app governor via `update_asset_risk_factor_request`.
+
 ```rust
 fn update_asset_risk_factor(
     ref self: ContractState,
@@ -1869,17 +1886,25 @@ Only the Operator can execute.
 4. `risk_factor_tiers` length is non zero.
 5. `risk_factor_first_tier_boundary` and `risk_factor_tier_size` are non zero.
 6. `asset_id` is not the collateral asset.
-7. For each tier boundary, the new risk factor must be less than or equal to the old risk factor (risk can only decrease).
+7. Non-synthetic assets must have exactly 1 risk factor tier.
 8. `risk_factor_tiers` is sorted.
+9. If any risk factor is increasing:
+   - A matching request must exist from `update_asset_risk_factor_request` for the same `asset_id`.
+   - The request parameters (`risk_factor_first_tier_boundary`, `risk_factor_tier_size`, `risk_factor_tiers`) must exactly match the provided parameters.
+10. If no risk factors are increasing, all new risk factors must be less than or equal to the old risk factors (risk can only decrease or stay the same).
 
 **Logic:**
 
 1. Run validations.
-2. For each tier boundary, validate that the new risk factor is <= old risk factor.
-3. Update `risk_factor_first_tier_boundary` and `risk_factor_tier_size` in asset config.
-4. Clear existing risk factor tiers.
-5. Add new risk factor tiers.
-6. Emit `AssetChanged` event.
+2. Check if any risk factor is increasing by comparing new tiers with old tiers.
+3. If increasing:
+   - Validate that a matching request exists for the same `asset_id`.
+   - Validate that all request parameters exactly match the provided parameters.
+   - Clear the request after validation.
+4. Update `risk_factor_first_tier_boundary` and `risk_factor_tier_size` in asset config.
+5. Clear existing risk factor tiers.
+6. Add new risk factor tiers.
+7. Emit `AssetChanged` event.
 
 **Emits:**
 
@@ -1895,8 +1920,59 @@ Only the Operator can execute.
 - INVALID_ZERO_RF_FIRST_BOUNDRY
 - INVALID_ZERO_RF_TIER_SIZE
 - ASSET_REGISTERED_AS_COLLATERAL
-- INVALID_RF_VALUE
+- INVALID_NON_SYNTHETIC_RF_TIERS
+- RF_INCREASE_REQUEST_NOT_FOUND
+- RF_REQUEST_MISMATCH
 - UNSORTED_RISK_FACTOR_TIERS
+
+###### Update Asset Risk Factor Request
+
+Request an increase in asset risk factors. This function allows the app governor to request a risk factor increase, which must then be executed by the operator via `update_asset_risk_factor`.
+
+Only one request can be active at a time. A new request will overwrite any previous request, regardless of the asset ID.
+
+```rust
+fn update_asset_risk_factor_request(
+    ref self: ContractState,
+    asset_id: AssetId,
+    risk_factor_tiers: Span<u16>,
+    risk_factor_first_tier_boundary: u128,
+    risk_factor_tier_size: u128,
+)
+```
+
+**Access Control:**
+
+Only the App Governor can execute.
+
+**Validations:**
+
+1. `asset_id` is not zero.
+2. `risk_factor_tiers` length is non zero.
+3. `risk_factor_first_tier_boundary` and `risk_factor_tier_size` are non zero.
+
+**Logic:**
+
+1. Run validations.
+2. Clear any existing risk factor increase request (if present).
+3. Store the new request parameters:
+   - `risk_factor_increase_request_asset_id`
+   - `risk_factor_increase_request_first_tier_boundary`
+   - `risk_factor_increase_request_tier_size`
+   - `risk_factor_increase_request_tiers` (Vec of tier values)
+4. Emit `RiskFactorIncreaseRequest` event.
+
+**Emits:**
+
+[RiskFactorIncreaseRequest](#riskfactorincreaserequest)
+
+**Errors:**
+
+- ONLY_APP_GOVERNOR
+- INVALID_ZERO_ASSET_ID
+- INVALID_ZERO_RF_TIERS_LEN
+- INVALID_ZERO_RF_FIRST_BOUNDRY
+- INVALID_ZERO_RF_TIER_SIZE
 
 ###### Deactivate Synthetic
 
