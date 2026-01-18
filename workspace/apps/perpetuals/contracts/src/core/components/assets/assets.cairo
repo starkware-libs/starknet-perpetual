@@ -42,7 +42,7 @@ pub mod AssetsComponent {
     use starkware_utils::components::roles::RolesComponent;
     use starkware_utils::constants::{MINUTE, TWO_POW_32};
     use starkware_utils::math::abs::Abs;
-    use starkware_utils::signature::stark::{PublicKey, validate_stark_signature};
+    use starkware_utils::signature::stark::{HashType, PublicKey, validate_stark_signature};
     use starkware_utils::storage::iterable_map::{
         IterableMap, IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapTrait,
         IterableMapWriteAccessImpl,
@@ -78,6 +78,7 @@ pub mod AssetsComponent {
         pub asset_oracle: Map<AssetId, Map<PublicKey, felt252>>,
         pub max_oracle_price_validity: TimeDelta,
         pub collateral_id: Option<AssetId>,
+        pub risk_factor_increase_request_hash: HashType,
     }
 
     #[event]
@@ -367,10 +368,29 @@ pub mod AssetsComponent {
             external_components
                 ._get_assets_manager_dispatcher()
                 .update_asset_risk_factor(
-                    asset_id: asset_id,
-                    risk_factor_tiers: risk_factor_tiers,
-                    risk_factor_first_tier_boundary: risk_factor_first_tier_boundary,
-                    risk_factor_tier_size: risk_factor_tier_size,
+                    :asset_id,
+                    :risk_factor_tiers,
+                    :risk_factor_first_tier_boundary,
+                    :risk_factor_tier_size,
+                );
+        }
+
+        fn update_asset_risk_factor_request(
+            ref self: ComponentState<TContractState>,
+            asset_id: AssetId,
+            risk_factor_tiers: Span<u16>,
+            risk_factor_first_tier_boundary: u128,
+            risk_factor_tier_size: u128,
+        ) {
+            get_dep_component!(@self, Roles).only_app_governor();
+            let external_components = get_dep_component!(@self, ExternalComponents);
+            external_components
+                ._get_assets_manager_dispatcher()
+                .update_asset_risk_factor_request(
+                    :asset_id,
+                    :risk_factor_tiers,
+                    :risk_factor_first_tier_boundary,
+                    :risk_factor_tier_size,
                 );
         }
 
