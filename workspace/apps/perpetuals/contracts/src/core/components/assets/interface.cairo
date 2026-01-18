@@ -68,6 +68,13 @@ pub trait IAssetsManager<TContractState> {
         risk_factor_first_tier_boundary: u128,
         risk_factor_tier_size: u128,
     );
+    fn update_asset_risk_factor_request(
+        ref self: TContractState,
+        asset_id: AssetId,
+        risk_factor_tiers: Span<u16>,
+        risk_factor_first_tier_boundary: u128,
+        risk_factor_tier_size: u128,
+    );
     fn add_vault_collateral_asset(
         ref self: TContractState,
         asset_id: AssetId,
