@@ -948,11 +948,14 @@ fn test_liquidate_vault_shares_succeeds_when_improving_tv_tr() {
         .liquidate_shares(
             vault: vault_config,
             liquidated_user: redeeming_user,
-            shares_to_burn_vault: 400,
-            value_of_shares_vault: 400,
-            actual_shares_user: 400,
-            actual_collateral_user: 400,
+            shares_to_burn_vault: 1000,
+            value_of_shares_vault: 1000,
+            actual_shares_user: 1000,
+            actual_collateral_user: 900,
         );
+
+    state.facade.validate_total_value(redeeming_user.position_id, -100);
+    state.facade.validate_total_risk(redeeming_user.position_id, 300);
 }
 
 #[test]
