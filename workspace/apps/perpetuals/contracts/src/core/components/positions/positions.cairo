@@ -1,5 +1,6 @@
 #[starknet::component]
 pub mod Positions {
+    use RolesComponent::InternalTrait as RolesInternalTrait;
     use core::nullable::{FromNullableResult, match_nullable};
     use core::num::traits::Zero;
     use core::panic_with_felt252;
@@ -19,12 +20,12 @@ pub mod Positions {
     use perpetuals::core::components::positions::events;
     use perpetuals::core::components::positions::interface::IPositions;
     use perpetuals::core::types::asset::AssetId;
-    use perpetuals::core::types::asset::synthetic::AssetBalanceInfo;
+    use perpetuals::core::types::asset::synthetic::{AssetBalanceInfo, AssetType, SyntheticTrait};
     use perpetuals::core::types::balance::Balance;
     use perpetuals::core::types::funding::calculate_funding;
     use perpetuals::core::types::position::{
-        AssetBalance, POSITION_VERSION, Position, PositionData, PositionDiff, PositionId,
-        PositionMutableTrait, PositionTrait,
+        AssetBalance, POSITION_VERSION, POSITION_VERSION_1, Position, PositionData, PositionDiff,
+        PositionId, PositionMutableTrait, PositionTrait,
     };
     use perpetuals::core::types::set_owner_account::SetOwnerAccountArgs;
     use perpetuals::core::types::set_public_key::SetPublicKeyArgs;
@@ -32,7 +33,7 @@ pub mod Positions {
         PositionState, PositionTVTR, calculate_position_tvtr, evaluate_position,
     };
     use starknet::storage::{
-        Map, Mutable, StoragePath, StoragePathEntry, StoragePointerReadAccess,
+        Map, Mutable, StorageAsPointer, StoragePath, StoragePathEntry, StoragePointerReadAccess,
         StoragePointerWriteAccess,
     };
     use starknet::{ContractAddress, get_caller_address};
@@ -78,6 +79,7 @@ pub mod Positions {
         SetOwnerAccountRequest: events::SetOwnerAccountRequest,
         SetPublicKey: events::SetPublicKey,
         SetPublicKeyRequest: events::SetPublicKeyRequest,
+        PositionMigrated: events::PositionMigrated,
     }
 
     #[embeddable_as(PositionsImpl)]
@@ -208,6 +210,32 @@ pub mod Positions {
             signature: Signature,
         ) {
             panic_with_felt252('TODO')
+        }
+
+        /// Migrates a list of positions from version 1 to version 2.
+        ///
+        /// Validations:
+        /// - The caller must be the app governor.
+        /// - Each position must exist and have version 1.
+        ///
+        /// Execution:
+        /// - For each position ID in the list, migrates the position from v1 to v2.
+        /// - Moves spot and vault collateral from asset_balances to their respective maps.
+        /// - Emits a `PositionMigrated` event for each successfully migrated position.
+        fn migrate_positions_to_v2(
+            ref self: ComponentState<TContractState>, position_ids: Span<PositionId>,
+        ) {
+            get_dep_component!(@self, Roles).only_app_governor();
+
+            for position_id in position_ids {
+                let mut position = self.positions.entry(*position_id);
+                let version = position.version.read();
+
+                // Only migrate positions that are version 1
+                if version == POSITION_VERSION_1 {
+                    self._migrate_position_v1_to_v2(:position, position_id: *position_id);
+                }
+            }
         }
 
         /// Registers a request to set the position's owner_account.
@@ -430,10 +458,10 @@ pub mod Positions {
             let position_mut = self.get_position_mut(:position_id);
             position_mut.collateral_balance.add_and_write(position_diff.collateral_diff);
 
-            if let Option::Some((synthetic_id, asset_diff)) = position_diff.asset_diff {
+            if let Option::Some((asset_id, asset_diff)) = position_diff.asset_diff {
                 self
-                    ._update_synthetic_balance_and_funding(
-                        position: position_mut, :synthetic_id, :asset_diff,
+                    ._update_asset_balance_and_funding(
+                        position: position_mut, :position_id, :asset_id, :asset_diff,
                     );
             };
         }
@@ -465,9 +493,20 @@ pub mod Positions {
             position_diff: PositionDiff,
         ) -> AssetEnrichedPositionDiff {
             let asset_enriched = if let Option::Some((asset_id, diff)) = position_diff.asset_diff {
-                let balance_before = self.get_synthetic_balance(:position, synthetic_id: asset_id);
-                let balance_after = balance_before + diff;
                 let assets = get_dep_component!(self, Assets);
+                let asset_config = assets.get_asset_config(asset_id);
+                let balance_before = match asset_config.asset_type {
+                    AssetType::SYNTHETIC => {
+                        self.get_synthetic_balance(:position, synthetic_id: asset_id)
+                    },
+                    AssetType::SPOT_COLLATERAL => {
+                        self.get_spot_collateral_balance(:position, asset_id: asset_id)
+                    },
+                    AssetType::VAULT_SHARE_COLLATERAL => {
+                        self.get_vault_collateral_balance(:position, asset_id: asset_id)
+                    },
+                };
+                let balance_after = balance_before + diff;
                 let price = assets.get_asset_price(:asset_id);
                 let risk_factor_before = assets
                     .get_asset_risk_factor(:asset_id, balance: balance_before, :price);
@@ -501,25 +540,70 @@ pub mod Positions {
 
         /// Returns the position at the given `position_id`.
         /// The function asserts that the position exists and has a non-zero version.
+        /// Automatically migrates v1 positions to v2 if needed.
         fn get_position_mut(
             ref self: ComponentState<TContractState>, position_id: PositionId,
         ) -> StoragePath<Mutable<Position>> {
             let mut position = self.positions.entry(position_id);
             assert(position.version.read().is_non_zero(), POSITION_DOESNT_EXIST);
+            let version = position.version.read();
+            if version == POSITION_VERSION_1 {
+                self._migrate_position_v1_to_v2(:position, :position_id);
+            }
             position
         }
 
+        /// Gets the balance of a synthetic asset in the position.
+        /// Synthetics are always stored in asset_balances regardless of position version.
         fn get_synthetic_balance(
             self: @ComponentState<TContractState>,
             position: StoragePath<Position>,
             synthetic_id: AssetId,
         ) -> Balance {
-            if let Option::Some(synthetic) = position.asset_balances.read(synthetic_id) {
-                synthetic.balance
-            } else {
-                0_i64.into()
+            if let Option::Some(asset) = position.asset_balances.read(synthetic_id) {
+                return asset.balance;
             }
+            0_i64.into()
         }
+
+        /// Gets the balance of a spot collateral asset in the position.
+        fn get_spot_collateral_balance(
+            self: @ComponentState<TContractState>,
+            position: StoragePath<Position>,
+            asset_id: AssetId,
+        ) -> Balance {
+            let version = position.version.read();
+            if version == POSITION_VERSION_1 {
+                // Old version: all assets are in asset_balances
+                if let Option::Some(asset) = position.asset_balances.read(asset_id) {
+                    return asset.balance;
+                }
+            } else if let Option::Some(asset) = position.spot_collateral_balances.read(asset_id) {
+                // New version: spot collateral is in spot_collateral_balances
+                return asset.balance;
+            }
+            0_i64.into()
+        }
+
+        /// Gets the balance of a vault collateral asset in the position.
+        fn get_vault_collateral_balance(
+            self: @ComponentState<TContractState>,
+            position: StoragePath<Position>,
+            asset_id: AssetId,
+        ) -> Balance {
+            let version = position.version.read();
+            if version == POSITION_VERSION_1 {
+                // Old version: all assets are in asset_balances
+                if let Option::Some(asset) = position.asset_balances.read(asset_id) {
+                    return asset.balance;
+                }
+            } else if let Option::Some(asset) = position.vault_collateral_balances.read(asset_id) {
+                // New version: vault collateral is in vault_collateral_balances
+                return asset.balance;
+            }
+            0_i64.into()
+        }
+
 
         fn get_collateral_provisional_balance(
             self: @ComponentState<TContractState>,
@@ -532,17 +616,42 @@ pub mod Positions {
                 return collateral_provisional_balance + provisional_delta;
             }
 
-            for (synthetic_id, synthetic) in position.asset_balances {
-                if synthetic.balance.is_zero() {
-                    continue;
+            let version = position.version.read();
+            if version == POSITION_VERSION_1 {
+                // Old version: iterate asset_balances, but only calculate funding for synthetics
+                for (synthetic_id, synthetic) in position.asset_balances {
+                    if synthetic.balance.is_zero() {
+                        continue;
+                    }
+                    let asset_config = assets.get_asset_config(synthetic_id);
+                    // Only calculate funding for synthetic assets
+                    if asset_config.asset_type == AssetType::SYNTHETIC {
+                        let global_funding_index = assets.get_funding_index_unsafe(synthetic_id);
+                        collateral_provisional_balance +=
+                            calculate_funding(
+                                old_funding_index: synthetic.funding_index,
+                                new_funding_index: global_funding_index,
+                                balance: synthetic.balance,
+                            );
+                    }
+                    // Spot and vault collateral don't participate in funding
                 }
-                let global_funding_index = assets.get_funding_index_unsafe(synthetic_id);
-                collateral_provisional_balance +=
-                    calculate_funding(
-                        old_funding_index: synthetic.funding_index,
-                        new_funding_index: global_funding_index,
-                        balance: synthetic.balance,
-                    );
+            } else {
+                // New version: only synthetics in asset_balances participate in funding
+                for (synthetic_id, synthetic) in position.asset_balances {
+                    if synthetic.balance.is_zero() {
+                        continue;
+                    }
+                    // In v2, asset_balances only contains synthetics, so we can calculate funding
+                    let global_funding_index = assets.get_funding_index_unsafe(synthetic_id);
+                    collateral_provisional_balance +=
+                        calculate_funding(
+                            old_funding_index: synthetic.funding_index,
+                            new_funding_index: global_funding_index,
+                            balance: synthetic.balance,
+                        );
+                }
+                // Spot and vault collateral don't participate in funding
             }
             collateral_provisional_balance
         }
@@ -564,35 +673,124 @@ pub mod Positions {
             };
             let mut provisional_delta: Balance = 0_i64.into();
 
-            for (synthetic_id, synthetic) in position.asset_balances {
-                let balance = synthetic.balance;
-                if balance.is_zero() {
-                    continue;
-                }
-                let (price, funding_index) = assets
-                    .get_price_and_funding_index(asset_id: synthetic_id);
+            let version = position.version.read();
+            if version == POSITION_VERSION_1 {
+                // Old version: iterate asset_balances, but only calculate funding for synthetics
+                for (synthetic_id, synthetic) in position.asset_balances {
+                    let balance = synthetic.balance;
+                    if balance.is_zero() {
+                        continue;
+                    }
+                    let asset_config = assets.get_asset_config(synthetic_id);
+                    let (price, funding_index) = assets
+                        .get_price_and_funding_index(asset_id: synthetic_id);
 
-                provisional_delta +=
-                    calculate_funding(
-                        old_funding_index: synthetic.funding_index,
-                        new_funding_index: funding_index,
-                        balance: synthetic.balance,
-                    );
-                if synthetic_diff_id == synthetic_id {
-                    continue;
-                }
+                    // Only calculate funding for synthetic assets
+                    if asset_config.asset_type == AssetType::SYNTHETIC {
+                        provisional_delta +=
+                            calculate_funding(
+                                old_funding_index: synthetic.funding_index,
+                                new_funding_index: funding_index,
+                                balance: synthetic.balance,
+                            );
+                    }
+                    // Spot and vault collateral don't participate in funding
 
-                let risk_factor = assets.get_asset_risk_factor(synthetic_id, balance, price);
-                unchanged_assets
-                    .append(
-                        AssetBalanceInfo {
-                            id: synthetic_id,
-                            balance,
-                            price,
-                            risk_factor,
-                            cached_funding_index: synthetic.funding_index,
-                        },
-                    );
+                    if synthetic_diff_id == synthetic_id {
+                        continue;
+                    }
+
+                    let risk_factor = assets.get_asset_risk_factor(synthetic_id, balance, price);
+                    unchanged_assets
+                        .append(
+                            AssetBalanceInfo {
+                                id: synthetic_id,
+                                balance,
+                                price,
+                                risk_factor,
+                                cached_funding_index: synthetic.funding_index,
+                            },
+                        );
+                }
+            } else {
+                // New version: iterate all maps
+                // Synthetics in asset_balances (have funding)
+                for (synthetic_id, synthetic) in position.asset_balances {
+                    let balance = synthetic.balance;
+                    if balance.is_zero() {
+                        continue;
+                    }
+                    let (price, funding_index) = assets
+                        .get_price_and_funding_index(asset_id: synthetic_id);
+
+                    provisional_delta +=
+                        calculate_funding(
+                            old_funding_index: synthetic.funding_index,
+                            new_funding_index: funding_index,
+                            balance: synthetic.balance,
+                        );
+                    if synthetic_diff_id == synthetic_id {
+                        continue;
+                    }
+
+                    let risk_factor = assets.get_asset_risk_factor(synthetic_id, balance, price);
+                    unchanged_assets
+                        .append(
+                            AssetBalanceInfo {
+                                id: synthetic_id,
+                                balance,
+                                price,
+                                risk_factor,
+                                cached_funding_index: synthetic.funding_index,
+                            },
+                        );
+                }
+                // Spot collateral (no funding, but included in assets)
+                for (asset_id, asset) in position.spot_collateral_balances {
+                    let balance = asset.balance;
+                    if balance.is_zero() {
+                        continue;
+                    }
+                    if synthetic_diff_id == asset_id {
+                        continue;
+                    }
+                    // Spot collateral doesn't participate in funding, so we only need price
+                    let price = assets.get_asset_price(asset_id);
+                    let risk_factor = assets.get_asset_risk_factor(asset_id, balance, price);
+                    unchanged_assets
+                        .append(
+                            AssetBalanceInfo {
+                                id: asset_id,
+                                balance,
+                                price,
+                                risk_factor,
+                                cached_funding_index: asset.funding_index,
+                            },
+                        );
+                }
+                // Vault collateral (no funding, but included in assets)
+                for (asset_id, asset) in position.vault_collateral_balances {
+                    let balance = asset.balance;
+                    if balance.is_zero() {
+                        continue;
+                    }
+                    if synthetic_diff_id == asset_id {
+                        continue;
+                    }
+                    // Vault collateral doesn't participate in funding, so we only need price
+                    let price = assets.get_asset_price(asset_id);
+                    let risk_factor = assets.get_asset_risk_factor(asset_id, balance, price);
+                    unchanged_assets
+                        .append(
+                            AssetBalanceInfo {
+                                id: asset_id,
+                                balance,
+                                price,
+                                risk_factor,
+                                cached_funding_index: asset.funding_index,
+                            },
+                        );
+                }
             }
 
             (provisional_delta, unchanged_assets.span())
@@ -608,7 +806,18 @@ pub mod Positions {
             let balance = if (asset_id == assets.get_collateral_id()) {
                 self.get_collateral_provisional_balance(position, None)
             } else {
-                self.get_synthetic_balance(:position, synthetic_id: asset_id)
+                let asset_config = assets.get_asset_config(asset_id);
+                match asset_config.asset_type {
+                    AssetType::SYNTHETIC => {
+                        self.get_synthetic_balance(:position, synthetic_id: asset_id)
+                    },
+                    AssetType::SPOT_COLLATERAL => {
+                        self.get_spot_collateral_balance(:position, :asset_id)
+                    },
+                    AssetType::VAULT_SHARE_COLLATERAL => {
+                        self.get_vault_collateral_balance(:position, :asset_id)
+                    },
+                }
             };
 
             assert(balance >= 0_i64.into(), 'ASSET_BALANCE_NEGATIVE');
@@ -665,7 +874,7 @@ pub mod Positions {
             amount: i64,
         ) {
             let position_spot_balance: i64 = self
-                .get_synthetic_balance(:position, synthetic_id: asset_id)
+                .get_spot_collateral_balance(:position, :asset_id)
                 .into();
             assert(position_spot_balance >= 0, POSITION_SPOT_BALANCE_NEGATIVE);
             assert(amount < 0, INVALID_AMOUNT_SIGN);
@@ -740,40 +949,75 @@ pub mod Positions {
         /// synthetic_funding_index = 210;
         ///
 
-        fn _update_synthetic_balance_and_funding(
+        fn _update_asset_balance_and_funding(
             ref self: ComponentState<TContractState>,
             position: StoragePath<Mutable<Position>>,
-            synthetic_id: AssetId,
+            position_id: PositionId,
+            asset_id: AssetId,
             asset_diff: Balance,
         ) {
-            let assets = get_dep_component!(@self, Assets);
-            let global_funding_index = assets.get_funding_index(:synthetic_id);
+            // Ensure position is migrated
+            let version = position.version.read();
+            if version == POSITION_VERSION_1 {
+                self._migrate_position_v1_to_v2(:position, :position_id);
+            }
 
-            // Adjusts the main collateral balance accordingly:
-            let (collateral_funding, current_synthetic_balance) = if let Option::Some(synthetic) =
-                position
-                .asset_balances
-                .read(synthetic_id) {
-                let current_synthetic_balance = synthetic.balance;
-                (
-                    calculate_funding(
-                        old_funding_index: synthetic.funding_index,
-                        new_funding_index: global_funding_index,
-                        balance: current_synthetic_balance,
-                    ),
-                    current_synthetic_balance,
-                )
-            } else {
-                (0_i64.into(), 0_i64.into())
+            let assets = get_dep_component!(@self, Assets);
+            let entry = assets.asset_config.entry(asset_id).as_ptr();
+            let asset_type = SyntheticTrait::at_asset_type(entry);
+
+            // Determine which map to use based on asset type
+            let (current_asset_balance, funding_index_to_store) = match asset_type {
+                AssetType::SYNTHETIC => {
+                    let global_funding_index = assets.get_funding_index(synthetic_id: asset_id);
+                    if let Option::Some(synthetic) = position.asset_balances.read(asset_id) {
+                        let current_synthetic_balance = synthetic.balance;
+                        let collateral_funding = calculate_funding(
+                            old_funding_index: synthetic.funding_index,
+                            new_funding_index: global_funding_index,
+                            balance: current_synthetic_balance,
+                        );
+                        position.collateral_balance.add_and_write(collateral_funding);
+
+                        (current_synthetic_balance, global_funding_index)
+                    } else {
+                        (Zero::zero(), global_funding_index)
+                    }
+                },
+                AssetType::SPOT_COLLATERAL => {
+                    if let Option::Some(asset) = position.spot_collateral_balances.read(asset_id) {
+                        // No funding for spot collateral.
+                        (asset.balance, Zero::zero())
+                    } else {
+                        (Zero::zero(), Zero::zero())
+                    }
+                },
+                AssetType::VAULT_SHARE_COLLATERAL => {
+                    if let Option::Some(asset) = position.vault_collateral_balances.read(asset_id) {
+                        // No funding for vault collateral.
+                        (asset.balance, Zero::zero())
+                    } else {
+                        (Zero::zero(), Zero::zero())
+                    }
+                },
             };
-            position.collateral_balance.add_and_write(collateral_funding);
-            // Updates the synthetic balance and funding index:
-            let synthetic_asset = AssetBalance {
+
+            // Updates the asset balance and funding index in the appropriate map:
+            let updated_asset = AssetBalance {
                 version: POSITION_VERSION,
-                balance: current_synthetic_balance + asset_diff,
-                funding_index: global_funding_index,
+                balance: current_asset_balance + asset_diff,
+                funding_index: funding_index_to_store,
             };
-            position.asset_balances.write(synthetic_id, synthetic_asset);
+
+            match asset_type {
+                AssetType::SYNTHETIC => { position.asset_balances.write(asset_id, updated_asset); },
+                AssetType::SPOT_COLLATERAL => {
+                    position.spot_collateral_balances.write(asset_id, updated_asset);
+                },
+                AssetType::VAULT_SHARE_COLLATERAL => {
+                    position.vault_collateral_balances.write(asset_id, updated_asset);
+                },
+            };
         }
 
         fn _get_position_state(
@@ -787,6 +1031,51 @@ pub mod Positions {
                     :position, provisional_delta: Option::Some(provisional_delta),
                 );
             evaluate_position(:unchanged_assets, :collateral_balance)
+        }
+
+        /// Migrates a position from version 1 to version 2.
+        /// Moves spot and vault collateral from asset_balances to their respective maps.
+        /// Emits a PositionMigrated event upon successful migration.
+        fn _migrate_position_v1_to_v2(
+            ref self: ComponentState<TContractState>,
+            position: StoragePath<Mutable<Position>>,
+            position_id: PositionId,
+        ) {
+            let assets = get_dep_component!(@self, Assets);
+            let mut assets_to_remove = array![];
+
+            // Iterate through all assets in asset_balances
+            for (asset_id, asset_balance) in position.asset_balances {
+                if asset_balance.balance.is_zero() {
+                    continue;
+                }
+                let asset_config = assets.get_asset_config(asset_id);
+                match asset_config.asset_type {
+                    AssetType::SPOT_COLLATERAL => {
+                        // Move to spot_collateral_balances
+                        position.spot_collateral_balances.write(asset_id, asset_balance);
+                        assets_to_remove.append(asset_id);
+                    },
+                    AssetType::VAULT_SHARE_COLLATERAL => {
+                        // Move to vault_collateral_balances
+                        position.vault_collateral_balances.write(asset_id, asset_balance);
+                        assets_to_remove.append(asset_id);
+                    },
+                    AssetType::SYNTHETIC => { // Keep in asset_balances (synthetics stay there)
+                    },
+                };
+            }
+
+            // Remove migrated assets from asset_balances by writing zero
+            for asset_id in assets_to_remove {
+                position.asset_balances.write(asset_id, Zero::zero());
+            }
+
+            // Update version to 2
+            position.version.write(POSITION_VERSION);
+
+            // Emit migration event
+            self.emit(events::PositionMigrated { position_id });
         }
     }
 }
