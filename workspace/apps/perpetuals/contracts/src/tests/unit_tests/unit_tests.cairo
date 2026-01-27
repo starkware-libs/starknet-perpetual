@@ -42,6 +42,7 @@ use perpetuals::tests::event_test_utils::{
     assert_forced_withdraw_request_event_with_expected, assert_funding_tick_event_with_expected,
     assert_liquidate_event_with_expected, assert_new_position_event_with_expected,
     assert_price_tick_event_with_expected, assert_remove_oracle_event_with_expected,
+    assert_risk_factor_increase_request_event_with_expected,
     assert_set_owner_account_event_with_expected, assert_set_public_key_event_with_expected,
     assert_set_public_key_request_event_with_expected, assert_trade_event_with_expected,
     assert_transfer_event_with_expected, assert_transfer_request_event_with_expected,
@@ -1621,6 +1622,436 @@ fn test_rf_update_invalid_different_step_size() {
             risk_factor_tiers: risk_factor_tiers_2,
             :risk_factor_first_tier_boundary,
             risk_factor_tier_size: risk_factor_tier_size_2,
+        );
+}
+
+// Risk factor increase request tests.
+
+#[test]
+fn test_rf_increase_with_request_synthetic() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+    let mut spy = snforge_std::spy_events();
+
+    let assets_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
+    let asset_dispatcher = IAssetsDispatcher { contract_address };
+
+    let synthetic_id_1 = SYNTHETIC_ASSET_ID_1();
+
+    let risk_factor_first_tier_boundary = 10_000;
+    let risk_factor_tier_size = 20_000;
+    let risk_factor_tiers = array![1, 2].span();
+    let risk_factor_tiers_increased = array![1, 3].span();
+    let quorum = 1_u8;
+    let resolution_factor = 2_000_000_000;
+
+    // Add synthetic assets.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    assets_manager_dispatcher
+        .add_synthetic_asset(
+            asset_id: synthetic_id_1,
+            :risk_factor_tiers,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+            :quorum,
+            :resolution_factor,
+        );
+
+    // Request risk factor increase (app governor)
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    assets_manager_dispatcher
+        .update_asset_risk_factor_request(
+            asset_id: synthetic_id_1,
+            risk_factor_tiers: risk_factor_tiers_increased,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+        );
+
+    // Check request event
+    let events = spy.get_events().emitted_by(contract_address).events;
+    assert_risk_factor_increase_request_event_with_expected(
+        spied_event: events[1],
+        asset_id: synthetic_id_1,
+        risk_factor_tiers: risk_factor_tiers_increased,
+        risk_factor_first_tier_boundary: risk_factor_first_tier_boundary,
+        risk_factor_tier_size: risk_factor_tier_size,
+    );
+
+    // Execute risk factor increase (operator)
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    assets_manager_dispatcher
+        .update_asset_risk_factor(
+            operator_nonce: 0,
+            asset_id: synthetic_id_1,
+            risk_factor_tiers: risk_factor_tiers_increased,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+        );
+
+    // Check risk factors were updated
+    let asset_config = asset_dispatcher.get_asset_config(asset_id: synthetic_id_1);
+    let tiers = asset_dispatcher.get_risk_factor_tiers(asset_id: synthetic_id_1);
+    assert!(tiers.len() == risk_factor_tiers_increased.len());
+    for i in 0..risk_factor_tiers_increased.len() {
+        assert!(*tiers[i] == RiskFactorTrait::new(*risk_factor_tiers_increased[i]));
+    }
+    assert!(asset_config.risk_factor_first_tier_boundary == risk_factor_first_tier_boundary);
+    assert!(asset_config.risk_factor_tier_size == risk_factor_tier_size);
+}
+
+#[test]
+fn test_rf_increase_with_request_spot() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+
+    let assets_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
+    let asset_dispatcher = IAssetsDispatcher { contract_address };
+
+    let spot_asset_id = SYNTHETIC_ASSET_ID_2();
+    let risk_factor_first_tier_boundary = MAX_U128;
+    let risk_factor_tier_size = 1;
+    let risk_factor_tiers = array![10].span();
+    let risk_factor_tiers_increased = array![15].span();
+    let quorum = 1_u8;
+    let resolution_factor = SYNTHETIC_RESOLUTION_FACTOR;
+    let quantum = 12_u64;
+    let erc20_contract_address = token_state.address;
+
+    // Add spot asset.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    assets_manager_dispatcher
+        .add_spot_asset(
+            asset_id: spot_asset_id,
+            :erc20_contract_address,
+            :quantum,
+            :resolution_factor,
+            :risk_factor_tiers,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+            :quorum,
+        );
+
+    // Request risk factor increase (app governor)
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    assets_manager_dispatcher
+        .update_asset_risk_factor_request(
+            asset_id: spot_asset_id,
+            risk_factor_tiers: risk_factor_tiers_increased,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+        );
+
+    // Execute risk factor increase (operator)
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    assets_manager_dispatcher
+        .update_asset_risk_factor(
+            operator_nonce: 0,
+            asset_id: spot_asset_id,
+            risk_factor_tiers: risk_factor_tiers_increased,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+        );
+
+    // Check risk factors were updated
+    let asset_config = asset_dispatcher.get_asset_config(asset_id: spot_asset_id);
+    let tiers = asset_dispatcher.get_risk_factor_tiers(asset_id: spot_asset_id);
+    assert!(tiers.len() == 1);
+    assert!(*tiers[0] == RiskFactorTrait::new(*risk_factor_tiers_increased[0]));
+    assert!(asset_config.risk_factor_first_tier_boundary == risk_factor_first_tier_boundary);
+    assert!(asset_config.risk_factor_tier_size == risk_factor_tier_size);
+}
+
+#[test]
+fn test_rf_increase_with_request_vault() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+
+    let assets_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
+    let asset_dispatcher = IAssetsDispatcher { contract_address };
+
+    let vault_asset_id = cfg.vault_share_cfg.collateral_id;
+    let risk_factor_first_tier_boundary = MAX_U128;
+    let risk_factor_tier_size = 1;
+    let risk_factor_tiers = array![10].span();
+    let risk_factor_tiers_increased = array![15].span();
+    let quorum = 1_u8;
+    let quantum = cfg.vault_share_cfg.quantum;
+    let erc20_contract_address = cfg.vault_share_cfg.contract_address;
+
+    // Add vault collateral asset.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    assets_manager_dispatcher
+        .add_vault_collateral_asset(
+            asset_id: vault_asset_id,
+            :erc20_contract_address,
+            :quantum,
+            :risk_factor_tiers,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+            :quorum,
+        );
+
+    // Request risk factor increase (app governor)
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    assets_manager_dispatcher
+        .update_asset_risk_factor_request(
+            asset_id: vault_asset_id,
+            risk_factor_tiers: risk_factor_tiers_increased,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+        );
+
+    // Execute risk factor increase (operator)
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    assets_manager_dispatcher
+        .update_asset_risk_factor(
+            operator_nonce: 0,
+            asset_id: vault_asset_id,
+            risk_factor_tiers: risk_factor_tiers_increased,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+        );
+
+    // Check risk factors were updated
+    let asset_config = asset_dispatcher.get_asset_config(asset_id: vault_asset_id);
+    let tiers = asset_dispatcher.get_risk_factor_tiers(asset_id: vault_asset_id);
+    assert!(tiers.len() == 1);
+    assert!(*tiers[0] == RiskFactorTrait::new(*risk_factor_tiers_increased[0]));
+    assert!(asset_config.risk_factor_first_tier_boundary == risk_factor_first_tier_boundary);
+    assert!(asset_config.risk_factor_tier_size == risk_factor_tier_size);
+}
+
+#[test]
+#[should_panic(expected: 'RF_REQUEST_MISMATCH')]
+fn test_rf_increase_with_request_mismatch() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+
+    let asset_dispatcher = IAssetsManagerDispatcher { contract_address };
+
+    let synthetic_id_1 = SYNTHETIC_ASSET_ID_1();
+
+    let risk_factor_first_tier_boundary = 10_000;
+    let risk_factor_tier_size = 20_000;
+    let risk_factor_tiers = array![1, 2].span();
+    let risk_factor_tiers_first_request = array![1, 3].span();
+    let risk_factor_tiers_second_request = array![1, 4].span();
+    let quorum = 1_u8;
+    let resolution_factor = 2_000_000_000;
+
+    // Add synthetic assets.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    asset_dispatcher
+        .add_synthetic_asset(
+            asset_id: synthetic_id_1,
+            :risk_factor_tiers,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+            :quorum,
+            :resolution_factor,
+        );
+
+    // First request risk factor increase.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    asset_dispatcher
+        .update_asset_risk_factor_request(
+            asset_id: synthetic_id_1,
+            risk_factor_tiers: risk_factor_tiers_first_request,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+        );
+
+    // Second request risk factor increase (overwrites the previous request)
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    asset_dispatcher
+        .update_asset_risk_factor_request(
+            asset_id: synthetic_id_1,
+            risk_factor_tiers: risk_factor_tiers_second_request,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+        );
+
+    // Try to execute with first request, should fail.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    asset_dispatcher
+        .update_asset_risk_factor(
+            operator_nonce: 0,
+            asset_id: synthetic_id_1,
+            risk_factor_tiers: risk_factor_tiers_first_request,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+        );
+}
+
+#[test]
+fn test_rf_increase_with_two_requests_only_latter_served() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+
+    let asset_dispatcher = IAssetsManagerDispatcher { contract_address };
+    let asset_read_dispatcher = IAssetsDispatcher { contract_address };
+
+    let synthetic_id_1 = SYNTHETIC_ASSET_ID_1();
+
+    let risk_factor_first_tier_boundary = 10_000;
+    let risk_factor_tier_size = 20_000;
+    let risk_factor_tiers = array![1, 2].span();
+    let risk_factor_tiers_first_request = array![1, 3].span();
+    let risk_factor_tiers_second_request = array![1, 4].span();
+    let quorum = 1_u8;
+    let resolution_factor = 2_000_000_000;
+
+    // Add synthetic assets.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    asset_dispatcher
+        .add_synthetic_asset(
+            asset_id: synthetic_id_1,
+            :risk_factor_tiers,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+            :quorum,
+            :resolution_factor,
+        );
+
+    // First request risk factor increase
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    asset_dispatcher
+        .update_asset_risk_factor_request(
+            asset_id: synthetic_id_1,
+            risk_factor_tiers: risk_factor_tiers_first_request,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+        );
+
+    // Second request risk factor increase
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    asset_dispatcher
+        .update_asset_risk_factor_request(
+            asset_id: synthetic_id_1,
+            risk_factor_tiers: risk_factor_tiers_second_request,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+        );
+
+    // Execute with second request's tiers (should succeed - only the latter request is served)
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    asset_dispatcher
+        .update_asset_risk_factor(
+            operator_nonce: 0,
+            asset_id: synthetic_id_1,
+            risk_factor_tiers: risk_factor_tiers_second_request,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+        );
+
+    // Verify the tiers were updated to the second request's values (proving only latter was served)
+    let asset_config = asset_read_dispatcher.get_asset_config(asset_id: synthetic_id_1);
+    let tiers = asset_read_dispatcher.get_risk_factor_tiers(asset_id: synthetic_id_1);
+    assert!(tiers.len() == risk_factor_tiers_second_request.len());
+    for i in 0..risk_factor_tiers_second_request.len() {
+        assert!(*tiers[i] == RiskFactorTrait::new(*risk_factor_tiers_second_request[i]));
+    }
+    assert!(asset_config.risk_factor_first_tier_boundary == risk_factor_first_tier_boundary);
+    assert!(asset_config.risk_factor_tier_size == risk_factor_tier_size);
+}
+
+#[test]
+#[should_panic(expected: 'INVALID_NON_SYNTHETIC_RF_TIERS')]
+fn test_rf_update_spot_multiple_tiers_invalid() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+
+    let assets_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
+
+    let spot_asset_id = SYNTHETIC_ASSET_ID_2();
+    let risk_factor_first_tier_boundary = MAX_U128;
+    let risk_factor_tier_size = 1;
+    let risk_factor_tiers = array![10].span();
+    let risk_factor_tiers_invalid = array![10, 15].span();
+    let quorum = 1_u8;
+    let resolution_factor = SYNTHETIC_RESOLUTION_FACTOR;
+    let quantum = 12_u64;
+    let erc20_contract_address = token_state.address;
+
+    // Add spot asset.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    assets_manager_dispatcher
+        .add_spot_asset(
+            asset_id: spot_asset_id,
+            :erc20_contract_address,
+            :quantum,
+            :resolution_factor,
+            :risk_factor_tiers,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+            :quorum,
+        );
+
+    // Try to update with multiple tiers (should fail - spot assets can only have 1 tier)
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    assets_manager_dispatcher
+        .update_asset_risk_factor(
+            operator_nonce: 0,
+            asset_id: spot_asset_id,
+            risk_factor_tiers: risk_factor_tiers_invalid,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+        );
+}
+
+#[test]
+#[should_panic(expected: 'INVALID_NON_SYNTHETIC_RF_TIERS')]
+fn test_rf_update_vault_multiple_tiers_invalid() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+
+    let assets_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
+
+    let vault_asset_id = cfg.vault_share_cfg.collateral_id;
+    let risk_factor_first_tier_boundary = MAX_U128;
+    let risk_factor_tier_size = 1;
+    let risk_factor_tiers = array![10].span();
+    let risk_factor_tiers_invalid = array![10, 15].span();
+    let quorum = 1_u8;
+    let quantum = cfg.vault_share_cfg.quantum;
+    let erc20_contract_address = cfg.vault_share_cfg.contract_address;
+
+    // Add vault collateral asset.
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    assets_manager_dispatcher
+        .add_vault_collateral_asset(
+            asset_id: vault_asset_id,
+            :erc20_contract_address,
+            :quantum,
+            :risk_factor_tiers,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+            :quorum,
+        );
+
+    // Try to update with multiple tiers (should fail - vault assets can only have 1 tier)
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    assets_manager_dispatcher
+        .update_asset_risk_factor(
+            operator_nonce: 0,
+            asset_id: vault_asset_id,
+            risk_factor_tiers: risk_factor_tiers_invalid,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
         );
 }
 
