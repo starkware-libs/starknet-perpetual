@@ -11,10 +11,11 @@ use perpetuals::core::components::positions::interface::IPositions;
 use perpetuals::core::components::snip::SNIP12MetadataImpl;
 use perpetuals::core::core::Core;
 use perpetuals::core::core::Core::InternalCoreFunctions;
+use perpetuals::core::types::asset::synthetic::AssetType;
 use perpetuals::core::types::asset::{AssetId, AssetStatus};
 use perpetuals::core::types::balance::Balance;
 use perpetuals::core::types::funding::FundingIndex;
-use perpetuals::core::types::position::{PositionDiff, PositionId};
+use perpetuals::core::types::position::{POSITION_VERSION_1, PositionDiff, PositionId};
 use perpetuals::core::types::price::{Price, PriceTrait, SignedPrice, convert_oracle_to_perps_price};
 use perpetuals::core::types::risk_factor::{RiskFactor, RiskFactorTrait};
 use perpetuals::tests::constants::*;
@@ -28,7 +29,7 @@ use snforge_std::{
     test_address,
 };
 use starknet::ContractAddress;
-use starknet::storage::{StorageMapReadAccess, StoragePointerWriteAccess};
+use starknet::storage::{StorageMapReadAccess, StoragePointerReadAccess, StoragePointerWriteAccess};
 use starkware_utils::components::roles::interface::{
     IRoles, IRolesDispatcher, IRolesDispatcherTrait,
 };
@@ -696,7 +697,28 @@ pub fn validate_asset_balance(
     expected_balance: Balance,
 ) {
     let snapshot = state.positions.get_position_snapshot(:position_id);
-    let balance = snapshot.asset_balances.read(asset_id).map_or(0_i64.into(), |b| b.balance);
+    let version = snapshot.version.read();
+    let balance = if version == POSITION_VERSION_1 {
+        // Old version: all assets in asset_balances
+        snapshot.asset_balances.read(asset_id).map_or(0_i64.into(), |b| b.balance)
+    } else {
+        // New version: check asset type to use correct map
+        let asset_config = state.assets.get_asset_config(asset_id);
+        match asset_config.asset_type {
+            AssetType::SYNTHETIC => {
+                snapshot.asset_balances.read(asset_id).map_or(0_i64.into(), |b| b.balance)
+            },
+            AssetType::SPOT_COLLATERAL => {
+                snapshot.spot_collateral_balances.read(asset_id).map_or(0_i64.into(), |b| b.balance)
+            },
+            AssetType::VAULT_SHARE_COLLATERAL => {
+                snapshot
+                    .vault_collateral_balances
+                    .read(asset_id)
+                    .map_or(0_i64.into(), |b| b.balance)
+            },
+        }
+    };
     assert!(balance == expected_balance);
 }
 

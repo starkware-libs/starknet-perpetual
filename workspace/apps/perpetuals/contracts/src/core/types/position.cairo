@@ -10,7 +10,8 @@ use starkware_utils::storage::iterable_map::{
     IterableMap, IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
 };
 
-pub const POSITION_VERSION: u8 = 1;
+pub const POSITION_VERSION: u8 = 2;
+pub const POSITION_VERSION_1: u8 = 1;
 
 #[starknet::storage_node]
 pub struct Position {
@@ -19,8 +20,11 @@ pub struct Position {
     pub owner_public_key: PublicKey,
     pub collateral_balance: Balance,
     #[rename("synthetic_balance")]
-    pub asset_balances: IterableMap<AssetId, AssetBalance>,
+    pub asset_balances: IterableMap<AssetId, AssetBalance>, // In v2: only stores synthetics
     pub owner_protection_enabled: bool,
+    // V2 fields: separate maps for spot and vault collateral
+    pub spot_collateral_balances: IterableMap<AssetId, AssetBalance>,
+    pub vault_collateral_balances: IterableMap<AssetId, AssetBalance>,
 }
 
 /// Synthetic asset in a position.
