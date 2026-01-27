@@ -54,4 +54,5 @@ pub trait IPositions<TContractState> {
         position_id: PositionId,
         signature: Signature,
     );
+    fn migrate_positions(ref self: TContractState, position_ids: Span<PositionId>);
 }
