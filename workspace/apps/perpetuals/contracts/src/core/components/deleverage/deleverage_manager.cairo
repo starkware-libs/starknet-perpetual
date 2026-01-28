@@ -160,6 +160,69 @@ pub(crate) mod DeleverageManager {
                 .positions
                 .get_position_snapshot(position_id: deleverager_position_id);
 
+            /// Validation:
+            self
+                ._validate_deleverage(
+                    :deleveraged_position,
+                    :deleverager_position,
+                    :deleveraged_position_id,
+                    :deleverager_position_id,
+                    :base_asset_id,
+                    :deleveraged_base_amount,
+                    :deleveraged_quote_amount,
+                );
+
+            /// Execution:
+            self
+                ._execute_deleverage(
+                    :deleveraged_position_id,
+                    :deleverager_position_id,
+                    :deleveraged_position,
+                    :deleverager_position,
+                    :base_asset_id,
+                    :deleveraged_base_amount,
+                    :deleveraged_quote_amount,
+                );
+        }
+    }
+
+    #[generate_trait]
+    pub impl InternalFunctions of DeleverageManagerFunctionsTrait {
+        fn _validate_deleveraged_position(
+            self: @ContractState,
+            position_id: PositionId,
+            position: StoragePath<Position>,
+            position_diff: PositionDiff,
+        ) {
+            let (provisional_delta, unchanged_assets) = self
+                .positions
+                .derive_funding_delta_and_unchanged_assets(:position, :position_diff);
+
+            let synthetic_enriched_position_diff = self
+                .positions
+                .enrich_asset(:position, :position_diff);
+            let position_diff_enriched = self
+                .positions
+                .enrich_collateral(
+                    :position,
+                    position_diff: synthetic_enriched_position_diff,
+                    provisional_delta: Option::Some(provisional_delta),
+                );
+
+            deleveraged_position_validations(
+                :position_id, :unchanged_assets, :position_diff_enriched,
+            );
+        }
+        fn _validate_deleverage(
+            self: @ContractState,
+            deleveraged_position: StoragePath<Position>,
+            deleverager_position: StoragePath<Position>,
+            deleveraged_position_id: PositionId,
+            deleverager_position_id: PositionId,
+            base_asset_id: AssetId,
+            deleveraged_base_amount: i64,
+            deleveraged_quote_amount: i64,
+        ) {
             self.assets.validate_asset_active(synthetic_id: base_asset_id);
             self
                 .positions
@@ -172,8 +235,18 @@ pub(crate) mod DeleverageManager {
                     base_amount_a: deleveraged_base_amount,
                     quote_amount_a: deleveraged_quote_amount,
                 );
+        }
 
-            /// Execution:
+        fn _execute_deleverage(
+            ref self: ContractState,
+            deleveraged_position_id: PositionId,
+            deleverager_position_id: PositionId,
+            deleveraged_position: StoragePath<Position>,
+            deleverager_position: StoragePath<Position>,
+            base_asset_id: AssetId,
+            deleveraged_base_amount: i64,
+            deleveraged_quote_amount: i64,
+        ) {
             let deleveraged_position_diff = PositionDiff {
                 collateral_diff: deleveraged_quote_amount.into(),
                 asset_diff: Option::Some((base_asset_id, deleveraged_base_amount.into())),
@@ -226,35 +299,6 @@ pub(crate) mod DeleverageManager {
                         deleveraged_quote_amount,
                     },
                 )
-        }
-    }
-
-    #[generate_trait]
-    pub impl InternalFunctions of DeleverageManagerFunctionsTrait {
-        fn _validate_deleveraged_position(
-            self: @ContractState,
-            position_id: PositionId,
-            position: StoragePath<Position>,
-            position_diff: PositionDiff,
-        ) {
-            let (provisional_delta, unchanged_assets) = self
-                .positions
-                .derive_funding_delta_and_unchanged_assets(:position, :position_diff);
-
-            let synthetic_enriched_position_diff = self
-                .positions
-                .enrich_asset(:position, :position_diff);
-            let position_diff_enriched = self
-                .positions
-                .enrich_collateral(
-                    :position,
-                    position_diff: synthetic_enriched_position_diff,
-                    provisional_delta: Option::Some(provisional_delta),
-                );
-
-            deleveraged_position_validations(
-                :position_id, :unchanged_assets, :position_diff_enriched,
-            );
         }
     }
 }
