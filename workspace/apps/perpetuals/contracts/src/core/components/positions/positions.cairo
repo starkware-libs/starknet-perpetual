@@ -19,7 +19,7 @@ pub mod Positions {
     use perpetuals::core::components::positions::events;
     use perpetuals::core::components::positions::interface::IPositions;
     use perpetuals::core::types::asset::AssetId;
-    use perpetuals::core::types::asset::synthetic::AssetBalanceInfo;
+    use perpetuals::core::types::asset::synthetic::{AssetBalanceInfo, SyntheticTrait};
     use perpetuals::core::types::balance::Balance;
     use perpetuals::core::types::funding::calculate_funding;
     use perpetuals::core::types::position::{
@@ -32,7 +32,7 @@ pub mod Positions {
         PositionState, PositionTVTR, calculate_position_tvtr, evaluate_position,
     };
     use starknet::storage::{
-        Map, Mutable, StoragePath, StoragePathEntry, StoragePointerReadAccess,
+        Map, Mutable, StorageAsPointer, StoragePath, StoragePathEntry, StoragePointerReadAccess,
         StoragePointerWriteAccess,
     };
     use starknet::{ContractAddress, get_caller_address};
@@ -49,17 +49,17 @@ pub mod Positions {
     };
     use starkware_utils::storage::utils::AddToStorage;
     use starkware_utils::time::time::{Time, Timestamp, validate_expiration};
+    use crate::core::components::assets::errors::NO_SUCH_ASSET;
     use crate::core::components::snip::SNIP12MetadataImpl;
     use crate::core::errors::{
         INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE, INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT,
     };
-    use crate::core::types::asset::synthetic::AssetBalanceDiffEnriched;
+    use crate::core::types::asset::synthetic::{AssetBalanceDiffEnriched, AssetType};
     use crate::core::types::balance::BalanceDiff;
     use crate::core::types::position::{AssetEnrichedPositionDiff, PositionDiffEnriched};
     use crate::core::value_risk_calculator::{
         assert_healthy_or_healthier, calculate_position_tvtr_before, calculate_position_tvtr_change,
     };
-
     pub const FEE_POSITION: PositionId = PositionId { value: 0 };
     pub const INSURANCE_FUND_POSITION: PositionId = PositionId { value: 1 };
 
@@ -675,7 +675,7 @@ pub mod Positions {
         }
 
         fn _validate_imposed_reduction_trade(
-            ref self: ComponentState<TContractState>,
+            self: @ComponentState<TContractState>,
             position_id_a: PositionId,
             position_id_b: PositionId,
             position_a: StoragePath<Position>,
@@ -694,15 +694,37 @@ pub mod Positions {
             // Sign Validation for amounts.
             assert(!have_same_sign(base_amount_a, quote_amount_a), INVALID_AMOUNT_SIGN);
 
-            // Ensure that TR does not increase and that the base amount retains the same sign.
-            self
-                ._validate_synthetic_shrinks(
-                    position: position_a, asset_id: base_asset_id, amount: base_amount_a,
-                );
-            self
-                ._validate_synthetic_shrinks(
-                    position: position_b, asset_id: base_asset_id, amount: -base_amount_a,
-                );
+            let assets = get_dep_component!(self, Assets);
+            let entry = assets.asset_config.entry(base_asset_id).as_ptr();
+            match SyntheticTrait::get_asset_type(entry).expect(NO_SUCH_ASSET) {
+                AssetType::SYNTHETIC => {
+                    // Ensure that TR does not increase and that the base amount retains the same
+                    // sign.
+                    self
+                        ._validate_synthetic_shrinks(
+                            position: position_a, asset_id: base_asset_id, amount: base_amount_a,
+                        );
+                    self
+                        ._validate_synthetic_shrinks(
+                            position: position_b, asset_id: base_asset_id, amount: -base_amount_a,
+                        );
+                },
+                AssetType::SPOT_COLLATERAL => {
+                    // This is called only in deleverage_spot, position_a is the deleveraged
+                    // position and position_b is the deleverager position.
+                    // Base asset id is the spot asset id.
+
+                    // Validate that deleveraged spot balance is not negative
+                    // and will not become negative after the deleverage.
+                    self
+                        ._validate_spot_collateral_shrink_non_negative(
+                            position: position_a, asset_id: base_asset_id, amount: base_amount_a,
+                        );
+                },
+                AssetType::VAULT_SHARE_COLLATERAL => {
+                    panic_with_felt252('NO_DELEVERAGE_VAULT_SHARES');
+                },
+            }
         }
     }
 
