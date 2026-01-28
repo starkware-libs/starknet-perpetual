@@ -8,21 +8,13 @@ use starkware_utils::signature::stark::Signature;
 #[starknet::interface]
 pub trait IVaultExternal<TContractState> {
     fn activate_vault(
-        ref self: TContractState,
-        operator_nonce: u64,
-        order: ConvertPositionToVault,
-        signature: Signature,
+        ref self: TContractState, order: ConvertPositionToVault, signature: Signature,
     );
     fn invest_in_vault(
-        ref self: TContractState,
-        operator_nonce: u64,
-        signature: Signature,
-        order: LimitOrder,
-        correlation_id: felt252,
+        ref self: TContractState, signature: Signature, order: LimitOrder, correlation_id: felt252,
     );
     fn redeem_from_vault(
         ref self: TContractState,
-        operator_nonce: u64,
         signature: Signature,
         order: LimitOrder,
         vault_approval: LimitOrder,
@@ -33,7 +25,6 @@ pub trait IVaultExternal<TContractState> {
 
     fn liquidate_vault_shares(
         ref self: TContractState,
-        operator_nonce: u64,
         liquidated_position_id: PositionId,
         vault_approval: LimitOrder,
         vault_signature: Signature,
@@ -182,19 +173,13 @@ pub(crate) mod VaultsManager {
     #[abi(embed_v0)]
     impl VaultsImpl of IVaultExternal<ContractState> {
         fn activate_vault(
-            ref self: ContractState,
-            operator_nonce: u64,
-            order: ConvertPositionToVault,
-            signature: Signature,
+            ref self: ContractState, order: ConvertPositionToVault, signature: Signature,
         ) {
-            self
-                .vaults
-                .activate_vault(operator_nonce: operator_nonce, order: order, signature: signature);
+            self.vaults.activate_vault(:order, :signature);
         }
 
         fn invest_in_vault(
             ref self: ContractState,
-            operator_nonce: u64,
             signature: Signature,
             order: LimitOrder,
             correlation_id: felt252,
@@ -346,7 +331,6 @@ pub(crate) mod VaultsManager {
         }
         fn redeem_from_vault(
             ref self: ContractState,
-            operator_nonce: u64,
             signature: Span<felt252>,
             order: LimitOrder,
             vault_approval: LimitOrder,
@@ -368,7 +352,6 @@ pub(crate) mod VaultsManager {
 
         fn liquidate_vault_shares(
             ref self: ContractState,
-            operator_nonce: u64,
             liquidated_position_id: PositionId,
             vault_approval: LimitOrder,
             vault_signature: Span<felt252>,

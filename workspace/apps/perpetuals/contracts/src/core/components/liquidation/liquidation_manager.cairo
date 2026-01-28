@@ -29,7 +29,6 @@ pub struct Liquidate {
 pub trait ILiquidationManager<TContractState> {
     fn liquidate(
         ref self: TContractState,
-        operator_nonce: u64,
         liquidator_signature: Signature,
         liquidated_position_id: PositionId,
         liquidator_order: Order,
@@ -191,7 +190,6 @@ pub(crate) mod LiquidationManager {
         /// - Update liquidator order fulfillment.
         fn liquidate(
             ref self: ContractState,
-            operator_nonce: u64,
             liquidator_signature: Span<felt252>,
             liquidated_position_id: PositionId,
             liquidator_order: Order,

@@ -104,7 +104,6 @@ pub mod Vaults {
 
         fn activate_vault(
             ref self: ComponentState<TContractState>,
-            operator_nonce: u64,
             order: ConvertPositionToVault,
             signature: Signature,
         ) {

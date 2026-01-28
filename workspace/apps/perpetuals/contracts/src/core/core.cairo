@@ -516,7 +516,6 @@ pub mod Core {
                 .external_components
                 ._get_liquidation_manager_dispatcher()
                 .liquidate(
-                    :operator_nonce,
                     :liquidator_signature,
                     :liquidated_position_id,
                     :liquidator_order,
@@ -561,7 +560,6 @@ pub mod Core {
                 .external_components
                 ._get_deleverage_manager_dispatcher()
                 .deleverage(
-                    :operator_nonce,
                     :deleveraged_position_id,
                     :deleverager_position_id,
                     :base_asset_id,
@@ -672,7 +670,6 @@ pub mod Core {
                 .external_components
                 ._get_vault_manager_dispatcher()
                 .redeem_from_vault(
-                    :operator_nonce,
                     :signature,
                     :order,
                     :vault_approval,
@@ -699,7 +696,6 @@ pub mod Core {
                 .external_components
                 ._get_vault_manager_dispatcher()
                 .liquidate_vault_shares(
-                    :operator_nonce,
                     :liquidated_position_id,
                     :vault_approval,
                     :vault_signature,
@@ -720,7 +716,7 @@ pub mod Core {
             self
                 .external_components
                 ._get_vault_manager_dispatcher()
-                .activate_vault(operator_nonce: operator_nonce, :order, :signature)
+                .activate_vault(:order, :signature)
         }
         fn invest_in_vault(
             ref self: ContractState,
@@ -735,9 +731,7 @@ pub mod Core {
             self
                 .external_components
                 ._get_vault_manager_dispatcher()
-                .invest_in_vault(
-                    operator_nonce: operator_nonce, :signature, :order, :correlation_id,
-                )
+                .invest_in_vault(:signature, :order, :correlation_id)
         }
 
         // Forced actions.

@@ -18,7 +18,6 @@ pub struct Deleverage {
 pub trait IDeleverageManager<TContractState> {
     fn deleverage(
         ref self: TContractState,
-        operator_nonce: u64,
         deleveraged_position_id: PositionId,
         deleverager_position_id: PositionId,
         base_asset_id: AssetId,
@@ -148,7 +147,6 @@ pub(crate) mod DeleverageManager {
         /// - Perform fundamental validation for both positions after the execution.
         fn deleverage(
             ref self: ContractState,
-            operator_nonce: u64,
             deleveraged_position_id: PositionId,
             deleverager_position_id: PositionId,
             base_asset_id: AssetId,
