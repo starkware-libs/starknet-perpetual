@@ -593,8 +593,8 @@ pub mod AssetsComponent {
         }
 
 
-        fn validate_asset_active(self: @ComponentState<TContractState>, synthetic_id: AssetId) {
-            let entry = self.asset_config.entry(synthetic_id).as_ptr();
+        fn validate_asset_active(self: @ComponentState<TContractState>, asset_id: AssetId) {
+            let entry = self.asset_config.entry(asset_id).as_ptr();
             assert(SyntheticTrait::is_some_config(entry), ASSET_NOT_EXISTS);
             assert(SyntheticTrait::at_asset_status(entry) == AssetStatus::ACTIVE, INACTIVE_ASSET);
         }
