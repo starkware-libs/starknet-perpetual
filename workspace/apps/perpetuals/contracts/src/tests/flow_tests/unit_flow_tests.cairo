@@ -3711,3 +3711,59 @@ fn test_apply_interest_twice_without_advancing_time() {
     let interest_amounts = array![interest_1].span();
     state.facade.apply_interests(:position_ids, :interest_amounts);
 }
+
+#[test]
+#[should_panic(expected: 'INVALID_BASE_CHANGE')]
+fn test_withdraw_spot_collateral_negative_balance() {
+    // Setup.
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+
+    // Create a custom spot collateral asset.
+    let token = snforge_std::Token::STRK;
+    let erc20_contract_address = token.contract_address();
+    let asset_info = AssetInfoTrait::new_collateral(
+        asset_name: 'COL', :risk_factor_data, oracles_len: 1, :erc20_contract_address,
+    );
+    let asset_id = asset_info.asset_id;
+    state.facade.add_active_collateral(asset_info: @asset_info, initial_price: 100);
+
+    // Create user.
+    let user = state.new_user_with_position();
+    snforge_std::set_balance(target: user.account.address, new_balance: 5000000, :token);
+
+    // Deposit base collateral (USDC) to ensure position stays healthy.
+    // This ensures the position health validation passes and we hit the specific
+    // spot balance validation we're testing.
+    let deposit_info_base = state
+        .facade
+        .deposit(depositor: user.account, position_id: user.position_id, quantized_amount: 200000);
+    state.facade.process_deposit(deposit_info: deposit_info_base);
+
+    // Deposit 1000 units of spot collateral to user.
+    let deposit_info_user = state
+        .facade
+        .deposit_spot(
+            depositor: user.account,
+            :asset_id,
+            position_id: user.position_id,
+            quantized_amount: 1000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_info_user);
+
+    // Verify user has 1000 units of spot collateral.
+    state
+        .facade
+        .validate_asset_balance(
+            position_id: user.position_id, asset_id: asset_id, expected_balance: 1000_i64.into(),
+        );
+
+    // Attempt to withdraw 1500 units (more than available) - should panic with
+    // INVALID_BASE_CHANGE.
+    // The position has enough base collateral to stay healthy, so the validation
+    // should fail specifically on the spot balance check.
+    let withdraw_info = state.facade.withdraw_spot_request(:user, :asset_id, amount: 1500);
+    state.facade.withdraw(:withdraw_info);
+}

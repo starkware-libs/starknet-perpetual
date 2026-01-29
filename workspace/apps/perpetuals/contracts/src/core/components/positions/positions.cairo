@@ -660,7 +660,7 @@ pub mod Positions {
             assert(amount.abs() <= position_base_balance.abs(), INVALID_BASE_CHANGE);
         }
 
-        fn _validate_spot_collateral_shrink_non_negative(
+        fn _validate_asset_shrink_non_negative(
             self: @ComponentState<TContractState>,
             position: StoragePath<Position>,
             asset_id: AssetId,
@@ -717,7 +717,7 @@ pub mod Positions {
                     // Validate that deleveraged spot balance is not negative
                     // and will not become negative after the deleverage.
                     self
-                        ._validate_spot_collateral_shrink_non_negative(
+                        ._validate_asset_shrink_non_negative(
                             position: position_a, asset_id: base_asset_id, amount: base_amount_a,
                         );
                 },

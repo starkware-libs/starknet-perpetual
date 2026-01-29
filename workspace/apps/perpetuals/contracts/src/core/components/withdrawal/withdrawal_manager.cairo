@@ -122,8 +122,8 @@ pub(crate) mod WithdrawalManager {
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
     use perpetuals::core::components::snip::SNIP12MetadataImpl;
     use perpetuals::core::errors::{
-        FORCED_WAIT_REQUIRED, INVALID_WITHDRAW_COLLATERAL, INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED,
-        TRANSFER_FAILED,
+        AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_WITHDRAW_COLLATERAL, INVALID_ZERO_AMOUNT,
+        SIGNED_TX_EXPIRED, TRANSFER_FAILED,
     };
     use perpetuals::core::types::asset::AssetId;
     use perpetuals::core::types::asset::synthetic::SyntheticTrait;
@@ -475,6 +475,12 @@ pub(crate) mod WithdrawalManager {
                 assert(
                     SyntheticTrait::at_asset_status(entry) == AssetStatus::ACTIVE, INACTIVE_ASSET,
                 );
+                let signed_amount: i64 = -amount.try_into().expect(AMOUNT_OVERFLOW);
+                self
+                    .positions
+                    ._validate_asset_shrink_non_negative(
+                        :position, asset_id: collateral_id, amount: signed_amount,
+                    );
                 (
                     PositionDiff {
                         collateral_diff: Zero::zero(),

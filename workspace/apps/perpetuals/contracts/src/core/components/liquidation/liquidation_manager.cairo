@@ -411,7 +411,7 @@ pub(crate) mod LiquidationManager {
                 AssetType::SPOT_COLLATERAL => {
                     self
                         .positions
-                        ._validate_spot_collateral_shrink_non_negative(
+                        ._validate_asset_shrink_non_negative(
                             :position, asset_id: asset_diff_id, amount: asset_diff_balance.into(),
                         );
                 },
