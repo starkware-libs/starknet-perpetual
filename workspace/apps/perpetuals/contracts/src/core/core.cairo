@@ -568,6 +568,47 @@ pub mod Core {
                 )
         }
 
+        /// Executes a spot asset deleverage of a user position with a deleverager position.
+        ///
+        /// Validations:
+        /// - The contract must not be paused.
+        /// - The `operator_nonce` must be valid.
+        /// - The prices of all assets in the system are valid.
+        /// - Verifies the signs of amounts:
+        ///   - Ensures the opposite sign of amounts in spot and base collateral.
+        ///   - Ensures the sign of amounts in each position is consistent.
+        /// - Verifies that the spot asset is active.
+        /// - validates the deleveraged position is deleveragable.
+        ///
+        /// Execution:
+        /// - Update the position, based on `delevereged_spot_asset`.
+        /// - Adjust collateral balances based on `delevereged_base_collateral_amount`.
+        /// - Perform fundamental validation for both positions after the execution.
+        fn deleverage_spot_asset(
+            ref self: ContractState,
+            operator_nonce: u64,
+            deleveraged_position_id: PositionId,
+            deleverager_position_id: PositionId,
+            asset_id: AssetId,
+            deleveraged_amount: i64,
+            deleveraged_base_collateral_amount: i64,
+        ) {
+            /// Validations:
+            self.pausable.assert_not_paused();
+            self.assets.validate_price_interval_integrity(Time::now());
+            self.operator_nonce.use_checked_nonce(:operator_nonce);
+            self
+                .external_components
+                ._get_deleverage_manager_dispatcher()
+                .deleverage_spot_asset(
+                    :deleveraged_position_id,
+                    :deleverager_position_id,
+                    :asset_id,
+                    :deleveraged_amount,
+                    :deleveraged_base_collateral_amount,
+                )
+        }
+
         /// Executes a trade between position with inactive synthetic assets.
         ///
         /// Validations:

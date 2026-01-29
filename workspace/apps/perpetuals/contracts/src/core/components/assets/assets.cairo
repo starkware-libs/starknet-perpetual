@@ -593,9 +593,9 @@ pub mod AssetsComponent {
         }
 
 
-        fn validate_asset_active(self: @ComponentState<TContractState>, synthetic_id: AssetId) {
-            if let Option::Some(config) = self.asset_config.read(synthetic_id) {
-                assert(config.status == AssetStatus::ACTIVE, SYNTHETIC_NOT_ACTIVE);
+        fn validate_asset_active(self: @ComponentState<TContractState>, asset_id: AssetId) {
+            if let Option::Some(config) = self.asset_config.read(asset_id) {
+                assert(config.status == AssetStatus::ACTIVE, INACTIVE_ASSET);
             } else {
                 panic_with_felt252(ASSET_NOT_EXISTS);
             }

@@ -33,6 +33,7 @@ classDiagram
         redeem_from_vault()
         liquidate_vault_shares()
         liquidate_spot_asset()
+        deleverage_spot_asset()
     }
     class Position{
         version: u8,
@@ -305,6 +306,8 @@ $$ ( \frac{TV}{TR})\_{new} \geq (\frac{TV}{TR})\_{old} $$
 $$ {TR}\_{new} \lt {TR\_{old}} $$
 
 #### Is Fair Deleverage
+
+TODO: add logic for spot asset deleverage.
 
 checks if the deleverage is fair.
 
@@ -4217,7 +4220,7 @@ Only the Operator can execute.
 - POSITION_IS_NOT_HEALTHIER
 - POSITION_NOT_HEALTHY_NOR_HEALTHIER
 
-### Liquidate Spot Asset
+#### Liquidate Spot Asset
 When a user position [is liquidatable](#liquidatable), the system can match the liquidated position with a signed order without a signature of the liquidated position to make it [healthier](#is-healthier).
 
 ```rust
@@ -4363,6 +4366,77 @@ Only the Operator can execute.
 3. Subtract `deleveraged_base_amount` from the `deleverager_position_id` base id synthetic.
 4. Add `deleveraged_quote_amount` to the `deleveraged_position_id` collateral.
 5. Subtract `deleveraged_quote_amount` from the `deleverager_position_id` collateral.
+6. Add interest amounts to collateral balances for both positions, including timestamps.
+7. [Fundamental validation](#fundamental) for both positions.
+
+**Emits:**
+[deleverage](#deleverage)
+
+**Errors:**
+
+- PAUSED
+- ONLY\_OPERATOR
+- INVALID\_NONCE
+- FUNDING\_EXPIRED
+- SYNTHETIC\_NOT\_EXISTS
+- SYNTHETIC\_EXPIRED\_PRICE
+- INVALID\_POSITION
+- INVALID_ZERO_AMOUNT
+- COLLATERAL_NOT_EXISTS
+- COLLATERAL\_NOT\_ACTIVE
+- INVALID_NON_SYNTHETIC_ASSET
+- INVALID_WRONG_AMOUNT_SIGN
+- INVALID_BASE_CHANGE
+- INVALID_POSITION
+- ASSET_NOT_EXISTS
+- NOT_SYNTHETIC
+- POSITION_IS_NOT_DELEVERAGABLE
+- POSITION_IS_NOT_FAIR_DELEVERAGE
+- POSITION_IS_NOT_HEALTHIER
+- POSITION_NOT_HEALTHY_NOR_HEALTHIER
+
+#### Deleverage Spot Asset
+
+When a user position [is deleveragable](#deleveragable), the system can match the deleveraged position with deleverger position, both without position’s signature, to make it [healthier](#is-healthier).
+
+```rust
+fn deleverage_spot_asset(
+    ref self: ContractState,
+    operator_nonce: u64,
+    deleveraged_position_id: PositionId,
+    deleverager_position_id: PositionId,
+    spot_asset_id: AssetId,
+    deleveraged_spot_amount: i64,
+    deleveraged_base_collateral_amount: i64,
+    interest_amount_deleveraged: i64,
+    interest_amount_deleverager: i64,
+)
+```
+
+**Access Control:**
+
+Only the Operator can execute.
+
+**Validations:**
+
+1. [Pausable check](#pausable)
+2. [Operator Nonce check](#operator-nonce)
+3. [Assets check](#asset)
+4. [Price validation](#price)
+5. `deleveraged_position_id != deleverager_position_id`
+6. spot\_asset\_id must be a registered active asset.
+7. deleveraged\_position is\_deleveragable
+8. deleveraged\_spot\_amount and deleveraged\_base\_collateral\_amount have opposite signs.
+9. `deleveraged_position.spot_balance` decreases in magnitude after the change: `|spot_deleveraged.amount|` must not exceed `|deleveraged_position.spot_balance|`, and `deleveraged_position.spot_balance` must remain non-negative.
+10. Check interest amounts in range for both positions.
+
+**Logic:**
+
+1. Run validations
+2. Subtract `deleveraged_spot_amount` from the `deleveraged_position_id` spot balance.
+3. Add `deleveraged_spot_amount` to the `deleverager_position_id` spot balance.
+4. Add `deleveraged_base_collateral_amount` to the `deleveraged_position_id` base collateral balance.
+5. Subtract `deleveraged_base_collateral_amount` from the `deleverager_position_id` base collateral balance.
 6. Add interest amounts to collateral balances for both positions, including timestamps.
 7. [Fundamental validation](#fundamental) for both positions.
 
