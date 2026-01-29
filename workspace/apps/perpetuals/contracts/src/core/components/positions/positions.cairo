@@ -53,6 +53,7 @@ pub mod Positions {
     use crate::core::components::snip::SNIP12MetadataImpl;
     use crate::core::errors::{
         INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE, INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT,
+        NO_DELEVERAGE_VAULT_SHARES,
     };
     use crate::core::types::asset::synthetic::{AssetBalanceDiffEnriched, AssetType};
     use crate::core::types::balance::BalanceDiff;
@@ -722,7 +723,7 @@ pub mod Positions {
                         );
                 },
                 AssetType::VAULT_SHARE_COLLATERAL => {
-                    panic_with_felt252('NO_DELEVERAGE_VAULT_SHARES');
+                    panic_with_felt252(NO_DELEVERAGE_VAULT_SHARES);
                 },
             }
         }
