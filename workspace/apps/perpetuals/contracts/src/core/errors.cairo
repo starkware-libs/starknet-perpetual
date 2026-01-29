@@ -29,6 +29,7 @@ pub const NON_MONOTONIC_TIME: felt252 = 'NON_MONOTONIC_TIME';
 pub const STALE_TIME: felt252 = 'STALE_TIME';
 pub const INVALID_INTEREST_RATE: felt252 = 'INVALID_INTEREST_RATE';
 pub const ZERO_MAX_INTEREST_RATE: felt252 = 'ZERO_MAX_INTEREST_RATE';
+pub const NO_DELEVERAGE_VAULT_SHARES: felt252 = 'NO_DELEVERAGE_VAULT_SHARES';
 
 pub fn fulfillment_exceeded_err(position_id: PositionId) -> ByteArray {
     format!("FULFILLMENT_EXCEEDED position_id: {:?}", position_id)
