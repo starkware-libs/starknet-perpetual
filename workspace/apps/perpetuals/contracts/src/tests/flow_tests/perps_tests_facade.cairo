@@ -26,6 +26,9 @@ use perpetuals::core::components::positions::interface::{
     IPositionsDispatcher, IPositionsDispatcherTrait,
 };
 use perpetuals::core::components::snip::SNIP12MetadataImpl;
+use perpetuals::core::components::system_time::interface::{
+    ISystemTimeDispatcher, ISystemTimeDispatcherTrait,
+};
 use perpetuals::core::interface::{ICoreDispatcher, ICoreDispatcherTrait, Settlement};
 use perpetuals::core::types::asset::synthetic::{AssetBalanceInfo, AssetType};
 use perpetuals::core::types::asset::{AssetId, AssetIdTrait, AssetStatus};
@@ -589,6 +592,19 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             registered_spots: array![(COLLATERAL_ASSET_ID(), token_state.address)],
         };
         perpetual_wrapper.set_roles();
+
+        // Initialize system time to BEGINNING_OF_TIME
+        let initial_timestamp = Timestamp { seconds: BEGINNING_OF_TIME };
+        let operator_nonce = IOperatorNonceDispatcher {
+            contract_address: perpetual_wrapper.perpetuals_contract,
+        }
+            .get_operator_nonce();
+        perpetual_wrapper.operator.set_as_caller(perpetual_wrapper.perpetuals_contract);
+        let system_time_dispatcher = ISystemTimeDispatcher {
+            contract_address: perpetual_wrapper.perpetuals_contract,
+        };
+        system_time_dispatcher
+            .update_system_time(:operator_nonce, new_timestamp: initial_timestamp);
 
         cheat_caller_address(
             contract_address: perpetuals_contract,
@@ -2306,6 +2322,18 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             asset_id: vault.asset_id,
         }
     }
+
+    fn advance_time(ref self: PerpsTestsFacade, seconds: u64) {
+        // Advance block timestamp
+        let new_timestamp = Time::now().add(Time::seconds(seconds));
+        start_cheat_block_timestamp_global(new_timestamp.into());
+
+        // Update system time in the contract
+        let operator_nonce = self.get_nonce();
+        let dispatcher = ISystemTimeDispatcher { contract_address: self.perpetuals_contract };
+        self.operator.set_as_caller(self.perpetuals_contract);
+        dispatcher.update_system_time(:operator_nonce, :new_timestamp);
+    }
 }
 
 
@@ -2371,10 +2399,6 @@ pub impl PerpsTestsFacadeValidationsImpl of PerpsTestsFacadeValidationsTrait {
         let PositionTVTR { total_risk, .. } = dispatcher.get_position_tv_tr(position_id);
         assert_eq!(total_risk, expected_total_risk);
     }
-}
-
-pub fn advance_time(seconds: u64) {
-    start_cheat_block_timestamp_global(Time::now().add(Time::seconds(seconds)).into());
 }
 
 fn get_synthetic_balance(assets: Span<AssetBalanceInfo>, asset_id: AssetId) -> Balance {
