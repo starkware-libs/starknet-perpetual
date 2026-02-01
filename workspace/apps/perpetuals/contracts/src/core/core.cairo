@@ -1026,7 +1026,7 @@ pub mod Core {
             self.operator_nonce.use_checked_nonce(:operator_nonce);
 
             // Read once and pass as arguments to avoid redundant storage reads
-            let current_time = Time::now();
+            let current_time = self.get_system_time();
             let max_interest_rate_per_sec = self.max_interest_rate_per_sec.read();
             let interest_rate_scale: u64 = 2_u64.pow(32);
 
