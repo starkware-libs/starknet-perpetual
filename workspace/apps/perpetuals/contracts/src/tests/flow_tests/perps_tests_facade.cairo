@@ -590,6 +590,19 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         };
         perpetual_wrapper.set_roles();
 
+        // Initialize system time to BEGINNING_OF_TIME
+        let initial_timestamp = Timestamp { seconds: BEGINNING_OF_TIME };
+        let operator_nonce = IOperatorNonceDispatcher {
+            contract_address: perpetual_wrapper.perpetuals_contract,
+        }
+            .get_operator_nonce();
+        perpetual_wrapper.operator.set_as_caller(perpetual_wrapper.perpetuals_contract);
+        let core_dispatcher = ICoreDispatcher {
+            contract_address: perpetual_wrapper.perpetuals_contract,
+        };
+        core_dispatcher
+            .update_system_time(operator_nonce: operator_nonce, new_timestamp: initial_timestamp);
+
         cheat_caller_address(
             contract_address: perpetuals_contract,
             caller_address: GOVERNANCE_ADMIN(),
@@ -2306,6 +2319,21 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             asset_id: vault.asset_id,
         }
     }
+
+    fn advance_time(ref self: PerpsTestsFacade, seconds: u64) {
+        // Advance block timestamp
+        let new_timestamp = Time::now().add(Time::seconds(seconds));
+        start_cheat_block_timestamp_global(new_timestamp.into());
+
+        // Update system time in the contract
+        let operator_nonce = self.get_nonce();
+        let dispatcher = ICoreDispatcher { contract_address: self.perpetuals_contract };
+        self.operator.set_as_caller(self.perpetuals_contract);
+        dispatcher
+            .update_system_time(
+                operator_nonce: operator_nonce, new_timestamp: new_timestamp.into(),
+            );
+    }
 }
 
 
@@ -2371,10 +2399,6 @@ pub impl PerpsTestsFacadeValidationsImpl of PerpsTestsFacadeValidationsTrait {
         let PositionTVTR { total_risk, .. } = dispatcher.get_position_tv_tr(position_id);
         assert_eq!(total_risk, expected_total_risk);
     }
-}
-
-pub fn advance_time(seconds: u64) {
-    start_cheat_block_timestamp_global(Time::now().add(Time::seconds(seconds)).into());
 }
 
 fn get_synthetic_balance(assets: Span<AssetBalanceInfo>, asset_id: AssetId) -> Balance {
