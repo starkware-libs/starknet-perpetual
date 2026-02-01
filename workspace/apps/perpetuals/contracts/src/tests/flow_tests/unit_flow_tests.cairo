@@ -3767,3 +3767,153 @@ fn test_withdraw_spot_collateral_negative_balance() {
     let withdraw_info = state.facade.withdraw_spot_request(:user, :asset_id, amount: 1500);
     state.facade.withdraw(:withdraw_info);
 }
+
+#[test]
+#[should_panic(expected: 'NOT_TRANSFERABLE_ASSET')]
+fn test_transfer_synthetic_asset_fails() {
+    // Setup.
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let synthetic_info = AssetInfoTrait::new(
+        asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
+    );
+    let asset_id = synthetic_info.asset_id;
+
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    state.facade.add_active_synthetic(synthetic_info: @synthetic_info, initial_price: 100);
+
+    // Create users.
+    let user_1 = state.new_user_with_position();
+    let user_2 = state.new_user_with_position();
+
+    // Deposit to users - give user_1 plenty of collateral to stay healthy.
+    let deposit_info_user_1 = state
+        .facade
+        .deposit(
+            depositor: user_1.account, position_id: user_1.position_id, quantized_amount: 100000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_info_user_1);
+
+    let deposit_info_user_2 = state
+        .facade
+        .deposit(
+            depositor: user_2.account, position_id: user_2.position_id, quantized_amount: 100000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_info_user_2);
+
+    // Create orders to give user_1 a small synthetic position.
+    let order_user_1 = state
+        .facade
+        .create_order(
+            user: user_1,
+            base_amount: 10,
+            base_asset_id: asset_id,
+            quote_amount: -1000,
+            fee_amount: 0,
+        );
+
+    let order_user_2 = state
+        .facade
+        .create_order(
+            user: user_2,
+            base_amount: -10,
+            base_asset_id: asset_id,
+            quote_amount: 1000,
+            fee_amount: 0,
+        );
+
+    // Make trade.
+    // User 1 position: collateral = 99000, synthetic = 10
+    // TV = 99000 + 10*100 = 100000, TR = 10*100*0.01 = 10, TV/TR = 10000 (very healthy)
+    state
+        .facade
+        .trade(
+            order_info_a: order_user_1,
+            order_info_b: order_user_2,
+            base: 10,
+            quote: -1000,
+            fee_a: 0,
+            fee_b: 0,
+        );
+
+    // Verify user_1 is very healthy before attempting transfer.
+    state
+        .facade
+        .validate_total_value(position_id: user_1.position_id, expected_total_value: 100000);
+    state.facade.validate_total_risk(position_id: user_1.position_id, expected_total_risk: 10);
+
+    // Try to transfer synthetic asset - should fail with NOT_TRANSFERABLE_ASSET
+    // before any health checks.
+    state
+        .facade
+        .transfer(
+            transfer_info: state
+                .facade
+                .transfer_spot_request(sender: user_1, recipient: user_2, :asset_id, amount: 5),
+        );
+}
+
+#[test]
+#[should_panic(expected: 'INVALID_BASE_CHANGE')]
+fn test_transfer_spot_collateral_negative_balance_fails() {
+    // Setup.
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+
+    // Create a custom spot collateral asset.
+    let token = snforge_std::Token::STRK;
+    let erc20_contract_address = token.contract_address();
+    let asset_info = AssetInfoTrait::new_collateral(
+        asset_name: 'SPOT', :risk_factor_data, oracles_len: 1, :erc20_contract_address,
+    );
+    let asset_id = asset_info.asset_id;
+    state.facade.add_active_collateral(asset_info: @asset_info, initial_price: 100);
+
+    // Create users.
+    let user_1 = state.new_user_with_position();
+    let user_2 = state.new_user_with_position();
+    snforge_std::set_balance(target: user_1.account.address, new_balance: 5000000, :token);
+
+    // User 1 deposits plenty of base collateral to ensure position stays healthy.
+    let deposit_info_base = state
+        .facade
+        .deposit(
+            depositor: user_1.account, position_id: user_1.position_id, quantized_amount: 200000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_info_base);
+
+    // User 1 deposits only 1000 units of spot collateral.
+    let deposit_info_spot = state
+        .facade
+        .deposit_spot(
+            depositor: user_1.account,
+            :asset_id,
+            position_id: user_1.position_id,
+            quantized_amount: 1000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_info_spot);
+
+    // Position before transfer:
+    // Base collateral: 200000
+    // Spot collateral: 1000 (at price 100, value = 100000, with 0.01 risk factor, TR = 1000)
+    // TV = 200000 + 100000 = 300000, TR = 1000, TV/TR = 300 (very healthy)
+
+    // If we could transfer 1500 spot collateral (which we can't):
+    // Base collateral: 200000 (unchanged)
+    // Spot collateral: -500 (invalid!)
+    // But hypothetically, TV = 200000 + (-500*100) = 150000, TR = 500*100*0.01 = 500
+    // TV/TR = 300 (still very healthy if this were allowed)
+
+    // Try to transfer more spot collateral than user_1 has - should fail with INVALID_BASE_CHANGE
+    // before health check because balance would go negative.
+    state
+        .facade
+        .transfer(
+            transfer_info: state
+                .facade
+                .transfer_spot_request(sender: user_1, recipient: user_2, :asset_id, amount: 1500),
+        );
+}
