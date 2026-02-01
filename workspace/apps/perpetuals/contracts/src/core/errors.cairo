@@ -28,6 +28,8 @@ pub const LENGTH_MISMATCH: felt252 = 'LENGTH_MISMATCH';
 pub const INVALID_INTEREST_RATE: felt252 = 'INVALID_INTEREST_RATE';
 pub const ZERO_MAX_INTEREST_RATE: felt252 = 'ZERO_MAX_INTEREST_RATE';
 pub const NO_DELEVERAGE_VAULT_SHARES: felt252 = 'NO_DELEVERAGE_VAULT_SHARES';
+pub const NOT_TRANSFERABLE_ASSET: felt252 = 'NOT_TRANSFERABLE_ASSET';
+pub const VAULT_CANNOT_HOLD_SHARES: felt252 = 'VAULT_CANNOT_HOLD_SHARES';
 
 pub fn fulfillment_exceeded_err(position_id: PositionId) -> ByteArray {
     format!("FULFILLMENT_EXCEEDED position_id: {:?}", position_id)

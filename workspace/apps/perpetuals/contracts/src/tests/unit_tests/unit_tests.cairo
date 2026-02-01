@@ -4313,6 +4313,18 @@ fn test_invalid_transfer_request_amount_is_zero() {
             expiration: transfer_args.expiration,
             salt: transfer_args.salt,
         );
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.operator);
+    state
+        .transfer(
+            operator_nonce: state.get_operator_nonce(),
+            asset_id: cfg.collateral_cfg.collateral_id,
+            recipient: transfer_args.recipient,
+            position_id: transfer_args.position_id,
+            amount: transfer_args.amount,
+            expiration: transfer_args.expiration,
+            salt: transfer_args.salt,
+        );
 }
 
 // `validate_synthetic_price` tests.
