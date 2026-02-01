@@ -9,6 +9,7 @@ pub(crate) mod Deposit {
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalTrait as NonceInternal;
     use perpetuals::core::components::positions::Positions as PositionsComponent;
+    use perpetuals::core::components::system_time::SystemTimeComponent;
     use perpetuals::core::types::asset::AssetId;
     use perpetuals::core::types::position::PositionId;
     use starknet::storage::{
@@ -52,6 +53,7 @@ pub(crate) mod Deposit {
         impl Positions: PositionsComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
         impl RequestApprovals: RequestApprovalsComponent::HasComponent<TContractState>,
+        impl SystemTime: SystemTimeComponent::HasComponent<TContractState>,
         impl Vaults: VaultsComponent::HasComponent<TContractState>,
         impl ExternalComponents: ExternalComponentsComponent::HasComponent<TContractState>,
     > of IDeposit<ComponentState<TContractState>> {
@@ -241,6 +243,7 @@ pub(crate) mod Deposit {
         impl Positions: PositionsComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
         impl RequestApprovals: RequestApprovalsComponent::HasComponent<TContractState>,
+        impl SystemTime: SystemTimeComponent::HasComponent<TContractState>,
         impl Vaults: VaultsComponent::HasComponent<TContractState>,
     > of InternalTrait<TContractState> {
         fn initialize(ref self: ComponentState<TContractState>, cancel_delay: TimeDelta) {
