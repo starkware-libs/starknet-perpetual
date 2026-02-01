@@ -116,7 +116,7 @@ fn test_deleverage_after_funding_tick() {
         .facade
         .validate_total_risk(position_id: deleveraged_user.position_id, expected_total_risk: 2);
 
-    advance_time(10000);
+    state.facade.advance_time(10000);
     let mut new_funding_index = FundingIndex { value: 7 * FUNDING_SCALE };
     state
         .facade
@@ -386,7 +386,7 @@ fn test_deleverage_by_recieving_asset() {
         .facade
         .validate_total_risk(position_id: deleveraged_user.position_id, expected_total_risk: 2);
 
-    advance_time(10000);
+    state.facade.advance_time(10000);
     let mut new_funding_index = FundingIndex { value: -6 * FUNDING_SCALE };
     state
         .facade
@@ -565,7 +565,7 @@ fn test_liquidate_after_funding_tick() {
         .facade
         .validate_total_risk(position_id: liquidated_user.position_id, expected_total_risk: 3);
 
-    advance_time(10000);
+    state.facade.advance_time(10000);
     let mut new_funding_index = FundingIndex { value: 4 * FUNDING_SCALE };
     state
         .facade
@@ -1244,7 +1244,7 @@ fn test_reduce_synthetic() {
     state.facade.validate_total_value(position_id: user_1.position_id, expected_total_value: 5);
     state.facade.validate_total_risk(position_id: user_1.position_id, expected_total_risk: 3);
 
-    advance_time(10000);
+    state.facade.advance_time(10000);
     let mut new_funding_index = FundingIndex { value: 3 * FUNDING_SCALE };
     state
         .facade
@@ -1359,7 +1359,7 @@ fn test_status_change_healthy_liquidatable_deleveragable() {
         .validate_total_value(position_id: primary_user.position_id, expected_total_value: 5);
     state.facade.validate_total_risk(position_id: primary_user.position_id, expected_total_risk: 2);
 
-    advance_time(10000);
+    state.facade.advance_time(10000);
     let mut new_funding_index = FundingIndex { value: 2 * FUNDING_SCALE };
     state
         .facade
@@ -1383,7 +1383,7 @@ fn test_status_change_healthy_liquidatable_deleveragable() {
         'user is not liquidatable',
     );
 
-    advance_time(10000);
+    state.facade.advance_time(10000);
     new_funding_index = FundingIndex { value: 4 * FUNDING_SCALE };
     state
         .facade
@@ -1485,7 +1485,7 @@ fn test_status_change_healthy_liquidatable_deleveragable() {
         'user is not deleveragable',
     );
 
-    advance_time(10000);
+    state.facade.advance_time(10000);
     new_funding_index = FundingIndex { value: FUNDING_SCALE };
     state
         .facade
@@ -1608,7 +1608,7 @@ fn test_status_change_by_deposit() {
         .validate_total_value(position_id: primary_user.position_id, expected_total_value: 5);
     state.facade.validate_total_risk(position_id: primary_user.position_id, expected_total_risk: 2);
 
-    advance_time(10000);
+    state.facade.advance_time(10000);
     let mut new_funding_index = FundingIndex { value: 4 * FUNDING_SCALE };
     state
         .facade
@@ -1775,7 +1775,7 @@ fn test_status_change_by_transfer() {
         .facade
         .validate_total_value(position_id: primary_user.position_id, expected_total_value: 5);
     state.facade.validate_total_risk(position_id: primary_user.position_id, expected_total_risk: 2);
-    advance_time(10000);
+    state.facade.advance_time(10000);
     let mut new_funding_index = FundingIndex { value: 4 * FUNDING_SCALE };
     state
         .facade
@@ -1931,7 +1931,7 @@ fn test_status_change_by_trade() {
         .facade
         .validate_total_value(position_id: primary_user.position_id, expected_total_value: 6);
     state.facade.validate_total_risk(position_id: primary_user.position_id, expected_total_risk: 6);
-    advance_time(10000);
+    state.facade.advance_time(10000);
     let mut new_funding_index = FundingIndex { value: 2 * FUNDING_SCALE };
     state
         .facade
@@ -2171,7 +2171,7 @@ fn test_late_funding() {
 
     state.facade.add_active_synthetic(synthetic_info: @synthetic_info, initial_price: 100);
 
-    advance_time(100000);
+    state.facade.advance_time(100000);
     let mut new_funding_index = FundingIndex { value: FUNDING_SCALE };
     state
         .facade
@@ -2340,7 +2340,7 @@ fn test_funding_index_rounding() {
     state.facade.validate_collateral_balance(user_2.position_id, 1000_i64.into());
 
     // funding tick of half
-    advance_time(10000);
+    state.facade.advance_time(10000);
     let mut new_funding_index = FundingIndex { value: FUNDING_SCALE / 2 };
     state
         .facade
@@ -2355,7 +2355,7 @@ fn test_funding_index_rounding() {
     state.facade.validate_collateral_balance(user_2.position_id, 1000_i64.into());
 
     // funding tick of minus half
-    advance_time(10000);
+    state.facade.advance_time(10000);
     let mut new_funding_index = FundingIndex { value: -FUNDING_SCALE / 2 };
     state
         .facade
@@ -2448,7 +2448,7 @@ fn test_unfair_deleverage() {
         .facade
         .validate_total_risk(position_id: deleveraged_user.position_id, expected_total_risk: 2);
 
-    advance_time(10000);
+    state.facade.advance_time(10000);
     let mut new_funding_index = FundingIndex { value: 7 * FUNDING_SCALE };
     state
         .facade
@@ -3511,7 +3511,7 @@ fn test_apply_interest_to_position_with_zero_balance() {
     state.facade.apply_interests(:position_ids, :interest_amounts);
 
     // Advance time by 1 hour
-    advance_time(seconds: HOUR);
+    state.facade.advance_time(seconds: HOUR);
 
     let position_ids = array![user_1.position_id, user_2.position_id].span();
     let interest_amounts = array![100, 100].span();
@@ -3540,7 +3540,7 @@ fn test_apply_interest_to_multiple_positions() {
     state.facade.process_deposit(deposit_info: deposit_info_b);
 
     // Advance time by 1 hour
-    advance_time(seconds: HOUR);
+    state.facade.advance_time(seconds: HOUR);
 
     // Calculate valid interest amounts for both positions
     let balance_a: u128 = 10_000;
@@ -3578,7 +3578,7 @@ fn test_apply_interest_exceeds_max_rate() {
     state.facade.process_deposit(deposit_info: deposit_info);
 
     // Advance time by 1 hour
-    advance_time(seconds: HOUR);
+    state.facade.advance_time(seconds: HOUR);
 
     // Calculate max allowed interest
     let balance: u128 = 10_000;
@@ -3620,7 +3620,7 @@ fn test_apply_negative_interest() {
     state.facade.process_deposit(deposit_info: deposit_info);
 
     // Advance time by 1 hour
-    advance_time(seconds: HOUR);
+    state.facade.advance_time(seconds: HOUR);
 
     // Calculate valid interest amount (negative)
     let balance: u128 = 10_000;
@@ -3652,7 +3652,7 @@ fn test_apply_interest_sequential_updates() {
     state.facade.process_deposit(deposit_info: deposit_info);
 
     // Advance time by 1 hour
-    advance_time(seconds: HOUR);
+    state.facade.advance_time(seconds: HOUR);
 
     // Calculate and apply first interest
     let balance: u128 = 10_000;
@@ -3669,7 +3669,7 @@ fn test_apply_interest_sequential_updates() {
     state.facade.validate_collateral_balance(user.position_id, balance_after_first.into());
 
     // Advance time by another hour
-    advance_time(seconds: HOUR);
+    state.facade.advance_time(seconds: HOUR);
 
     // Calculate and apply second interest (based on new balance)
     let new_balance: u128 = balance_after_first.try_into().unwrap();

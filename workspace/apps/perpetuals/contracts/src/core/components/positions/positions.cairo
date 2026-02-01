@@ -18,6 +18,8 @@ pub mod Positions {
     };
     use perpetuals::core::components::positions::events;
     use perpetuals::core::components::positions::interface::IPositions;
+    use perpetuals::core::components::system_time::SystemTimeComponent;
+    use perpetuals::core::components::system_time::interface::ISystemTime;
     use perpetuals::core::types::asset::AssetId;
     use perpetuals::core::types::asset::synthetic::{AssetBalanceInfo, SyntheticTrait};
     use perpetuals::core::types::balance::Balance;
@@ -48,7 +50,7 @@ pub mod Positions {
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
     use starkware_utils::storage::utils::AddToStorage;
-    use starkware_utils::time::time::{Time, Timestamp, validate_expiration};
+    use starkware_utils::time::time::{Timestamp, validate_expiration};
     use crate::core::components::assets::errors::NO_SUCH_ASSET;
     use crate::core::components::snip::SNIP12MetadataImpl;
     use crate::core::errors::{
@@ -93,6 +95,7 @@ pub mod Positions {
         impl Pausable: PausableComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
         impl RequestApprovals: RequestApprovalsComponent::HasComponent<TContractState>,
+        impl SystemTime: SystemTimeComponent::HasComponent<TContractState>,
     > of IPositions<ComponentState<TContractState>> {
         fn get_position_assets(
             self: @ComponentState<TContractState>, position_id: PositionId,
@@ -186,7 +189,8 @@ pub mod Positions {
             let mut position = self.positions.entry(position_id);
             assert(position.version.read().is_zero(), POSITION_ALREADY_EXISTS);
             assert(owner_public_key.is_non_zero(), INVALID_ZERO_PUBLIC_KEY);
-            let current_time = Time::now();
+            let system_time_component = get_dep_component!(@self, SystemTime);
+            let current_time = system_time_component.get_system_time();
             position.version.write(POSITION_VERSION);
             position.owner_public_key.write(owner_public_key);
             position.owner_protection_enabled.write(owner_protection_enabled);

@@ -210,7 +210,7 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
     }
 
     fn hourly_funding_tick(ref self: FlowTestExtended, funding_indexes: Span<(felt252, i64)>) {
-        advance_time(HOUR);
+        self.flow_test_base.facade.advance_time(HOUR);
         let mut funding_indexes_dict = Default::default();
         for (asset, index) in funding_indexes {
             funding_indexes_dict.insert(*asset, NullableTrait::new(*index));

@@ -52,6 +52,7 @@ pub(crate) mod VaultsManager {
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::positions::Positions as PositionsComponent;
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
+    use perpetuals::core::components::system_time::SystemTimeComponent;
     use perpetuals::core::types::asset::AssetId;
     use perpetuals::core::types::position::{PositionId, PositionTrait};
     use perpetuals::core::types::price::PriceMulTrait;
@@ -97,6 +98,8 @@ pub(crate) mod VaultsManager {
         #[flat]
         PositionsEvent: PositionsComponent::Event,
         #[flat]
+        SystemTimeEvent: SystemTimeComponent::Event,
+        #[flat]
         DepositEvent: DepositComponent::Event,
         #[flat]
         RequestApprovalsEvent: RequestApprovalsComponent::Event,
@@ -130,6 +133,8 @@ pub(crate) mod VaultsManager {
         #[substorage(v0)]
         pub positions: PositionsComponent::Storage,
         #[substorage(v0)]
+        pub system_time: SystemTimeComponent::Storage,
+        #[substorage(v0)]
         pub fulfillment_tracking: FulfillmentComponent::Storage,
         #[substorage(v0)]
         src5: SRC5Component::Storage,
@@ -146,6 +151,7 @@ pub(crate) mod VaultsManager {
     component!(path: OperatorNonceComponent, storage: operator_nonce, event: OperatorNonceEvent);
     component!(path: AssetsComponent, storage: assets, event: AssetsEvent);
     component!(path: PositionsComponent, storage: positions, event: PositionsEvent);
+    component!(path: SystemTimeComponent, storage: system_time, event: SystemTimeEvent);
     component!(path: DepositComponent, storage: deposits, event: DepositEvent);
     component!(path: RolesComponent, storage: roles, event: RolesEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
