@@ -103,9 +103,7 @@ fn test_successful_transfer_of_vault_share() {
 
 
 #[test]
-#[should_panic(
-    expected: "POSITION_NOT_HEALTHY_NOR_HEALTHIER position_id: PositionId { value: 22 } TV before 24000000, TR before 240000, TV after -24000000, TR after 240000",
-)]
+#[should_panic(expected: 'INVALID_BASE_CHANGE')]
 fn test_unsuccessful_transfer_of_vault_share_not_enough_balance() {
     let cfg: PerpetualsInitConfig = Default::default();
     let mut state = setup_state_with_pending_vault_share(
@@ -175,3 +173,4 @@ fn test_unsuccessful_transfer_of_vault_share_not_enough_balance() {
             salt: transfer_args.salt,
         );
 }
+

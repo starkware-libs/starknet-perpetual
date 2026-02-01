@@ -62,6 +62,7 @@ pub(crate) mod TransferManager {
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::AssetsComponent::InternalImpl as AssetsInternal;
+    use perpetuals::core::components::assets::errors::NO_SUCH_ASSET;
     use perpetuals::core::components::assets::interface::IAssets;
     use perpetuals::core::components::fulfillment::fulfillment::Fulfillement as FulfillmentComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
@@ -69,8 +70,9 @@ pub(crate) mod TransferManager {
     use perpetuals::core::components::positions::Positions as PositionsComponent;
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
     use perpetuals::core::types::asset::AssetId;
+    use perpetuals::core::types::asset::synthetic::{AssetType, SyntheticTrait};
     use perpetuals::core::types::position::{PositionId, PositionTrait};
-    use starknet::storage::StoragePointerReadAccess;
+    use starknet::storage::{StorageAsPointer, StoragePathEntry, StoragePointerReadAccess};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalImpl as PausableInternal;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
@@ -84,8 +86,10 @@ pub(crate) mod TransferManager {
     use crate::core::components::external_components::named_component::ITypedComponent;
     use crate::core::components::snip::SNIP12MetadataImpl;
     use crate::core::components::vaults::vaults::{IVaults, Vaults as VaultsComponent};
-    use crate::core::errors::{INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED};
-    use crate::core::types::asset::synthetic::AssetType;
+    use crate::core::errors::{
+        AMOUNT_OVERFLOW, INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT,
+        SIGNED_TX_EXPIRED, NOT_TRANSFERABLE_ASSET
+    };
     use crate::core::types::position::PositionDiff;
     use crate::core::types::transfer::TransferArgs;
     use super::{ITransferManager, Signature, Timestamp, Transfer, TransferRequest};
@@ -195,7 +199,7 @@ pub(crate) mod TransferManager {
                 assert(
                     asset_config.asset_type == AssetType::SPOT_COLLATERAL
                         || asset_config.asset_type == AssetType::VAULT_SHARE_COLLATERAL,
-                    'NOT_TRANSFERABLE_ASSET',
+                    NOT_TRANSFERABLE_ASSET,
                 );
 
                 if (asset_config.asset_type == AssetType::VAULT_SHARE_COLLATERAL) {
@@ -312,14 +316,25 @@ pub(crate) mod TransferManager {
                 };
                 (position_diff_sender, position_diff_recipient)
             } else {
+                let entry = (@self).assets.asset_config.entry(collateral_id).as_ptr();
+                let asset_type = SyntheticTrait::get_asset_type(entry).expect(NO_SUCH_ASSET);
+                assert(asset_type != AssetType::SYNTHETIC, NOT_TRANSFERABLE_ASSET);
+
+                let signed_amount: i64 = -amount.try_into().expect(AMOUNT_OVERFLOW);
+                let sender_position = self.positions.get_position_snapshot(:position_id);
+                self
+                    .positions
+                    ._validate_asset_shrink_non_negative(
+                        position: sender_position, asset_id: collateral_id, amount: signed_amount,
+                    );
                 let position_diff_sender = PositionDiff {
                     collateral_diff: 0_i64.into(),
-                    asset_diff: Option::Some((collateral_id, -amount.into())),
+                    asset_diff: Option::Some((collateral_id, signed_amount.into())),
                 };
 
                 let position_diff_recipient = PositionDiff {
                     collateral_diff: 0_i64.into(),
-                    asset_diff: Option::Some((collateral_id, amount.into())),
+                    asset_diff: Option::Some((collateral_id, -signed_amount.into())),
                 };
                 (position_diff_sender, position_diff_recipient)
             };
