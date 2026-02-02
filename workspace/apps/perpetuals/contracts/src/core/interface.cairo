@@ -181,8 +181,6 @@ pub trait ICore<TContractState> {
         position_ids: Span<PositionId>,
         interest_amounts: Span<i64>,
     );
-    fn update_system_time(ref self: TContractState, operator_nonce: u64, new_timestamp: Timestamp);
-    fn get_system_time(self: @TContractState) -> Timestamp;
     fn liquidate_spot_asset(
         ref self: TContractState,
         operator_nonce: u64,

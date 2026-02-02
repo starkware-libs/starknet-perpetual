@@ -1,0 +1,2 @@
+pub const NON_MONOTONIC_TIME: felt252 = 'NON_MONOTONIC_TIME';
+pub const STALE_TIME: felt252 = 'STALE_TIME';
