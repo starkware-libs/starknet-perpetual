@@ -17,10 +17,11 @@ pub mod Core {
     use perpetuals::core::components::positions::Positions::{
         FEE_POSITION, InternalTrait as PositionsInternalTrait,
     };
+    use perpetuals::core::components::system_time::SystemTimeComponent;
     use perpetuals::core::errors::{
         AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_INTEREST_RATE, INVALID_ZERO_TIMEOUT,
-        LENGTH_MISMATCH, NON_MONOTONIC_TIME, ORDER_IS_NOT_EXPIRED, STALE_TIME,
-        TRADE_ASSET_NOT_SYNTHETIC, TRANSFER_FAILED, ZERO_MAX_INTEREST_RATE,
+        LENGTH_MISMATCH, ORDER_IS_NOT_EXPIRED, TRADE_ASSET_NOT_SYNTHETIC, TRANSFER_FAILED,
+        ZERO_MAX_INTEREST_RATE,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
@@ -75,6 +76,7 @@ pub mod Core {
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
     component!(path: OperatorNonceComponent, storage: operator_nonce, event: OperatorNonceEvent);
     component!(path: PausableComponent, storage: pausable, event: PausableEvent);
+    component!(path: SystemTimeComponent, storage: system_time, event: SystemTimeEvent);
     component!(path: ReplaceabilityComponent, storage: replaceability, event: ReplaceabilityEvent);
     component!(path: RolesComponent, storage: roles, event: RolesEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
@@ -97,6 +99,9 @@ pub mod Core {
     #[abi(embed_v0)]
     impl OperatorNonceImpl =
         OperatorNonceComponent::OperatorNonceImpl<ContractState>;
+
+    #[abi(embed_v0)]
+    impl SystemTimeImpl = SystemTimeComponent::SystemTimeImpl<ContractState>;
 
     #[abi(embed_v0)]
     impl DepositImpl = Deposit::DepositImpl<ContractState>;
@@ -139,6 +144,8 @@ pub mod Core {
         #[substorage(v0)]
         pausable: PausableComponent::Storage,
         #[substorage(v0)]
+        system_time: SystemTimeComponent::Storage,
+        #[substorage(v0)]
         pub replaceability: ReplaceabilityComponent::Storage,
         #[substorage(v0)]
         pub roles: RolesComponent::Storage,
@@ -165,7 +172,6 @@ pub mod Core {
         forced_action_timelock: TimeDelta,
         // Cost for executing forced actions.
         premium_cost: u64,
-        system_time: Timestamp,
         // Maximum interest rate per second (32-bit fixed-point with 32-bit fractional part).
         // Example: max_interest_rate_per_sec = 10 means the rate is 10 / 2^32 ≈ 0.000000232 per
         // second, which is approximately 7.4% per year.
@@ -181,6 +187,8 @@ pub mod Core {
         OperatorNonceEvent: OperatorNonceComponent::Event,
         #[flat]
         PausableEvent: PausableComponent::Event,
+        #[flat]
+        SystemTimeEvent: SystemTimeComponent::Event,
         #[flat]
         ReplaceabilityEvent: ReplaceabilityComponent::Event,
         #[flat]
@@ -1005,40 +1013,6 @@ pub mod Core {
                 );
         }
 
-        /// Updates the system time stored in the contract.
-        ///
-        /// Validations:
-        /// - The contract must not be paused.
-        /// - Only the operator can call this function.
-        /// - The operator_nonce must be valid.
-        /// - The new system time must be strictly greater than the current system time.
-        /// - The new system time must not exceed the current Starknet block timestamp.
-        ///
-        /// Execution:
-        /// - Updates the system time.
-        /// - Emits no events.
-        fn update_system_time(
-            ref self: ContractState, operator_nonce: u64, new_timestamp: Timestamp,
-        ) {
-            self.pausable.assert_not_paused();
-            self.operator_nonce.use_checked_nonce(:operator_nonce);
-
-            // The new system time must be strictly greater than the current system time.
-            let current_system_time = self.system_time.read();
-            assert(new_timestamp > current_system_time, NON_MONOTONIC_TIME);
-
-            // The new system time must not exceed the current Starknet block timestamp.
-            let now = Time::now();
-            assert(new_timestamp <= now, STALE_TIME);
-
-            // Update the system time.
-            self.system_time.write(new_timestamp);
-        }
-
-        /// Returns the current system time stored in the contract.
-        fn get_system_time(self: @ContractState) -> Timestamp {
-            self.system_time.read()
-        }
 
         fn apply_interests(
             ref self: ContractState,
