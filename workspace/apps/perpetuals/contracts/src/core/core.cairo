@@ -1031,7 +1031,7 @@ pub mod Core {
                 let interest_amount = *interest_amounts[i];
                 self
                     .positions
-                    .apply_interest_to_position(
+                    .apply_interest(
                         position_id: *position_id,
                         :interest_amount,
                         :current_time,

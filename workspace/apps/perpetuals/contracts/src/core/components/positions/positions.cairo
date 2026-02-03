@@ -534,7 +534,7 @@ pub mod Positions {
             )
         }
 
-        fn apply_interest_to_position(
+        fn apply_interest(
             ref self: ComponentState<TContractState>,
             position_id: PositionId,
             interest_amount: i64,
@@ -542,42 +542,70 @@ pub mod Positions {
             max_interest_rate_per_sec: u32,
             interest_rate_scale: u64,
         ) {
-            // Check that position exists
             let position = self.get_position_mut(:position_id);
 
+            self
+                .validate_interest(
+                    :position,
+                    :position_id,
+                    :interest_amount,
+                    :current_time,
+                    :max_interest_rate_per_sec,
+                    :interest_rate_scale,
+                );
+
             let previous_timestamp = position.last_interest_applied_time.read();
+
+            // If previous timestamp is zero, this is the first interest calculation,
+            // so we need to set the current time.
+            if previous_timestamp.is_zero() {
+                position.last_interest_applied_time.write(current_time);
+            }
+
+            // Apply interest
+            if interest_amount.is_non_zero() {
+                position.collateral_balance.add_and_write(interest_amount.into());
+                position.last_interest_applied_time.write(current_time);
+            }
+        }
+
+        fn validate_interest(
+            ref self: ComponentState<TContractState>,
+            position: StoragePath<Mutable<Position>>,
+            position_id: PositionId,
+            interest_amount: i64,
+            current_time: Timestamp,
+            max_interest_rate_per_sec: u32,
+            interest_rate_scale: u64,
+        ) {
+            let previous_timestamp = position.last_interest_applied_time.read();
+            if previous_timestamp.is_zero() {
+                // If `previous_timestamp` is zero, this indicates the first interest calculation,
+                // and the interest amount is required to be zero.
+                assert(interest_amount.is_zero(), INVALID_INTEREST_RATE);
+                return;
+            }
+
+            if interest_amount.is_zero() {
+                return;
+            }
 
             // Calculate position PnL (total value of synthetic assets + base collateral)
             let pnl = self.calculate_position_pnl(position_id, position.collateral_balance.read());
 
-            // Validate interest rate
-            if pnl.is_non_zero() && previous_timestamp.is_non_zero() {
-                // Calculate time difference
-                let time_diff: u64 = current_time.seconds - previous_timestamp.seconds;
+            // Calculate time difference
+            let time_diff: u64 = current_time.seconds - previous_timestamp.seconds;
 
-                // Calculate maximum allowed change: |pnl| * time_diff *
-                // max_interest_rate_per_sec / 2^32.
-                let balance_time_product: u128 = pnl.abs().into() * time_diff.into();
-                let max_allowed_change = mul_wide_and_floor_div(
-                    balance_time_product,
-                    max_interest_rate_per_sec.into(),
-                    interest_rate_scale.into(),
-                )
-                    .expect(AMOUNT_OVERFLOW);
+            // Calculate maximum allowed change: |pnl| * time_diff *
+            // max_interest_rate_per_sec / 2^32.
+            let balance_time_product: u128 = pnl.abs().into() * time_diff.into();
+            let max_allowed_change = mul_wide_and_floor_div(
+                balance_time_product, max_interest_rate_per_sec.into(), interest_rate_scale.into(),
+            )
+                .expect(AMOUNT_OVERFLOW);
 
-                // Check: |interest_amount| <= max_allowed_change
-                assert(interest_amount.abs().into() <= max_allowed_change, INVALID_INTEREST_RATE);
-
-                // Apply interest
-                position.collateral_balance.add_and_write(interest_amount.into());
-            } else {
-                // If old balance is zero, only allow zero interest.
-                // If `previous_timestamp` is zero, this indicates the first interest calculation,
-                // and the interest amount is required to be zero.
-                assert(interest_amount.is_zero(), INVALID_INTEREST_RATE);
-            }
-
-            position.last_interest_applied_time.write(current_time);
+            // Check: |interest_amount| <= max_allowed_change
+            assert(interest_amount.abs().into() <= max_allowed_change, INVALID_INTEREST_RATE);
         }
 
         fn get_position_snapshot(
