@@ -3277,7 +3277,9 @@ fn test_liquidate_spot_for_vault_share_asset() {
         .facade
         .deposit(vault_user.account, vault_user.position_id, 5000_u64);
     state.facade.process_deposit(vault_init_deposit);
-    let vault_config = state.facade.register_vault_share_spot_asset(vault_user);
+    let vault_config = state
+        .facade
+        .register_vault_share_spot_asset(vault_user, initial_price: 1000);
     state.facade.price_tick(@vault_config.asset_info, 1);
 
     // Create users.

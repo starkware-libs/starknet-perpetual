@@ -695,7 +695,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
     }
 
     fn register_vault_share_spot_asset(
-        ref self: PerpsTestsFacade, position_vault: User,
+        ref self: PerpsTestsFacade, position_vault: User, initial_price: u128,
     ) -> VaultState {
         self.operator.set_as_caller(self.perpetuals_contract);
 
@@ -759,6 +759,8 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                     asset_info.asset_name,
                 );
         }
+        // Activate the vault share asset.
+        self.price_tick(asset_info: @asset_info, price: initial_price);
 
         let operator_nonce = self.get_nonce();
 

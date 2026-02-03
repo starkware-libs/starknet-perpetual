@@ -57,13 +57,14 @@ pub(crate) mod DepositManager {
     use openzeppelin::interfaces::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
+    use perpetuals::core::components::assets::errors::INACTIVE_ASSET;
     use perpetuals::core::components::assets::interface::IAssets;
     use perpetuals::core::components::deposit::Deposit as DepositComponent;
     use perpetuals::core::components::fulfillment::fulfillment::Fulfillement as FulfillmentComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::positions::Positions as PositionsComponent;
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
-    use perpetuals::core::types::asset::AssetId;
+    use perpetuals::core::types::asset::{AssetId, AssetStatus};
     use perpetuals::core::types::position::PositionId;
     use starknet::storage::{StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess};
     use starknet::{ContractAddress, get_contract_address};
@@ -240,6 +241,7 @@ pub(crate) mod DepositManager {
             } else {
                 let asset_config = self.assets.get_asset_config(asset_id);
                 assert(asset_config.asset_type != AssetType::SYNTHETIC, 'NOT_SPOT_ASSET');
+                assert(asset_config.status == AssetStatus::ACTIVE, INACTIVE_ASSET);
                 let token_contract = IERC20Dispatcher {
                     contract_address: asset_config.token_contract.expect('NO_ERC20_CONFIGURED'),
                 };
@@ -326,6 +328,7 @@ pub(crate) mod DepositManager {
                     );
                 }
                 assert(asset_config.asset_type != AssetType::SYNTHETIC, 'NOT_SPOT_ASSET');
+                assert(asset_config.status == AssetStatus::ACTIVE, INACTIVE_ASSET);
                 let token_contract = IERC20Dispatcher {
                     contract_address: asset_config.token_contract.expect('NO_ERC20_CONFIGURED'),
                 };

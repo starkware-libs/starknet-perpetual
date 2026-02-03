@@ -5676,6 +5676,54 @@ fn test_unsuccessful_vault_token_deposit_synthetic_asset() {
             salt: user.salt_counter,
         );
 }
+
+#[test]
+#[should_panic(expected: 'INACTIVE_ASSET')]
+fn test_unsuccessful_deposit_inactive_spot_asset() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let user = Default::default();
+
+    let spot_asset_id = SYNTHETIC_ASSET_ID_2();
+    let risk_factor_first_tier_boundary = MAX_U128;
+    let risk_factor_tier_size = 1;
+    let risk_factor_tiers = array![10].span();
+    let quorum = 1_u8;
+    let resolution_factor = SYNTHETIC_RESOLUTION_FACTOR;
+    let quantum = 12_u64;
+    let erc20_contract_address = token_state.address;
+
+    // Add spot asset:
+    cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.app_governor);
+    state
+        .add_spot_asset(
+            asset_id: spot_asset_id,
+            :erc20_contract_address,
+            :quantum,
+            :resolution_factor,
+            :risk_factor_tiers,
+            :risk_factor_first_tier_boundary,
+            :risk_factor_tier_size,
+            :quorum,
+        );
+
+    // Initialize position:
+    cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.app_governor);
+    init_position(cfg: @cfg, ref :state, :user);
+
+    // Test: Try to deposit inactive spot asset (should fail):
+    cheat_caller_address_once(contract_address: test_address(), caller_address: user.address);
+    state
+        .deposit_asset(
+            asset_id: spot_asset_id,
+            position_id: user.position_id,
+            quantized_amount: DEPOSIT_AMOUNT,
+            salt: user.salt_counter,
+        );
+}
+
 #[test]
 fn test_successful_vault_token_cancel_deposit() {
     // Setup state, token and user:
