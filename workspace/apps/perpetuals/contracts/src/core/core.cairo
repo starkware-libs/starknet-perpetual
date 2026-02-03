@@ -19,9 +19,8 @@ pub mod Core {
     };
     use perpetuals::core::components::system_time::SystemTimeComponent;
     use perpetuals::core::errors::{
-        AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_INTEREST_RATE, INVALID_ZERO_TIMEOUT,
-        LENGTH_MISMATCH, ORDER_IS_NOT_EXPIRED, TRADE_ASSET_NOT_SYNTHETIC, TRANSFER_FAILED,
-        ZERO_MAX_INTEREST_RATE,
+        AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_ZERO_TIMEOUT, LENGTH_MISMATCH,
+        ORDER_IS_NOT_EXPIRED, TRADE_ASSET_NOT_SYNTHETIC, TRANSFER_FAILED, ZERO_MAX_INTEREST_RATE,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
@@ -32,7 +31,7 @@ pub mod Core {
     use perpetuals::core::types::position::{PositionDiff, PositionId, PositionTrait};
     use perpetuals::core::types::price::PriceMulTrait;
     use perpetuals::core::types::vault::ConvertPositionToVault;
-    use perpetuals::core::value_risk_calculator::{PositionTVTR, calculate_position_pnl};
+    use perpetuals::core::value_risk_calculator::PositionTVTR;
     use starknet::event::EventEmitter;
     use starknet::storage::{
         StorageMapReadAccess, StoragePointerReadAccess, StoragePointerWriteAccess,
@@ -48,13 +47,10 @@ pub mod Core {
     use starkware_utils::components::roles::RolesComponent::InternalTrait as RolesInternal;
     use starkware_utils::components::roles::interface::IRoles;
     use starkware_utils::hash::message_hash::OffchainMessageHash;
-    use starkware_utils::math::abs::Abs;
-    use starkware_utils::math::utils::mul_wide_and_floor_div;
     use starkware_utils::signature::stark::{PublicKey, Signature};
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
-    use starkware_utils::storage::utils::AddToStorage;
     use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
     use crate::core::components::assets::interface::IAssets;
     use crate::core::components::deleverage::deleverage_manager::IDeleverageManagerDispatcherTrait;
@@ -1034,7 +1030,8 @@ pub mod Core {
             for position_id in position_ids {
                 let interest_amount = *interest_amounts[i];
                 self
-                    ._apply_interest_to_position(
+                    .positions
+                    .apply_interest_to_position(
                         position_id: *position_id,
                         :interest_amount,
                         :current_time,
@@ -1225,84 +1222,6 @@ pub mod Core {
 
         fn _is_vault(ref self: ContractState, vault_position: PositionId) -> bool {
             self.vaults.is_vault_position(vault_position)
-        }
-
-        /// Calculates the position PnL (profit and loss) as the total value of synthetic assets
-        /// plus base collateral. Similar to TV calculation but without vault and spot assets.
-        /// Includes funding ticks in the calculation.
-        fn _calculate_position_pnl(
-            ref self: ContractState, position_id: PositionId, collateral_balance: Balance,
-        ) -> i64 {
-            let position = self.positions.get_position_snapshot(:position_id);
-
-            // Use existing function to derive funding delta and unchanged assets
-            // This already calculates funding and builds AssetBalanceInfo array
-            let (funding_delta, unchanged_assets) = self
-                .positions
-                .derive_funding_delta_and_unchanged_assets(
-                    :position, position_diff: Default::default(),
-                );
-
-            // Filter to only include synthetic assets (exclude vault and spot)
-            let mut synthetic_assets = array![];
-            for asset in unchanged_assets {
-                let asset_config = self.assets.get_asset_config(*asset.id);
-                if asset_config.asset_type == AssetType::SYNTHETIC {
-                    synthetic_assets.append(*asset);
-                }
-            }
-
-            let collateral_balance_with_funding = collateral_balance + funding_delta;
-            calculate_position_pnl(
-                assets: synthetic_assets.span(),
-                collateral_balance: collateral_balance_with_funding,
-            )
-        }
-
-        fn _apply_interest_to_position(
-            ref self: ContractState,
-            position_id: PositionId,
-            interest_amount: i64,
-            current_time: Timestamp,
-            max_interest_rate_per_sec: u32,
-            interest_rate_scale: u64,
-        ) {
-            // Check that position exists
-            let position = self.positions.get_position_mut(:position_id);
-
-            let previous_timestamp = position.last_interest_applied_time.read();
-
-            // Calculate position PnL (total value of synthetic assets + base collateral)
-            let pnl = self._calculate_position_pnl(position_id, position.collateral_balance.read());
-
-            // Validate interest rate
-            if pnl.is_non_zero() && previous_timestamp.is_non_zero() {
-                // Calculate time difference
-                let time_diff: u64 = current_time.seconds - previous_timestamp.seconds;
-
-                // Calculate maximum allowed change: |pnl| * time_diff *
-                // max_interest_rate_per_sec / 2^32.
-                let balance_time_product: u128 = pnl.abs().into() * time_diff.into();
-                let max_allowed_change = mul_wide_and_floor_div(
-                    balance_time_product,
-                    max_interest_rate_per_sec.into(),
-                    interest_rate_scale.into(),
-                )
-                    .expect(AMOUNT_OVERFLOW);
-
-                // Check: |interest_amount| <= max_allowed_change
-                assert(interest_amount.abs().into() <= max_allowed_change, INVALID_INTEREST_RATE);
-
-                // Apply interest
-                position.collateral_balance.add_and_write(interest_amount.into());
-            } else {
-                // If old balance is zero, only allow zero interest.
-                // If `previous_timestamp` is zero, this indicates the first interest calculation,
-                // and the interest amount is required to be zero.
-                assert(interest_amount.is_zero(), INVALID_INTEREST_RATE);
-            }
-
-            position.last_interest_applied_time.write(current_time);
         }
     }
 }
