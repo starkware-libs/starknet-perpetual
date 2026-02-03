@@ -16,7 +16,9 @@ fn test_protocol_vault_deposit_vault_shares() {
         .facade
         .deposit(vault_user.account, vault_user.position_id, 5000_u64);
     state.facade.process_deposit(vault_init_deposit);
-    let vault_config = state.facade.register_vault_share_spot_asset(vault_user);
+    let vault_config = state
+        .facade
+        .register_vault_share_spot_asset(vault_user, initial_price: 1000);
     let init_shares = vault_config
         .deployed_vault
         .erc20
@@ -55,7 +57,9 @@ fn test_protocol_vault_cancel_deposit_vault_shares() {
     let receiving_user = state.new_user_with_position();
     let deposit_info = state.facade.deposit(vault_user.account, vault_user.position_id, 5000_u64);
     state.facade.process_deposit(deposit_info);
-    let vault_config = state.facade.register_vault_share_spot_asset(vault_user);
+    let vault_config = state
+        .facade
+        .register_vault_share_spot_asset(vault_user, initial_price: 1000);
 
     let deposit_info = state
         .facade
