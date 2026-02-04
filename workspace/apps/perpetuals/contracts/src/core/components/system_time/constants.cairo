@@ -1,0 +1,1 @@
+pub const MAX_TIME_DRIFT: u64 = 120; // 2 minutes in seconds

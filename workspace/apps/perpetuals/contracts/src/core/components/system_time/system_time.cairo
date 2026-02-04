@@ -9,9 +9,9 @@ pub mod SystemTimeComponent {
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalTrait as NonceInternal;
+    use perpetuals::core::components::system_time::constants::MAX_TIME_DRIFT;
     use perpetuals::core::components::system_time::errors::{NON_MONOTONIC_TIME, STALE_TIME};
     use perpetuals::core::components::system_time::interface::ISystemTime;
-    use perpetuals::core::constants::MAX_TIME_DRIFT;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
