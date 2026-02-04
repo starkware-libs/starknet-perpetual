@@ -57,7 +57,7 @@ pub mod SystemTimeComponent {
         /// - Only the operator can call this function.
         /// - The operator_nonce must be valid.
         /// - The new system time must be strictly greater than the current system time.
-        /// - The new system time must not exceed the current Starknet block timestamp.
+        /// - The new system time must not drift more than MAX_TIME_DRIFT seconds from the current Starknet block timestamp.
         ///
         /// Execution:
         /// - Updates the system time.
