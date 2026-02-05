@@ -50,6 +50,7 @@ pub const ZERO_MAX_FUNDING_RATE: felt252 = 'ZERO_MAX_FUNDING_RATE';
 pub const ZERO_MAX_ORACLE_PRICE: felt252 = 'ZERO_MAX_ORACLE_PRICE';
 pub const RF_INCREASE_REQUEST_NOT_FOUND: felt252 = 'RF_INCREASE_REQUEST_NOT_FOUND';
 pub const RF_REQUEST_MISMATCH: felt252 = 'RF_REQUEST_MISMATCH';
+pub const CANNOT_WITHDRAW_SYNTHETIC: felt252 = 'CANNOT_WITHDRAW_SYNTHETIC';
 
 
 pub fn oracle_public_key_not_registered(asset_id: AssetId, public_key: PublicKey) -> ByteArray {
