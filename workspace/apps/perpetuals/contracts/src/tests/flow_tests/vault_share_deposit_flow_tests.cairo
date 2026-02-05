@@ -49,6 +49,63 @@ fn test_protocol_vault_deposit_vault_shares() {
 }
 
 #[test]
+fn test_withdraw_vault_shares() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let vault_user = state.new_user_with_position();
+    let receiving_user = state.new_user_with_position();
+    let vault_init_deposit = state
+        .facade
+        .deposit(vault_user.account, vault_user.position_id, 5000_u64);
+    state.facade.process_deposit(vault_init_deposit);
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user);
+    state.facade.price_tick(asset_info: @vault_config.asset_info, price: 1);
+    let init_shares = vault_config
+        .deployed_vault
+        .erc20
+        .balance_of(vault_config.deployed_vault.owning_account.address);
+
+    assert_with_error(
+        init_shares == 5000_u256, format!("Unexpected initial shares: {}", init_shares),
+    );
+
+    let deposit_info = state
+        .facade
+        .deposit_spot(
+            vault_config.deployed_vault.owning_account,
+            vault_config.asset_id,
+            receiving_user.position_id,
+            1000,
+        );
+
+    state.facade.process_deposit(deposit_info);
+
+    let balance: i64 = state
+        .facade
+        .get_position_asset_balance(receiving_user.position_id, vault_config.asset_id)
+        .into();
+
+    assert_with_error(
+        balance == 1000_i64.into(),
+        format!("Unexpected balance: {}, expected: {}", balance, 1000_i64),
+    );
+
+    let withdraw_info = state
+        .facade
+        .withdraw_spot_request(user: receiving_user, asset_id: vault_config.asset_id, amount: 1000);
+    state.facade.withdraw(withdraw_info);
+
+    let balance: i64 = state
+        .facade
+        .get_position_asset_balance(receiving_user.position_id, vault_config.asset_id)
+        .into();
+
+    assert_with_error(
+        balance == 0_i64.into(), format!("Unexpected balance: {}, expected: {}", balance, 0_i64),
+    );
+}
+
+
+#[test]
 fn test_protocol_vault_cancel_deposit_vault_shares() {
     let mut state: FlowTestBase = FlowTestBaseTrait::new();
     let vault_user = state.new_user_with_position();

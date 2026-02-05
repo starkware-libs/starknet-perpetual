@@ -112,7 +112,9 @@ pub(crate) mod WithdrawalManager {
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::AssetsComponent::InternalImpl as AssetsInternal;
-    use perpetuals::core::components::assets::errors::{ASSET_NOT_EXISTS, INACTIVE_ASSET};
+    use perpetuals::core::components::assets::errors::{
+        ASSET_NOT_EXISTS, CANNOT_WITHDRAW_SYNTHETIC, INACTIVE_ASSET,
+    };
     use perpetuals::core::components::assets::interface::IAssets;
     use perpetuals::core::components::deposit::Deposit::InternalImpl as DepositInternal;
     use perpetuals::core::components::fulfillment::fulfillment::Fulfillement as FulfillmentComponent;
@@ -122,8 +124,8 @@ pub(crate) mod WithdrawalManager {
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
     use perpetuals::core::components::snip::SNIP12MetadataImpl;
     use perpetuals::core::errors::{
-        AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_WITHDRAW_COLLATERAL, INVALID_ZERO_AMOUNT,
-        SIGNED_TX_EXPIRED, TRANSFER_FAILED,
+        AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED,
+        TRANSFER_FAILED,
     };
     use perpetuals::core::types::asset::AssetId;
     use perpetuals::core::types::asset::synthetic::SyntheticTrait;
@@ -469,8 +471,8 @@ pub(crate) mod WithdrawalManager {
                 let entry = (@self).assets.asset_config.entry(collateral_id).as_ptr();
                 assert(SyntheticTrait::is_some_config(entry), ASSET_NOT_EXISTS);
                 assert(
-                    SyntheticTrait::at_asset_type(entry) == AssetType::SPOT_COLLATERAL,
-                    INVALID_WITHDRAW_COLLATERAL,
+                    SyntheticTrait::at_asset_type(entry) != AssetType::SYNTHETIC,
+                    CANNOT_WITHDRAW_SYNTHETIC,
                 );
                 assert(
                     SyntheticTrait::at_asset_status(entry) == AssetStatus::ACTIVE, INACTIVE_ASSET,
