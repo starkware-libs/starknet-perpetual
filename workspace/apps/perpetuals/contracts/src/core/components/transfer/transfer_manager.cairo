@@ -62,7 +62,7 @@ pub(crate) mod TransferManager {
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::AssetsComponent::InternalImpl as AssetsInternal;
-    use perpetuals::core::components::assets::errors::{INACTIVE_ASSET, NO_SUCH_ASSET};
+    use perpetuals::core::components::assets::errors::NO_SUCH_ASSET;
     use perpetuals::core::components::assets::interface::IAssets;
     use perpetuals::core::components::fulfillment::fulfillment::Fulfillement as FulfillmentComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
@@ -90,7 +90,6 @@ pub(crate) mod TransferManager {
         AMOUNT_OVERFLOW, INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT, NOT_TRANSFERABLE_ASSET,
         SIGNED_TX_EXPIRED, VAULT_CANNOT_HOLD_SHARES,
     };
-    use crate::core::types::asset::AssetStatus;
     use crate::core::types::position::PositionDiff;
     use crate::core::types::transfer::TransferArgs;
     use super::{ITransferManager, Signature, Timestamp, Transfer, TransferRequest};
@@ -305,10 +304,6 @@ pub(crate) mod TransferManager {
             } else {
                 let entry = (@self).assets.asset_config.entry(collateral_id).as_ptr();
                 let asset_type = SyntheticTrait::get_asset_type(entry).expect(NO_SUCH_ASSET);
-
-                assert(
-                    SyntheticTrait::at_asset_status(entry) == AssetStatus::ACTIVE, INACTIVE_ASSET,
-                );
 
                 assert(
                     asset_type == AssetType::SPOT_COLLATERAL
