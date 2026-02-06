@@ -173,6 +173,9 @@ pub mod Core {
         // Example: max_interest_rate_per_sec = 10 means the rate is 10 / 2^32 ≈ 0.000000232 per
         // second, which is approximately 7.4% per year.
         max_interest_rate_per_sec: u32,
+        // Whether the new escape hatch logic is enabled. 
+        // Off by default to be enabled one time in the future
+        forced_actions_enabled: bool
     }
 
     #[event]
@@ -807,6 +810,7 @@ pub mod Core {
             expiration: Timestamp,
             salt: felt252,
         ) {
+            assert(self._is_escape_hatch_enabled(), 'ESCAPE-HATCH-DISABLED');
             assert(!self._is_vault(vault_position: position_id), 'VAULT_CANNOT_INITIATE_WITHDRAW');
             self
                 .external_components
@@ -870,6 +874,7 @@ pub mod Core {
             order_a: Order,
             order_b: Order,
         ) {
+            assert(self._is_escape_hatch_enabled(), 'ESCAPE-HATCH-DISABLED');
             let position_a = self.positions.get_position_snapshot(position_id: order_a.position_id);
             let position_b = self.positions.get_position_snapshot(position_id: order_b.position_id);
 
@@ -1238,6 +1243,11 @@ pub mod Core {
                     :liquidated_fee_amount,
                 );
         }
+
+        fn enable_escape_hatch(ref self: ContractState) { 
+            assert(self.roles.is_governance_admin(get_caller_address()), 'NOT-GOVERNANCE-ADMIN');
+            self.forced_actions_enabled.write(true);
+        }
     }
 
     #[generate_trait]
@@ -1390,6 +1400,10 @@ pub mod Core {
 
         fn _is_vault(ref self: ContractState, vault_position: PositionId) -> bool {
             self.vaults.is_vault_position(vault_position)
+        }
+
+        fn _is_escape_hatch_enabled(ref self: ContractState) -> bool {
+            return self.forced_actions_enabled.read();
         }
     }
 }

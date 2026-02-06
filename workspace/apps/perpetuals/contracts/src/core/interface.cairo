@@ -205,4 +205,6 @@ pub trait ICore<TContractState> {
         actual_liquidator_fee: u64,
         liquidated_fee_amount: u64,
     );
+
+    fn enable_escape_hatch(ref self: TContractState);
 }
