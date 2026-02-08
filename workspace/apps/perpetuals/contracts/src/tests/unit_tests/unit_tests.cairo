@@ -19,7 +19,7 @@ use perpetuals::core::errors::SIGNED_TX_EXPIRED;
 use perpetuals::core::interface::{
     ICore, ICoreDispatcher, ICoreDispatcherTrait, ICoreSafeDispatcher, ICoreSafeDispatcherTrait,
 };
-use perpetuals::core::types::asset::AssetStatus;
+use perpetuals::core::types::asset::{AssetIdTrait, AssetStatus};
 use perpetuals::core::types::balance::BalanceTrait;
 use perpetuals::core::types::funding::{FUNDING_SCALE, FundingIndex, FundingTick};
 use perpetuals::core::types::order::{ForcedTrade, Order};
@@ -67,7 +67,7 @@ use starkware_utils::math::abs::Abs;
 use starkware_utils::storage::iterable_map::*;
 use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
 use starkware_utils_testing::test_utils::{
-    Deployable, TokenTrait, assert_panic_with_felt_error, cheat_caller_address_once,
+    Deployable, TokenConfig, TokenTrait, assert_panic_with_felt_error, cheat_caller_address_once,
 };
 use crate::tests::event_test_utils::{
     assert_add_spot_event_with_expected, assert_forced_trade_event_with_expected,
@@ -6519,4 +6519,676 @@ fn test_forced_trade_request_insufficient_premium() {
     // Test:
     cheat_caller_address_once(contract_address: test_address(), caller_address: user_a.address);
     state.forced_trade_request(:signature_a, :signature_b, :order_a, :order_b);
+}
+
+#[test]
+#[should_panic(expected: 'CANNOT_WITHDRAW_SYNTHETIC')]
+fn test_withdraw_synthetic_asset() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+    let dispatcher = ICoreDispatcher { contract_address };
+    let position_dispatcher = IPositionsDispatcher { contract_address };
+    let deposit_dispatcher = IDepositDispatcher { contract_address };
+    let assets_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
+    let assets_dispatcher = IAssetsDispatcher { contract_address };
+
+    let user_a: User = Default::default();
+    let user_b = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
+
+    // Set up time for oracle price validity
+    let old_time: u64 = Time::now().into();
+    let new_time = Time::now().add(delta: MAX_ORACLE_PRICE_VALIDITY);
+    start_cheat_block_timestamp_global(block_timestamp: new_time.into());
+
+    // Add synthetic asset
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    assets_manager_dispatcher
+        .add_synthetic_asset(
+            asset_id: cfg.synthetic_cfg.synthetic_id,
+            risk_factor_tiers: array![RISK_FACTOR].span(),
+            risk_factor_first_tier_boundary: MAX_U128,
+            risk_factor_tier_size: MAX_U128,
+            quorum: SYNTHETIC_QUORUM,
+            resolution_factor: SYNTHETIC_RESOLUTION_FACTOR,
+        );
+
+    // Setup synthetic asset activation
+    let asset_name = 'ASSET_NAME';
+    let oracle1_name = 'ORCL1';
+    let oracle1 = Oracle { oracle_name: oracle1_name, asset_name, key_pair: KEY_PAIR_1() };
+
+    // Add oracle
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    assets_manager_dispatcher
+        .add_oracle_to_asset(
+            asset_id: cfg.synthetic_cfg.synthetic_id,
+            oracle_public_key: oracle1.key_pair.public_key,
+            oracle_name: oracle1_name,
+            :asset_name,
+        );
+
+    // Activate synthetic with price tick
+    let oracle_price = ORACLE_PRICE;
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    assets_dispatcher
+        .price_tick(
+            operator_nonce: 0,
+            asset_id: cfg.synthetic_cfg.synthetic_id,
+            :oracle_price,
+            signed_prices: array![
+                oracle1.get_signed_price(:oracle_price, timestamp: old_time.try_into().unwrap()),
+            ]
+                .span(),
+        );
+
+    // Create positions
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    position_dispatcher
+        .new_position(
+            operator_nonce: 1,
+            position_id: user_a.position_id,
+            owner_public_key: user_a.get_public_key(),
+            owner_account: Zero::zero(),
+            owner_protection_enabled: true,
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    position_dispatcher
+        .new_position(
+            operator_nonce: 2,
+            position_id: user_b.position_id,
+            owner_public_key: user_b.get_public_key(),
+            owner_account: Zero::zero(),
+            owner_protection_enabled: true,
+        );
+
+    let deposit_amount = 100000_u64;
+    token_state.fund(recipient: user_a.address, amount: USER_INIT_BALANCE.try_into().unwrap());
+    token_state
+        .approve(
+            owner: user_a.address,
+            spender: contract_address,
+            amount: deposit_amount.into() * cfg.collateral_cfg.quantum.into(),
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: user_a.address);
+    deposit_dispatcher
+        .deposit(
+            position_id: user_a.position_id,
+            quantized_amount: deposit_amount,
+            salt: user_a.salt_counter,
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    deposit_dispatcher
+        .process_deposit(
+            operator_nonce: 3,
+            depositor: user_a.address,
+            asset_id: cfg.collateral_cfg.collateral_id,
+            position_id: user_a.position_id,
+            quantized_amount: deposit_amount,
+            salt: user_a.salt_counter,
+        );
+
+    token_state.fund(recipient: user_b.address, amount: USER_INIT_BALANCE.try_into().unwrap());
+    token_state
+        .approve(
+            owner: user_b.address,
+            spender: contract_address,
+            amount: deposit_amount.into() * cfg.collateral_cfg.quantum.into(),
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: user_b.address);
+    deposit_dispatcher
+        .deposit(
+            position_id: user_b.position_id,
+            quantized_amount: deposit_amount,
+            salt: user_b.salt_counter,
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    deposit_dispatcher
+        .process_deposit(
+            operator_nonce: 4,
+            depositor: user_b.address,
+            asset_id: cfg.collateral_cfg.collateral_id,
+            position_id: user_b.position_id,
+            quantized_amount: deposit_amount,
+            salt: user_b.salt_counter,
+        );
+
+    let expiration = Time::now().add(delta: Time::days(1));
+    let synthetic_id = cfg.synthetic_cfg.synthetic_id;
+    let collateral_id = cfg.collateral_cfg.collateral_id;
+
+    let order_a = Order {
+        position_id: user_a.position_id,
+        base_asset_id: synthetic_id,
+        base_amount: 100, // Buy 100 synthetic
+        quote_asset_id: collateral_id,
+        quote_amount: -200, // Pay 200 collateral
+        fee_asset_id: collateral_id,
+        fee_amount: 10,
+        expiration,
+        salt: user_a.salt_counter + 1,
+    };
+
+    let order_b = Order {
+        position_id: user_b.position_id,
+        base_asset_id: synthetic_id,
+        base_amount: -100, // Sell 100 synthetic
+        quote_asset_id: collateral_id,
+        quote_amount: 200, // Receive 200 collateral
+        fee_asset_id: collateral_id,
+        fee_amount: 10,
+        expiration,
+        salt: user_b.salt_counter + 1,
+    };
+
+    let hash_a = order_a.get_message_hash(public_key: user_a.get_public_key());
+    let signature_a = user_a.sign_message(message: hash_a);
+    let hash_b = order_b.get_message_hash(public_key: user_b.get_public_key());
+    let signature_b = user_b.sign_message(message: hash_b);
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    dispatcher
+        .trade(
+            operator_nonce: 5,
+            :signature_a,
+            :signature_b,
+            :order_a,
+            :order_b,
+            actual_amount_base_a: 100,
+            actual_amount_quote_a: -200,
+            actual_fee_a: 10,
+            actual_fee_b: 10,
+        );
+
+    let withdraw_amount = 10_u64;
+
+    let withdraw_args = WithdrawArgs {
+        position_id: user_a.position_id,
+        salt: user_a.salt_counter + 2,
+        expiration,
+        collateral_id: synthetic_id, // Trying to withdraw synthetic asset
+        amount: withdraw_amount,
+        recipient: user_a.address,
+    };
+
+    let hash = withdraw_args.get_message_hash(public_key: user_a.get_public_key());
+    let signature = user_a.sign_message(message: hash);
+
+    // Submit withdraw request
+    cheat_caller_address_once(:contract_address, caller_address: user_a.address);
+    dispatcher
+        .withdraw_request(
+            :signature,
+            collateral_id: synthetic_id,
+            recipient: user_a.address,
+            position_id: user_a.position_id,
+            amount: withdraw_amount,
+            :expiration,
+            salt: withdraw_args.salt,
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    dispatcher
+        .withdraw(
+            operator_nonce: 6,
+            collateral_id: synthetic_id,
+            recipient: user_a.address,
+            position_id: user_a.position_id,
+            amount: withdraw_amount,
+            :expiration,
+            salt: withdraw_args.salt,
+        );
+}
+
+#[test]
+#[should_panic(expected: 'INACTIVE_ASSET')]
+fn test_withdraw_inactive_asset_should_fail() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+    let dispatcher = ICoreDispatcher { contract_address };
+    let position_dispatcher = IPositionsDispatcher { contract_address };
+    let deposit_dispatcher = IDepositDispatcher { contract_address };
+    let assets_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
+
+    let user: User = Default::default();
+
+    // Create position
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    position_dispatcher
+        .new_position(
+            operator_nonce: 0,
+            position_id: user.position_id,
+            owner_public_key: user.get_public_key(),
+            owner_account: Zero::zero(),
+            owner_protection_enabled: true,
+        );
+
+    // Add a spot asset but NEVER activate it (no price tick, no activation)
+    let spot_token_cfg = TokenConfig {
+        name: "SPOT_TOKEN",
+        symbol: "SPOT",
+        decimals: 6,
+        initial_supply: 1000000000000,
+        owner: OPERATOR(),
+    };
+    let spot_token_state = spot_token_cfg.deploy();
+    let spot_asset_id = AssetIdTrait::new(987654321);
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    assets_manager_dispatcher
+        .add_spot_asset(
+            asset_id: spot_asset_id,
+            erc20_contract_address: spot_token_state.address,
+            quantum: 1000,
+            resolution_factor: 1000000,
+            risk_factor_tiers: array![10].span(),
+            risk_factor_first_tier_boundary: MAX_U128,
+            risk_factor_tier_size: 1,
+            quorum: 1,
+        );
+
+    let deposit_amount = 1000_u64;
+    let fund_amount: u128 = (deposit_amount.into() * 1000_u128);
+    spot_token_state.fund(recipient: user.address, amount: fund_amount);
+    spot_token_state.approve(owner: user.address, spender: contract_address, amount: fund_amount);
+
+    cheat_caller_address_once(:contract_address, caller_address: user.address);
+    deposit_dispatcher
+        .deposit_asset(
+            asset_id: spot_asset_id,
+            position_id: user.position_id,
+            quantized_amount: deposit_amount,
+            salt: user.salt_counter,
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    deposit_dispatcher
+        .process_deposit(
+            operator_nonce: 1,
+            depositor: user.address,
+            asset_id: spot_asset_id,
+            position_id: user.position_id,
+            quantized_amount: deposit_amount,
+            salt: user.salt_counter,
+        );
+
+    // Setup withdraw request for the inactive (never activated) asset
+    let expiration = Time::now().add(delta: Time::days(1));
+    let withdraw_amount = 100_u64;
+
+    let withdraw_args = WithdrawArgs {
+        position_id: user.position_id,
+        salt: user.salt_counter + 1,
+        expiration,
+        collateral_id: spot_asset_id,
+        amount: withdraw_amount,
+        recipient: user.address,
+    };
+
+    let hash = withdraw_args.get_message_hash(public_key: user.get_public_key());
+    let signature = user.sign_message(message: hash);
+
+    // Submit withdraw request
+    cheat_caller_address_once(:contract_address, caller_address: user.address);
+    dispatcher
+        .withdraw_request(
+            :signature,
+            collateral_id: spot_asset_id,
+            recipient: user.address,
+            position_id: user.position_id,
+            amount: withdraw_amount,
+            :expiration,
+            salt: withdraw_args.salt,
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    dispatcher
+        .withdraw(
+            operator_nonce: 2,
+            collateral_id: spot_asset_id,
+            recipient: user.address,
+            position_id: user.position_id,
+            amount: withdraw_amount,
+            :expiration,
+            salt: withdraw_args.salt,
+        );
+}
+
+#[test]
+#[should_panic(
+    expected: "POSITION_NOT_HEALTHY_NOR_HEALTHIER position_id: PositionId { value: 100 } TV before 109790, TR before 5000, TV after 4995, TR after 5000",
+)]
+fn test_withdraw_spot_asset_unhealthy_position_should_fail() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+    let dispatcher = ICoreDispatcher { contract_address };
+    let position_dispatcher = IPositionsDispatcher { contract_address };
+    let deposit_dispatcher = IDepositDispatcher { contract_address };
+    let assets_manager_dispatcher = IAssetsManagerDispatcher { contract_address };
+    let assets_dispatcher = IAssetsDispatcher { contract_address };
+
+    let user_a: User = Default::default();
+    let user_b = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
+
+    // Set up time for oracle price validity
+    let old_time: u64 = Time::now().into();
+    let new_time = Time::now().add(delta: MAX_ORACLE_PRICE_VALIDITY);
+    start_cheat_block_timestamp_global(block_timestamp: new_time.into());
+
+    // Add synthetic asset
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    assets_manager_dispatcher
+        .add_synthetic_asset(
+            asset_id: cfg.synthetic_cfg.synthetic_id,
+            risk_factor_tiers: array![RISK_FACTOR].span(),
+            risk_factor_first_tier_boundary: MAX_U128,
+            risk_factor_tier_size: MAX_U128,
+            quorum: SYNTHETIC_QUORUM,
+            resolution_factor: SYNTHETIC_RESOLUTION_FACTOR,
+        );
+
+    // Setup synthetic asset activation
+    let asset_name = 'ASSET_NAME';
+    let oracle1_name = 'ORCL1';
+    let oracle1 = Oracle { oracle_name: oracle1_name, asset_name, key_pair: KEY_PAIR_1() };
+
+    // Add oracle
+    cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
+    assets_manager_dispatcher
+        .add_oracle_to_asset(
+            asset_id: cfg.synthetic_cfg.synthetic_id,
+            oracle_public_key: oracle1.key_pair.public_key,
+            oracle_name: oracle1_name,
+            :asset_name,
+        );
+
+    // Activate synthetic with price tick (price = 100 USDC per synthetic unit)
+    let oracle_price = ORACLE_PRICE;
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    assets_dispatcher
+        .price_tick(
+            operator_nonce: 0,
+            asset_id: cfg.synthetic_cfg.synthetic_id,
+            :oracle_price,
+            signed_prices: array![
+                oracle1.get_signed_price(:oracle_price, timestamp: old_time.try_into().unwrap()),
+            ]
+                .span(),
+        );
+
+    // Create positions
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    position_dispatcher
+        .new_position(
+            operator_nonce: 1,
+            position_id: user_a.position_id,
+            owner_public_key: user_a.get_public_key(),
+            owner_account: Zero::zero(),
+            owner_protection_enabled: true,
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    position_dispatcher
+        .new_position(
+            operator_nonce: 2,
+            position_id: user_b.position_id,
+            owner_public_key: user_b.get_public_key(),
+            owner_account: Zero::zero(),
+            owner_protection_enabled: true,
+        );
+
+    let deposit_amount = 100000_u64;
+    token_state.fund(recipient: user_a.address, amount: USER_INIT_BALANCE.try_into().unwrap());
+    token_state
+        .approve(
+            owner: user_a.address,
+            spender: contract_address,
+            amount: deposit_amount.into() * cfg.collateral_cfg.quantum.into(),
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: user_a.address);
+    deposit_dispatcher
+        .deposit(
+            position_id: user_a.position_id,
+            quantized_amount: deposit_amount,
+            salt: user_a.salt_counter,
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    deposit_dispatcher
+        .process_deposit(
+            operator_nonce: 3,
+            depositor: user_a.address,
+            asset_id: cfg.collateral_cfg.collateral_id,
+            position_id: user_a.position_id,
+            quantized_amount: deposit_amount,
+            salt: user_a.salt_counter,
+        );
+
+    token_state.fund(recipient: user_b.address, amount: USER_INIT_BALANCE.try_into().unwrap());
+    token_state
+        .approve(
+            owner: user_b.address,
+            spender: contract_address,
+            amount: deposit_amount.into() * cfg.collateral_cfg.quantum.into(),
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: user_b.address);
+    deposit_dispatcher
+        .deposit(
+            position_id: user_b.position_id,
+            quantized_amount: deposit_amount,
+            salt: user_b.salt_counter,
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    deposit_dispatcher
+        .process_deposit(
+            operator_nonce: 4,
+            depositor: user_b.address,
+            asset_id: cfg.collateral_cfg.collateral_id,
+            position_id: user_b.position_id,
+            quantized_amount: deposit_amount,
+            salt: user_b.salt_counter,
+        );
+
+    let expiration = Time::now().add(delta: Time::days(1));
+    let synthetic_id = cfg.synthetic_cfg.synthetic_id;
+    let collateral_id = cfg.collateral_cfg.collateral_id;
+
+    let order_a = Order {
+        position_id: user_a.position_id,
+        base_asset_id: synthetic_id,
+        base_amount: 100, // Buy 100 synthetic
+        quote_asset_id: collateral_id,
+        quote_amount: -200, // Pay 200 collateral
+        fee_asset_id: collateral_id,
+        fee_amount: 10,
+        expiration,
+        salt: user_a.salt_counter + 1,
+    };
+
+    let order_b = Order {
+        position_id: user_b.position_id,
+        base_asset_id: synthetic_id,
+        base_amount: -100, // Sell 100 synthetic
+        quote_asset_id: collateral_id,
+        quote_amount: 200, // Receive 200 collateral
+        fee_asset_id: collateral_id,
+        fee_amount: 10,
+        expiration,
+        salt: user_b.salt_counter + 1,
+    };
+
+    let hash_a = order_a.get_message_hash(public_key: user_a.get_public_key());
+    let signature_a = user_a.sign_message(message: hash_a);
+    let hash_b = order_b.get_message_hash(public_key: user_b.get_public_key());
+    let signature_b = user_b.sign_message(message: hash_b);
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    dispatcher
+        .trade(
+            operator_nonce: 5,
+            :signature_a,
+            :signature_b,
+            :order_a,
+            :order_b,
+            actual_amount_base_a: 100,
+            actual_amount_quote_a: -200,
+            actual_fee_a: 10,
+            actual_fee_b: 10,
+        );
+
+    // After trade, user_a has:
+    // - Collateral: 100000 - 200 - 10 = 99790
+    // - Synthetic: 100 units @ 100 USDC = 10000 value
+    // With RISK_FACTOR = 500 (50%), TR = 10000 * 0.50 = 5000
+    // Position: TV = 99790 + 10000 = 109790, TR = 5000 (healthy)
+    // Withdraw 104795 USDC: TV = 99790 - 104795 + 10000 = 4995, TR = 5000 (UNHEALTHY!)
+    let withdraw_amount = 104795_u64;
+
+    let withdraw_args = WithdrawArgs {
+        position_id: user_a.position_id,
+        salt: user_a.salt_counter + 2,
+        expiration,
+        collateral_id,
+        amount: withdraw_amount,
+        recipient: user_a.address,
+    };
+
+    let hash = withdraw_args.get_message_hash(public_key: user_a.get_public_key());
+    let signature = user_a.sign_message(message: hash);
+
+    // Submit withdraw request
+    cheat_caller_address_once(:contract_address, caller_address: user_a.address);
+    dispatcher
+        .withdraw_request(
+            :signature,
+            :collateral_id,
+            recipient: user_a.address,
+            position_id: user_a.position_id,
+            amount: withdraw_amount,
+            :expiration,
+            salt: withdraw_args.salt,
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    dispatcher
+        .withdraw(
+            operator_nonce: 6,
+            :collateral_id,
+            recipient: user_a.address,
+            position_id: user_a.position_id,
+            amount: withdraw_amount,
+            :expiration,
+            salt: withdraw_args.salt,
+        );
+}
+
+
+#[test]
+#[should_panic(expected: 'ASSET_NOT_EXISTS')]
+fn test_withdraw_non_existent_asset_should_fail() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let contract_address = init_by_dispatcher(cfg: @cfg, token_state: @token_state);
+    let dispatcher = ICoreDispatcher { contract_address };
+    let position_dispatcher = IPositionsDispatcher { contract_address };
+    let deposit_dispatcher = IDepositDispatcher { contract_address };
+
+    let user: User = Default::default();
+
+    // Create position
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    position_dispatcher
+        .new_position(
+            operator_nonce: 0,
+            position_id: user.position_id,
+            owner_public_key: user.get_public_key(),
+            owner_account: Zero::zero(),
+            owner_protection_enabled: true,
+        );
+
+    // Deposit collateral for user (base collateral)
+    let deposit_amount = 1000_u64;
+    token_state.fund(recipient: user.address, amount: USER_INIT_BALANCE.try_into().unwrap());
+    token_state
+        .approve(
+            owner: user.address,
+            spender: contract_address,
+            amount: deposit_amount.into() * cfg.collateral_cfg.quantum.into(),
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: user.address);
+    deposit_dispatcher
+        .deposit(
+            position_id: user.position_id,
+            quantized_amount: deposit_amount,
+            salt: user.salt_counter,
+        );
+
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    deposit_dispatcher
+        .process_deposit(
+            operator_nonce: 1,
+            depositor: user.address,
+            asset_id: cfg.collateral_cfg.collateral_id,
+            position_id: user.position_id,
+            quantized_amount: deposit_amount,
+            salt: user.salt_counter,
+        );
+
+    // Setup withdraw request for a non-existent asset
+    let expiration = Time::now().add(delta: Time::days(1));
+    let non_existent_asset_id = AssetIdTrait::new(999999999); // Asset ID that doesn't exist
+    let withdraw_amount = 10_u64;
+
+    let withdraw_args = WithdrawArgs {
+        position_id: user.position_id,
+        salt: user.salt_counter + 1,
+        expiration,
+        collateral_id: non_existent_asset_id,
+        amount: withdraw_amount,
+        recipient: user.address,
+    };
+
+    let hash = withdraw_args.get_message_hash(public_key: user.get_public_key());
+    let signature = user.sign_message(message: hash);
+
+    // Submit withdraw request
+    cheat_caller_address_once(:contract_address, caller_address: user.address);
+    dispatcher
+        .withdraw_request(
+            :signature,
+            collateral_id: non_existent_asset_id,
+            recipient: user.address,
+            position_id: user.position_id,
+            amount: withdraw_amount,
+            :expiration,
+            salt: withdraw_args.salt,
+        );
+
+    // Test: Attempt to withdraw non-existent asset (should panic)
+    cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
+    dispatcher
+        .withdraw(
+            operator_nonce: 2,
+            collateral_id: non_existent_asset_id,
+            recipient: user.address,
+            position_id: user.position_id,
+            amount: withdraw_amount,
+            :expiration,
+            salt: withdraw_args.salt,
+        );
 }
