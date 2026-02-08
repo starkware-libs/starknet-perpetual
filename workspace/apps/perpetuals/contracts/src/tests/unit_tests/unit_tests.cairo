@@ -2218,6 +2218,48 @@ fn test_deposit_already_registered() {
 }
 
 #[test]
+#[should_panic(expected: 'ASSET_NOT_EXISTS')]
+fn test_deposit_non_existent_asset() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let user = Default::default();
+    init_position(cfg: @cfg, ref :state, :user);
+
+    // Test:
+    cheat_caller_address_once(contract_address: test_address(), caller_address: user.address);
+    state
+        .deposit_asset(
+            asset_id: SYNTHETIC_ASSET_ID_2(), // Non-existent asset.
+            position_id: user.position_id,
+            quantized_amount: DEPOSIT_AMOUNT,
+            salt: user.salt_counter,
+        );
+}
+
+#[test]
+#[should_panic(expected: 'NOT_SPOT_ASSET')]
+fn test_deposit_synthetic_asset() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let user = Default::default();
+    init_position(cfg: @cfg, ref :state, :user);
+
+    // Test:
+    cheat_caller_address_once(contract_address: test_address(), caller_address: user.address);
+    state
+        .deposit_asset(
+            asset_id: cfg.synthetic_cfg.synthetic_id,
+            position_id: user.position_id,
+            quantized_amount: DEPOSIT_AMOUNT,
+            salt: user.salt_counter,
+        );
+}
+
+#[test]
 fn test_successful_process_deposit() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
