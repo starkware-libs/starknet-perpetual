@@ -173,9 +173,9 @@ pub mod Core {
         // Example: max_interest_rate_per_sec = 10 means the rate is 10 / 2^32 ≈ 0.000000232 per
         // second, which is approximately 7.4% per year.
         max_interest_rate_per_sec: u32,
-        // Whether the new escape hatch logic is enabled. 
+        // Whether the new escape hatch logic is enabled.
         // Off by default to be enabled one time in the future
-        forced_actions_enabled: bool
+        forced_actions_enabled: bool,
     }
 
     #[event]
@@ -1244,7 +1244,7 @@ pub mod Core {
                 );
         }
 
-        fn enable_escape_hatch(ref self: ContractState) { 
+        fn enable_escape_hatch(ref self: ContractState) {
             self.roles.only_app_governor();
             self.forced_actions_enabled.write(true);
         }
