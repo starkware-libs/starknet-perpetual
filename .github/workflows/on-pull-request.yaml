@@ -8,10 +8,44 @@ jobs:
     runs-on: namespace-profile-starkware-libs-starknet-perpetual-xlarge-hm-ubuntu-24-04-amd64
     steps:
       - uses: actions/checkout@v4
-      - uses: foundry-rs/setup-snfoundry@v3
-        with:
-          starknet-foundry-version: "0.55.0"
 
+      # -------------------------------
+      # Install Starknet Foundry NIGHTLY
+      # -------------------------------
+      - name: Install Starknet Foundry (nightly)
+        env:
+          TAG: nightly-2026-02-03
+          GH_REPO: software-mansion-labs/starknet-foundry-nightlies
+        run: |
+          set -euo pipefail
+
+          sudo apt-get update
+          sudo apt-get install -y jq
+
+          release_json="$(curl -sL "https://api.github.com/repos/${GH_REPO}/releases/tags/${TAG}")"
+
+          url="$(echo "$release_json" \
+            | jq -r '.assets[].browser_download_url' \
+            | grep -E 'linux.*(x86_64|amd64).*\.tar\.gz$' \
+            | head -n 1)"
+
+          if [ -z "$url" ]; then
+            echo "Could not find nightly asset"
+            echo "$release_json" | jq -r '.assets[].name'
+            exit 1
+          fi
+
+          curl -L "$url" -o snfoundry.tar.gz
+          mkdir -p "$HOME/.snfoundry"
+          tar -xzf snfoundry.tar.gz -C "$HOME/.snfoundry"
+          echo "$HOME/.snfoundry/bin" >> "$GITHUB_PATH"
+
+          snforge --version
+          sncast --version
+
+      # -------------------------------
+      # Scarb
+      # -------------------------------
       - uses: software-mansion/setup-scarb@v1
         with:
           scarb-version: "2.15.1"
@@ -28,6 +62,7 @@ jobs:
 
       - name: Check formatting
         run: scarb fmt -w --check
+
   python_tests:
     runs-on: namespace-profile-starkware-libs-starknet-perpetual-xlarge-hm-ubuntu-24-04-amd64
     steps:
@@ -57,5 +92,4 @@ jobs:
       - run: pip install -r requirements.txt
 
       - name: Run Python Tests
-        id: run_tests
         run: scripts/python_tests.sh
