@@ -711,7 +711,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
     }
 
     fn register_vault_share_spot_asset(
-        ref self: PerpsTestsFacade, position_vault: User,
+        ref self: PerpsTestsFacade, position_vault: User, asset_name: felt252,
     ) -> VaultState {
         self.operator.set_as_caller(self.perpetuals_contract);
 
@@ -726,7 +726,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         let risk_factor_1 = array![100].span();
 
         let asset_info = AssetInfoTrait::new_with_resolution(
-            asset_name: 'VS_1',
+            :asset_name,
             risk_factor_data: RiskFactorTiers {
                 tiers: risk_factor_1,
                 first_tier_boundary: risk_factor_first_tier_boundary,

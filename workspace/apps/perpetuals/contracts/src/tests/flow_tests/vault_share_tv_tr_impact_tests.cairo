@@ -12,7 +12,7 @@ fn test_shares_should_contribute_zero_until_activated() {
         .facade
         .deposit(vault_user.account, vault_user.position_id, 5000_u64);
     state.facade.process_deposit(vault_init_deposit);
-    let vault_config = state.facade.register_vault_share_spot_asset(vault_user);
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user, asset_name: 'VS_1');
 
     state
         .facade
@@ -53,7 +53,7 @@ fn position_should_be_usable_with_inactive_vault_shares() {
         .facade
         .deposit(vault_user.account, vault_user.position_id, 5000_u64);
     state.facade.process_deposit(vault_init_deposit);
-    let vault_config = state.facade.register_vault_share_spot_asset(vault_user);
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user, asset_name: 'VS_1');
 
     state
         .facade
@@ -105,7 +105,7 @@ fn test_shares_should_contribute_to_tv_tr_after_activation() {
         .facade
         .deposit(vault_user.account, vault_user.position_id, 5000_u64);
     state.facade.process_deposit(vault_init_deposit);
-    let vault_config = state.facade.register_vault_share_spot_asset(vault_user);
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user, asset_name: 'VS_1');
     //vault shares have 10% risk factor
 
     state

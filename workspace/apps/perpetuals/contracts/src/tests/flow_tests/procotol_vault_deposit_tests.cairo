@@ -70,7 +70,7 @@ fn test_deposit_into_protocol_vault_recieve_to_same_position() {
         .facade
         .deposit(vault_user.account, vault_user.position_id, 5000_u64);
     state.facade.process_deposit(vault_init_deposit);
-    let vault_config = state.facade.register_vault_share_spot_asset(vault_user);
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user, asset_name: 'VS_1');
 
     state
         .facade
@@ -181,7 +181,7 @@ fn test_deposit_into_protocol_vault_recieve_to_different_position() {
         .facade
         .deposit(vault_user.account, vault_user.position_id, 5000_u64);
     state.facade.process_deposit(vault_init_deposit);
-    let vault_config = state.facade.register_vault_share_spot_asset(vault_user);
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user, asset_name: 'VS_1');
 
     state
         .facade
@@ -232,7 +232,7 @@ fn test_deposit_cannot_be_called_except_by_perps_contract() {
         .facade
         .deposit(vault_user.account, vault_user.position_id, 5000_u64);
     state.facade.process_deposit(vault_init_deposit);
-    let vault_config = state.facade.register_vault_share_spot_asset(vault_user);
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user, asset_name: 'VS_1');
 
     let dispatcher: IERC4626Dispatcher = vault_config.deployed_vault.erc4626;
     dispatcher.deposit(assets: 1000, receiver: receiving_user.account.address);

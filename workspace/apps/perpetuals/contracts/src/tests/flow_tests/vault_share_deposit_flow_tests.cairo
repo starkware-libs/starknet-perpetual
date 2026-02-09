@@ -16,7 +16,7 @@ fn test_protocol_vault_deposit_vault_shares() {
         .facade
         .deposit(vault_user.account, vault_user.position_id, 5000_u64);
     state.facade.process_deposit(vault_init_deposit);
-    let vault_config = state.facade.register_vault_share_spot_asset(vault_user);
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user, asset_name: 'VS_1');
     let init_shares = vault_config
         .deployed_vault
         .erc20
@@ -57,7 +57,7 @@ fn test_withdraw_vault_shares() {
         .facade
         .deposit(vault_user.account, vault_user.position_id, 5000_u64);
     state.facade.process_deposit(vault_init_deposit);
-    let vault_config = state.facade.register_vault_share_spot_asset(vault_user);
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user, asset_name: 'VS_1');
     state.facade.price_tick(asset_info: @vault_config.asset_info, price: 1);
     let init_shares = vault_config
         .deployed_vault
@@ -112,7 +112,7 @@ fn test_protocol_vault_cancel_deposit_vault_shares() {
     let receiving_user = state.new_user_with_position();
     let deposit_info = state.facade.deposit(vault_user.account, vault_user.position_id, 5000_u64);
     state.facade.process_deposit(deposit_info);
-    let vault_config = state.facade.register_vault_share_spot_asset(vault_user);
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user, asset_name: 'VS_1');
 
     let deposit_info = state
         .facade
@@ -134,4 +134,39 @@ fn test_protocol_vault_cancel_deposit_vault_shares() {
     assert_with_error(
         balance == 0_i64.into(), format!("Unexpected balance: {}, expected: {}", balance, 0_i64),
     );
+}
+
+#[test]
+#[should_panic(expected: 'DEPOSIT_VAULT_SHARES_INTO_VAULT')]
+fn test_protocol_vault_deposit_vault_shares_1() {
+    // Setup:
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let vault_user_1 = state.new_user_with_position();
+    let vault_user_2 = state.new_user_with_position();
+
+    let vault_init_deposit_1 = state
+        .facade
+        .deposit(vault_user_1.account, vault_user_1.position_id, 5000_u64);
+    state.facade.process_deposit(vault_init_deposit_1);
+    let vault_init_deposit_2 = state
+        .facade
+        .deposit(vault_user_2.account, vault_user_2.position_id, 5000_u64);
+    state.facade.process_deposit(vault_init_deposit_2);
+
+    let vault_config_1 = state
+        .facade
+        .register_vault_share_spot_asset(vault_user_1, asset_name: 'VS_1');
+    let vault_config_2 = state
+        .facade
+        .register_vault_share_spot_asset(vault_user_2, asset_name: 'VS_2');
+
+    // Test:
+    state
+        .facade
+        .deposit_spot(
+            vault_config_1.deployed_vault.owning_account,
+            vault_config_2.asset_id,
+            vault_config_1.position_id,
+            1000,
+        );
 }
