@@ -330,3 +330,11 @@ fn test_activate_new_component_only_upgrade_governor() {
             component_type: 'TRANSFERS', component_address: 'SOME_HASH'.try_into().unwrap(),
         );
 }
+
+#[test]
+#[should_panic(expected: "ONLY_APP_GOVERNOR")]
+fn test_escape_hatch_only_app_governor() {
+    let (_, contract_address) = setup();
+    let dispatcher = ICoreDispatcher { contract_address };
+    dispatcher.enable_escape_hatch();
+}
