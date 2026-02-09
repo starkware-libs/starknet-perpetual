@@ -72,6 +72,7 @@ pub const COLLATERAL_RESOLUTION_FACTOR: u64 = 1_000_000_000;
 pub const SYNTHETIC_QUORUM: u8 = 1;
 pub const SYNTHETIC_RESOLUTION_FACTOR: u64 = 1_000_000_000;
 pub const VAULT_DECIMALS: u8 = 6;
+pub const SPOT_DECIMALS: u8 = 6;
 pub const INITIAL_SUPPLY: u256 = 10_000_000_000_000_000;
 pub const WITHDRAW_AMOUNT: u64 = 1000;
 pub const DEPOSIT_AMOUNT: u64 = 10;
@@ -113,6 +114,9 @@ pub fn SYNTHETIC_ASSET_ID_3() -> AssetId {
 pub fn VAULT_SHARE_COLLATERAL_1_ID() -> AssetId {
     AssetIdTrait::new(value: selector!("VS_1"))
 }
+pub fn SPOT_COLLATERAL_ASSET_ID() -> AssetId {
+    AssetIdTrait::new(value: selector!("SPOT"))
+}
 pub fn VAULT_SHARE_COLLATERAL_1_NAME() -> ByteArray {
     "VS_1"
 }
@@ -127,6 +131,12 @@ pub fn VAULT_SHARE_COLLATERAL_2_NAME() -> ByteArray {
 }
 pub fn VAULT_SHARE_COLLATERAL_2_SYMBOL() -> ByteArray {
     "VS2"
+}
+pub fn SPOT_COLLATERAL_NAME() -> ByteArray {
+    "SPOT"
+}
+pub fn SPOT_COLLATERAL_SYMBOL() -> ByteArray {
+    "SPT"
 }
 
 

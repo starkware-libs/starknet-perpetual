@@ -19,8 +19,8 @@ use perpetuals::core::errors::SIGNED_TX_EXPIRED;
 use perpetuals::core::interface::{
     ICore, ICoreDispatcher, ICoreDispatcherTrait, ICoreSafeDispatcher, ICoreSafeDispatcherTrait,
 };
-use perpetuals::core::types::asset::AssetStatus;
-use perpetuals::core::types::balance::BalanceTrait;
+use perpetuals::core::types::asset::{AssetId, AssetIdTrait, AssetStatus};
+use perpetuals::core::types::balance::{Balance, BalanceTrait};
 use perpetuals::core::types::funding::{FUNDING_SCALE, FundingIndex, FundingTick};
 use perpetuals::core::types::order::{ForcedTrade, Order};
 use perpetuals::core::types::position::{POSITION_VERSION, PositionMutableTrait};
@@ -51,7 +51,8 @@ use perpetuals::tests::event_test_utils::{
 use perpetuals::tests::test_utils::{
     Oracle, OracleTrait, PerpetualsInitConfig, User, UserTrait, add_synthetic_to_position,
     check_synthetic_asset, init_by_dispatcher, init_position, init_position_with_owner,
-    setup_state_with_active_asset, setup_state_with_pending_asset,
+    init_position_with_spot_asset_balance, setup_state_with_active_synthetic,
+    setup_state_with_pending_spot_asset, setup_state_with_pending_synthetic,
     setup_state_with_pending_vault_share, validate_asset_balance, validate_balance,
 };
 use snforge_std::cheatcodes::events::{EventSpyTrait, EventsFilterTrait};
@@ -537,7 +538,7 @@ fn test_new_position() {
     // Setup state, token:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let mut spy = snforge_std::spy_events();
 
     // Parameters:
@@ -587,7 +588,7 @@ fn test_successful_set_owner_account_request_using_public_key() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let user = Default::default();
     init_position(cfg: @cfg, ref :state, :user);
 
@@ -624,7 +625,7 @@ fn test_set_owner_account_request_invalid_caller() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let user = Default::default();
     init_position(cfg: @cfg, ref :state, :user);
 
@@ -657,7 +658,7 @@ fn test_set_owner_account_request_position_has_owner() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let user = Default::default();
     init_position_with_owner(cfg: @cfg, ref :state, :user);
 
@@ -689,7 +690,7 @@ fn test_successful_set_owner_account() {
     // Setup state, token:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     let user: User = Default::default();
     init_position(cfg: @cfg, ref :state, :user);
@@ -750,7 +751,7 @@ fn test_set_existed_owner_account() {
     // Setup state, token:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     let user: User = Default::default();
     init_position_with_owner(cfg: @cfg, ref :state, :user);
@@ -783,7 +784,7 @@ fn test_successful_add_synthetic_asset() {
     // Setup state, token:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let mut spy = snforge_std::spy_events();
 
     // Setup test parameters:
@@ -868,7 +869,7 @@ fn test_add_synthetic_asset_existed_asset() {
     // Setup state, token:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     // Test:
     cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.app_governor);
@@ -2063,7 +2064,7 @@ fn test_successful_deactivate_synthetic_asset() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let mut spy = snforge_std::spy_events();
 
     // Setup parameters:
@@ -2100,7 +2101,7 @@ fn test_deactivate_nonexistent_synthetic_asset() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     // Setup parameters:
     let synthetic_id = SYNTHETIC_ASSET_ID_2();
 
@@ -2117,7 +2118,7 @@ fn test_successful_deposit() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let user = Default::default();
     let user_deposit_amount = DEPOSIT_AMOUNT.into() * cfg.collateral_cfg.quantum.into();
     init_position(cfg: @cfg, ref :state, :user);
@@ -2188,7 +2189,7 @@ fn test_deposit_already_registered() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let user = Default::default();
     let user_deposit_amount = DEPOSIT_AMOUNT.into() * cfg.collateral_cfg.quantum.into();
     init_position(cfg: @cfg, ref :state, :user);
@@ -2223,7 +2224,7 @@ fn test_deposit_non_existent_asset() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let user = Default::default();
     init_position(cfg: @cfg, ref :state, :user);
 
@@ -2244,7 +2245,7 @@ fn test_deposit_synthetic_asset() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let user = Default::default();
     init_position(cfg: @cfg, ref :state, :user);
 
@@ -2264,7 +2265,7 @@ fn test_successful_process_deposit() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let user = Default::default();
     init_position(cfg: @cfg, ref :state, :user);
     let user_deposit_amount = DEPOSIT_AMOUNT.into() * cfg.collateral_cfg.quantum.into();
@@ -2330,7 +2331,7 @@ fn test_successful_cancel_deposit() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let user = Default::default();
     init_position(cfg: @cfg, ref :state, :user);
     let user_deposit_amount = DEPOSIT_AMOUNT.into() * cfg.collateral_cfg.quantum.into();
@@ -2405,7 +2406,7 @@ fn test_successful_reject_deposit() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let user = Default::default();
     init_position(cfg: @cfg, ref :state, :user);
     let user_deposit_amount = DEPOSIT_AMOUNT.into() * cfg.collateral_cfg.quantum.into();
@@ -2485,7 +2486,7 @@ fn test_cancel_non_registered_deposit() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let user = Default::default();
     init_position(cfg: @cfg, ref :state, :user);
 
@@ -2505,7 +2506,7 @@ fn test_cancel_deposit_different_hash() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let user = Default::default();
     init_position(cfg: @cfg, ref :state, :user);
     let user_deposit_amount = DEPOSIT_AMOUNT.into() * cfg.collateral_cfg.quantum.into();
@@ -2541,7 +2542,7 @@ fn test_cancel_already_done_deposit() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let user = Default::default();
     init_position(cfg: @cfg, ref :state, :user);
     let user_deposit_amount = DEPOSIT_AMOUNT.into() * cfg.collateral_cfg.quantum.into();
@@ -2594,7 +2595,7 @@ fn test_double_cancel_deposit() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let user = Default::default();
     init_position(cfg: @cfg, ref :state, :user);
     let user_deposit_amount = DEPOSIT_AMOUNT.into() * cfg.collateral_cfg.quantum.into();
@@ -2642,7 +2643,7 @@ fn test_cancel_deposit_before_cancellation_delay_passed() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let user = Default::default();
     init_position(cfg: @cfg, ref :state, :user);
     let user_deposit_amount = DEPOSIT_AMOUNT.into() * cfg.collateral_cfg.quantum.into();
@@ -2681,7 +2682,7 @@ fn test_successful_trade() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     let user_a = Default::default();
     init_position(cfg: @cfg, ref :state, user: user_a);
@@ -2806,7 +2807,7 @@ fn test_invalid_trade_same_base_signs() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     let user_a = Default::default();
     init_position(cfg: @cfg, ref :state, user: user_a);
@@ -2875,7 +2876,7 @@ fn test_successful_withdraw_request_with_public_key() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let user = Default::default();
     init_position(cfg: @cfg, ref :state, :user);
     let recipient = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
@@ -3680,7 +3681,7 @@ fn test_forced_withdraw_request_zero_amount() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let user = Default::default();
     init_position(cfg: @cfg, ref :state, :user);
     let recipient = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
@@ -3722,7 +3723,7 @@ fn test_successful_deleverage() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     let deleveraged = Default::default();
     init_position(cfg: @cfg, ref :state, user: deleveraged);
@@ -3823,7 +3824,7 @@ fn test_successful_liquidate() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     let liquidator = Default::default();
     init_position(cfg: @cfg, ref :state, user: liquidator);
@@ -3960,7 +3961,7 @@ fn test_successful_set_public_key_request() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let mut user = Default::default();
     init_position_with_owner(cfg: @cfg, ref :state, :user);
 
@@ -4000,7 +4001,7 @@ fn test_successful_set_public_key() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let mut user = Default::default();
     init_position_with_owner(cfg: @cfg, ref :state, :user);
 
@@ -4074,7 +4075,7 @@ fn test_set_public_key_no_request() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let mut user = Default::default();
     init_position_with_owner(cfg: @cfg, ref :state, :user);
 
@@ -4107,7 +4108,7 @@ fn test_invalid_set_public_key_request_wrong_owner() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let no_position_owner = Default::default();
     init_position_with_owner(cfg: @cfg, ref :state, user: no_position_owner);
     let position_owner = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
@@ -4144,7 +4145,7 @@ fn test_set_public_key_request_position_not_exist() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let user: User = Default::default();
 
     // Setup parameters:
@@ -4176,7 +4177,7 @@ fn test_successful_transfer_request_using_public_key() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let user = Default::default();
     init_position(cfg: @cfg, ref :state, :user);
     let recipient = UserTrait::new(position_id: POSITION_ID_200, key_pair: KEY_PAIR_2());
@@ -4221,7 +4222,7 @@ fn test_successful_transfer() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     let sender = Default::default();
     init_position(cfg: @cfg, ref :state, user: sender);
@@ -4319,7 +4320,7 @@ fn test_invalid_transfer_request_amount_is_zero() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     let sender = Default::default();
     init_position(cfg: @cfg, ref :state, user: sender);
@@ -4377,7 +4378,7 @@ fn test_validate_asset_prices_expired() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let user: User = Default::default();
     init_position(cfg: @cfg, ref :state, :user);
     // Set the block timestamp to be after the price validation interval
@@ -4439,7 +4440,7 @@ fn test_validate_asset_prices_pending_asset() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_pending_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_pending_synthetic(cfg: @cfg, token_state: @token_state);
     let user: User = Default::default();
     init_position(cfg: @cfg, ref :state, :user);
     // Fund user.
@@ -4486,7 +4487,7 @@ fn test_validate_prices() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let user: User = Default::default();
     init_position(cfg: @cfg, ref :state, :user);
     let old_time = Time::now();
@@ -4583,7 +4584,7 @@ fn test_validate_prices_no_update_needed() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let user: User = Default::default();
     init_position(cfg: @cfg, ref :state, :user);
     // Fund user.
@@ -4625,7 +4626,7 @@ fn test_validate_prices_no_update_needed() {
 fn test_funding_tick_basic() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     let new_time = Time::now().add(Time::seconds(HOUR));
     start_cheat_block_timestamp_global(block_timestamp: new_time.into());
@@ -4669,7 +4670,7 @@ fn test_funding_tick_basic() {
 fn test_invalid_funding_rate() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     let new_time = Time::now().add(Time::seconds(HOUR));
     start_cheat_block_timestamp_global(block_timestamp: new_time.into());
@@ -4700,7 +4701,7 @@ fn test_invalid_funding_rate() {
 fn test_funding_tick_collateral_asset() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     let new_time = Time::now().add(Time::seconds(HOUR));
     start_cheat_block_timestamp_global(block_timestamp: new_time.into());
@@ -4724,7 +4725,7 @@ fn test_funding_tick_collateral_asset() {
 fn test_funding_tick_vault_share_asset() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     // Register a vault share collateral asset so that it exists in the assets config.
     cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.app_governor);
@@ -4761,7 +4762,7 @@ fn test_funding_tick_vault_share_asset() {
 fn test_invalid_funding_len() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     let new_time = Time::now().add(Time::seconds(10));
     start_cheat_block_timestamp_global(block_timestamp: new_time.into());
@@ -4788,7 +4789,7 @@ fn test_invalid_funding_len() {
 fn test_price_tick_basic() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_pending_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_pending_synthetic(cfg: @cfg, token_state: @token_state);
     let mut spy = snforge_std::spy_events();
     let asset_name = 'ASSET_NAME';
     let oracle1_name = 'ORCL1';
@@ -4846,7 +4847,7 @@ fn test_price_tick_basic() {
 fn test_price_tick_odd() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_pending_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_pending_synthetic(cfg: @cfg, token_state: @token_state);
     let asset_name = 'ASSET_NAME';
     let oracle1_name = 'ORCL1';
     let oracle2_name = 'ORCL2';
@@ -4915,7 +4916,7 @@ fn test_price_tick_odd() {
 fn test_price_tick_even() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_pending_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_pending_synthetic(cfg: @cfg, token_state: @token_state);
     let asset_name = 'ASSET_NAME';
     let oracle1_name = 'ORCL1';
     let oracle3_name = 'ORCL3';
@@ -4975,7 +4976,7 @@ fn test_price_tick_even() {
 fn test_price_tick_no_quorum() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.operator);
     let operator_nonce = state.get_operator_nonce();
     state
@@ -4993,7 +4994,7 @@ fn test_price_tick_unsorted() {
     start_cheat_block_timestamp_global(block_timestamp: Time::now().add(Time::weeks(1)).into());
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_pending_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_pending_synthetic(cfg: @cfg, token_state: @token_state);
     let asset_name = 'ASSET_NAME';
     let oracle1_name = 'ORCL1';
     let oracle2_name = 'ORCL2';
@@ -5044,7 +5045,7 @@ fn test_price_tick_unsorted() {
 fn test_price_tick_old_oracle() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_pending_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_pending_synthetic(cfg: @cfg, token_state: @token_state);
     let asset_name = 'ASSET_NAME';
     let oracle1_name = 'ORCL1';
     let oracle1 = Oracle { oracle_name: oracle1_name, asset_name, key_pair: KEY_PAIR_1() };
@@ -5080,7 +5081,7 @@ fn test_price_tick_old_oracle() {
 fn test_price_tick_golden() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_pending_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_pending_synthetic(cfg: @cfg, token_state: @token_state);
     let asset_name = 'PENGUUSDMARK\x00\x00\x00\x00';
     let oracle0_name = 'Stkai';
     let oracle1_name = 'Stork';
@@ -5166,7 +5167,7 @@ fn test_price_tick_golden() {
 fn test_successful_add_and_remove_oracle() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_pending_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_pending_synthetic(cfg: @cfg, token_state: @token_state);
 
     let asset_name = 'ASSET_NAME';
     let oracle_name = 'ORCL';
@@ -5223,7 +5224,7 @@ fn test_successful_add_and_remove_oracle() {
 fn test_add_oracle_name_too_long() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_pending_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_pending_synthetic(cfg: @cfg, token_state: @token_state);
 
     let asset_name = 'ASSET_NAME';
     let oracle_name = 'LONG_ORACLE_NAME';
@@ -5246,7 +5247,7 @@ fn test_add_oracle_name_too_long() {
 fn test_add_oracle_asset_name_too_long() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_pending_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_pending_synthetic(cfg: @cfg, token_state: @token_state);
 
     let asset_name = 'TOO_LONG_ASSET_NAME';
     let oracle_name = 'ORCL';
@@ -5269,7 +5270,7 @@ fn test_add_oracle_asset_name_too_long() {
 fn test_add_existed_oracle() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     let asset_name = 'ASSET_NAME';
     let oracle_name = 'ORCL';
@@ -5305,7 +5306,7 @@ fn test_add_existed_oracle() {
 fn test_successful_remove_nonexistent_oracle() {
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_pending_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_pending_synthetic(cfg: @cfg, token_state: @token_state);
 
     // Parameters:
     let key_pair = KEY_PAIR_1();
@@ -5316,43 +5317,13 @@ fn test_successful_remove_nonexistent_oracle() {
     state.remove_oracle_from_asset(asset_id: synthetic_id, oracle_public_key: key_pair.public_key);
 }
 
-// #[test]
-// #[should_panic(expected: 'MISMATCHED_RESOLUTION')]
-// fn test_unsuccessful_add_vault_share_asset_mismatched_resolution() {
-//     // Setup state, token:
-//     let cfg: PerpetualsInitConfig = Default::default();
-//     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-//     let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
-//     let vault_share_state = cfg.vault_share_cfg.token_cfg.deploy();
-
-//     // Setup test parameters:
-//     let risk_factor_first_tier_boundary = MAX_U128;
-//     let risk_factor_tier_size = 1;
-//     let risk_factor_1 = array![10].span();
-
-//     // Test:
-//     cheat_caller_address_once(contract_address: test_address(), caller_address:
-//     cfg.app_governor);
-//     state
-//         .add_vault_collateral_asset(
-//             asset_id: cfg.vault_share_cfg.collateral_id,
-//             erc20_contract_address: vault_share_state.address,
-//             quantum: 10_000_000,
-//             resolution_factor: 1_000_000_000,
-//             risk_factor_tiers: risk_factor_1,
-//             :risk_factor_first_tier_boundary,
-//             :risk_factor_tier_size,
-//             quorum: 1_u8,
-//         );
-// }
-
 #[test]
 #[should_panic(expected: 'INVALID_SHARE_QUANTUM')]
 fn test_unsuccessful_add_vault_share_asset_zero_quantum() {
     // Setup state, token:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let vault_share_state = cfg.vault_share_cfg.token_cfg.deploy();
 
     // Setup test parameters:
@@ -5380,7 +5351,7 @@ fn test_unsuccessful_add_vault_share_asset_not_erc20() {
     // Setup state, token:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     // Setup test parameters:
     let risk_factor_first_tier_boundary = MAX_U128;
@@ -5406,7 +5377,7 @@ fn test_successful_add_vault_share_asset() {
     // Setup state, token:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let mut spy = snforge_std::spy_events();
 
     // VS has 10^18
@@ -5459,7 +5430,7 @@ fn test_successful_add_spot_asset() {
     // Setup state, token:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
     let mut spy = snforge_std::spy_events();
 
     // Setup test parameters:
@@ -5516,7 +5487,7 @@ fn test_unsuccessful_add_spot_asset_zero_quantum() {
     // Setup state, token:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     // Setup test parameters:
     let spot_asset_id = SYNTHETIC_ASSET_ID_2();
@@ -5549,7 +5520,7 @@ fn test_unsuccessful_add_spot_asset_existing_asset() {
     // Setup state, token:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     // Use the existing synthetic asset id so that the asset is already registered.
     let spot_asset_id = cfg.synthetic_cfg.synthetic_id;
@@ -5579,7 +5550,7 @@ fn test_unsuccessful_add_spot_asset_existing_asset() {
 fn test_successful_vault_token_deposit() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
-    let mut state = setup_state_with_active_asset(
+    let mut state = setup_state_with_active_synthetic(
         cfg: @cfg, token_state: @cfg.collateral_cfg.token_cfg.deploy(),
     );
     let user = Default::default();
@@ -5666,7 +5637,7 @@ fn test_successful_vault_token_deposit() {
 fn test_unsuccessful_vault_token_deposit_unregistered_asset() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
-    let mut state = setup_state_with_active_asset(
+    let mut state = setup_state_with_active_synthetic(
         cfg: @cfg, token_state: @cfg.collateral_cfg.token_cfg.deploy(),
     );
     let user = Default::default();
@@ -5695,7 +5666,7 @@ fn test_unsuccessful_vault_token_deposit_unregistered_asset() {
 fn test_unsuccessful_vault_token_deposit_synthetic_asset() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
-    let mut state = setup_state_with_active_asset(
+    let mut state = setup_state_with_active_synthetic(
         cfg: @cfg, token_state: @cfg.collateral_cfg.token_cfg.deploy(),
     );
     let user = Default::default();
@@ -5722,7 +5693,7 @@ fn test_unsuccessful_vault_token_deposit_synthetic_asset() {
 fn test_successful_vault_token_cancel_deposit() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
-    let mut state = setup_state_with_active_asset(
+    let mut state = setup_state_with_active_synthetic(
         cfg: @cfg, token_state: @cfg.collateral_cfg.token_cfg.deploy(),
     );
     let user = Default::default();
@@ -5830,7 +5801,7 @@ fn test_successful_vault_token_cancel_deposit() {
 fn test_successful_vault_share_process_deposit() {
     // Setup state, token and user:
     let cfg: PerpetualsInitConfig = Default::default();
-    let mut state = setup_state_with_active_asset(
+    let mut state = setup_state_with_active_synthetic(
         cfg: @cfg, token_state: @cfg.collateral_cfg.token_cfg.deploy(),
     );
     let user = Default::default();
@@ -5985,7 +5956,7 @@ fn test_successful_forced_trade_request() {
     // Setup state, token and users:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     let user_a = Default::default();
     init_position(cfg: @cfg, ref :state, user: user_a);
@@ -6075,7 +6046,7 @@ fn test_successful_forced_trade_after_timelock() {
     // Setup state, token and users:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     let user_a = Default::default();
     init_position(cfg: @cfg, ref :state, user: user_a);
@@ -6213,7 +6184,7 @@ fn test_forced_trade_user_after_operator_executed() {
     // Setup state, token and users:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     let user_a = Default::default();
     init_position(cfg: @cfg, ref :state, user: user_a);
@@ -6291,7 +6262,7 @@ fn test_successful_forced_trade_by_operator_before_timelock() {
     // Setup state, token and users:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     let user_a = Default::default();
     init_position(cfg: @cfg, ref :state, user: user_a);
@@ -6362,7 +6333,7 @@ fn test_forced_trade_operator_after_user_executed() {
     // Setup state, token and users:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     let user_a = Default::default();
     init_position(cfg: @cfg, ref :state, user: user_a);
@@ -6441,7 +6412,7 @@ fn test_forced_trade_before_timelock_non_operator() {
     // Setup state, token and users:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     let user_a = Default::default();
     init_position(cfg: @cfg, ref :state, user: user_a);
@@ -6506,7 +6477,7 @@ fn test_forced_trade_request_insufficient_premium() {
     // Setup state, token and users:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
-    let mut state = setup_state_with_active_asset(cfg: @cfg, token_state: @token_state);
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     let user_a = Default::default();
     init_position(cfg: @cfg, ref :state, user: user_a);
@@ -6561,4 +6532,248 @@ fn test_forced_trade_request_insufficient_premium() {
     // Test:
     cheat_caller_address_once(contract_address: test_address(), caller_address: user_a.address);
     state.forced_trade_request(:signature_a, :signature_b, :order_a, :order_b);
+}
+
+#[test]
+#[should_panic(expected: 'CANNOT_WITHDRAW_SYNTHETIC')]
+fn test_withdraw_synthetic_asset() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
+
+    // Create position
+    let user: User = Default::default();
+    let spot_asset_balance: Balance = 100000_i64.into();
+    let spot_asset_id: AssetId = cfg.collateral_cfg.collateral_id;
+
+    init_position_with_spot_asset_balance(
+        cfg: @cfg, ref :state, :user, :spot_asset_id, :spot_asset_balance,
+    );
+    add_synthetic_to_position(
+        ref :state,
+        synthetic_id: cfg.synthetic_cfg.synthetic_id,
+        position_id: user.position_id,
+        balance: SYNTHETIC_BALANCE_AMOUNT,
+    );
+
+    // Withdraw synthetic asset
+    let withdraw_amount = 10_u64;
+    let expiration = Time::now().add(delta: Time::days(1));
+    let synthetic_id = cfg.synthetic_cfg.synthetic_id;
+    let withdraw_args = WithdrawArgs {
+        position_id: user.position_id,
+        salt: user.salt_counter,
+        expiration,
+        collateral_id: synthetic_id, // Trying to withdraw synthetic asset
+        amount: withdraw_amount,
+        recipient: user.address,
+    };
+    let hash = withdraw_args.get_message_hash(public_key: user.get_public_key());
+    let signature = user.sign_message(message: hash);
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: user.address);
+    state
+        .withdraw_request(
+            :signature,
+            collateral_id: synthetic_id,
+            recipient: user.address,
+            position_id: user.position_id,
+            amount: withdraw_amount,
+            :expiration,
+            salt: withdraw_args.salt,
+        );
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.operator);
+    state
+        .withdraw(
+            operator_nonce: state.get_operator_nonce(),
+            collateral_id: synthetic_id,
+            recipient: user.address,
+            position_id: user.position_id,
+            amount: withdraw_amount,
+            :expiration,
+            salt: withdraw_args.salt,
+        );
+}
+
+#[test]
+#[should_panic(expected: 'INACTIVE_ASSET')]
+fn test_withdraw_inactive_asset_should_fail() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = setup_state_with_pending_spot_asset(cfg: @cfg, token_state: @token_state);
+
+    // Create position
+    let user: User = Default::default();
+    let spot_asset_balance: Balance = 1000_i64.into();
+    let spot_asset_id: AssetId = cfg.spot_cfg.collateral_id;
+    init_position_with_spot_asset_balance(
+        cfg: @cfg, ref :state, :user, :spot_asset_id, :spot_asset_balance,
+    );
+
+    // Withdraw inactive spot asset
+    let expiration = Time::now().add(delta: Time::days(1));
+    let withdraw_amount = 100_u64;
+    let withdraw_args = WithdrawArgs {
+        position_id: user.position_id,
+        salt: user.salt_counter,
+        expiration,
+        collateral_id: spot_asset_id,
+        amount: withdraw_amount,
+        recipient: user.address,
+    };
+    let hash = withdraw_args.get_message_hash(public_key: user.get_public_key());
+    let signature = user.sign_message(message: hash);
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: user.address);
+    state
+        .withdraw_request(
+            :signature,
+            collateral_id: spot_asset_id,
+            recipient: user.address,
+            position_id: user.position_id,
+            amount: withdraw_amount,
+            :expiration,
+            salt: withdraw_args.salt,
+        );
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.operator);
+    state
+        .withdraw(
+            operator_nonce: state.get_operator_nonce(),
+            collateral_id: spot_asset_id,
+            recipient: user.address,
+            position_id: user.position_id,
+            amount: withdraw_amount,
+            :expiration,
+            salt: withdraw_args.salt,
+        );
+}
+
+#[test]
+#[should_panic(
+    expected: "POSITION_NOT_HEALTHY_NOR_HEALTHIER position_id: PositionId { value: 100 } TV before 20000, TR before 5000, TV after 4000, TR after 5000",
+)]
+fn test_withdraw_to_create_unhealthy_position() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
+
+    // Create positions
+    let user: User = Default::default();
+    let spot_asset_id: AssetId = cfg.collateral_cfg.collateral_id;
+    let spot_asset_balance: Balance = 10_000_i64.into();
+    init_position_with_spot_asset_balance(
+        cfg: @cfg, ref :state, :user, :spot_asset_id, :spot_asset_balance,
+    );
+    add_synthetic_to_position(
+        ref :state,
+        synthetic_id: cfg.synthetic_cfg.synthetic_id,
+        position_id: user.position_id,
+        balance: 100,
+    );
+
+    // user has:
+    // - Collateral: 10_000
+    // - Synthetic: 100 units @ 100 USDC = 10_000 value
+    //              synthetic_rf = 500 (50%), TR = 10_000 * 0.50 = 5_000
+    // Position: TV = 10_000 + 10_000 = 20_000, TR = 5_000 (healthy)
+    // Withdraw 16_000 USDC: TV = 20_000 - 16_000 = 4_000, TR = 5_000 (UNHEALTHY!)
+    let expiration = Time::now().add(delta: Time::days(1));
+    let collateral_id = cfg.collateral_cfg.collateral_id;
+    let withdraw_amount = 16_000_u64;
+    let withdraw_args = WithdrawArgs {
+        position_id: user.position_id,
+        salt: user.salt_counter,
+        expiration,
+        collateral_id,
+        amount: withdraw_amount,
+        recipient: user.address,
+    };
+    let hash = withdraw_args.get_message_hash(public_key: user.get_public_key());
+    let signature = user.sign_message(message: hash);
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: user.address);
+    state
+        .withdraw_request(
+            :signature,
+            :collateral_id,
+            recipient: user.address,
+            position_id: user.position_id,
+            amount: withdraw_amount,
+            :expiration,
+            salt: withdraw_args.salt,
+        );
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.operator);
+    state
+        .withdraw(
+            operator_nonce: state.get_operator_nonce(),
+            :collateral_id,
+            recipient: user.address,
+            position_id: user.position_id,
+            amount: withdraw_amount,
+            :expiration,
+            salt: withdraw_args.salt,
+        );
+}
+
+
+#[test]
+#[should_panic(expected: 'ASSET_NOT_EXISTS')]
+fn test_withdraw_non_existent_asset_should_fail() {
+    // Setup:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
+
+    // Create position
+    let user: User = Default::default();
+    let spot_asset_id: AssetId = cfg.collateral_cfg.collateral_id;
+    let spot_asset_balance: Balance = 1_000_i64.into();
+    init_position_with_spot_asset_balance(
+        cfg: @cfg, ref :state, :user, :spot_asset_id, :spot_asset_balance,
+    );
+
+    // Withdraw non-existent asset
+    let expiration = Time::now().add(delta: Time::days(1));
+    let non_existent_asset_id = AssetIdTrait::new(999999999); // Asset ID that doesn't exist
+    let withdraw_amount = 10_u64;
+    let withdraw_args = WithdrawArgs {
+        position_id: user.position_id,
+        salt: user.salt_counter,
+        expiration,
+        collateral_id: non_existent_asset_id,
+        amount: withdraw_amount,
+        recipient: user.address,
+    };
+    let hash = withdraw_args.get_message_hash(public_key: user.get_public_key());
+    let signature = user.sign_message(message: hash);
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: user.address);
+    state
+        .withdraw_request(
+            :signature,
+            collateral_id: non_existent_asset_id,
+            recipient: user.address,
+            position_id: user.position_id,
+            amount: withdraw_amount,
+            :expiration,
+            salt: withdraw_args.salt,
+        );
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.operator);
+    state
+        .withdraw(
+            operator_nonce: state.get_operator_nonce(),
+            collateral_id: non_existent_asset_id,
+            recipient: user.address,
+            position_id: user.position_id,
+            amount: withdraw_amount,
+            :expiration,
+            salt: withdraw_args.salt,
+        );
 }

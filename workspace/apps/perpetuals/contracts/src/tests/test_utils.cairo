@@ -151,7 +151,8 @@ pub struct PerpetualsInitConfig {
     pub max_interest_rate_per_sec: u32,
     pub collateral_cfg: CollateralCfg,
     pub synthetic_cfg: SyntheticCfg,
-    pub vault_share_cfg: VaultCollateralCfg,
+    pub vault_share_cfg: SpotCollateralCfg,
+    pub spot_cfg: SpotCollateralCfg,
 }
 
 #[generate_trait]
@@ -201,6 +202,14 @@ impl PerpetualsInitConfigDefault of Default<PerpetualsInitConfig> {
             initial_supply: 10_u256.pow(24),
             owner: COLLATERAL_OWNER(),
         };
+        let spot_cfg = TokenConfig {
+            name: SPOT_COLLATERAL_NAME(),
+            symbol: SPOT_COLLATERAL_SYMBOL(),
+            decimals: SPOT_DECIMALS,
+            initial_supply: INITIAL_SUPPLY,
+            owner: COLLATERAL_OWNER(),
+        };
+        let spot_token_state = spot_cfg.deploy();
 
         let vault_share_state = deploy_vault_share(@vault_share_cfg);
 
@@ -240,7 +249,7 @@ impl PerpetualsInitConfigDefault of Default<PerpetualsInitConfig> {
                 quorum: COLLATERAL_QUORUM,
             },
             synthetic_cfg: SyntheticCfg { synthetic_id: SYNTHETIC_ASSET_ID_1() },
-            vault_share_cfg: VaultCollateralCfg {
+            vault_share_cfg: SpotCollateralCfg {
                 token_cfg: vault_share_cfg,
                 token_state: vault_share_state,
                 collateral_id: VAULT_SHARE_COLLATERAL_1_ID(),
@@ -251,6 +260,18 @@ impl PerpetualsInitConfigDefault of Default<PerpetualsInitConfig> {
                 quorum: 1,
                 contract_address: vault_share_state.address,
                 resolution_factor: 1000000,
+            },
+            spot_cfg: SpotCollateralCfg {
+                token_cfg: spot_cfg,
+                token_state: spot_token_state,
+                collateral_id: SPOT_COLLATERAL_ASSET_ID(),
+                quantum: 1,
+                risk_factor_tiers: vault_share_risk_factor_1,
+                risk_factor_first_tier_boundary: vault_share_risk_factor_first_tier_boundary,
+                risk_factor_tier_size: vault_share_risk_factor_tier_size,
+                quorum: 1,
+                contract_address: spot_token_state.address,
+                resolution_factor: 1,
             },
         }
     }
@@ -266,10 +287,10 @@ pub struct CollateralCfg {
     pub quorum: u8,
 }
 
-/// The 'VaultCollateralCfg' struct represents a deployed vault share collateral with an associated
-/// asset id.
+/// The 'SpotCollateralCfg' struct represents a deployed spot collateral / vault share with an
+/// associated asset id.
 #[derive(Drop)]
-pub struct VaultCollateralCfg {
+pub struct SpotCollateralCfg {
     pub token_cfg: TokenConfig,
     pub token_state: TokenState,
     pub collateral_id: AssetId,
@@ -332,10 +353,10 @@ pub fn assert_with_error(boolean: bool, array: ByteArray) {
     }
 }
 
-pub fn setup_state_with_active_asset(
+pub fn setup_state_with_active_synthetic(
     cfg: @PerpetualsInitConfig, token_state: @TokenState,
 ) -> Core::ContractState {
-    let mut state = setup_state_with_pending_asset(:cfg, :token_state);
+    let mut state = setup_state_with_pending_synthetic(:cfg, :token_state);
     let asset_name = 'ASSET_NAME';
     let oracle1_name = 'ORCL1';
     let oracle1 = Oracle { oracle_name: oracle1_name, asset_name, key_pair: KEY_PAIR_1() };
@@ -364,7 +385,7 @@ pub fn setup_state_with_active_asset(
     state
 }
 
-pub fn setup_state_with_pending_asset(
+pub fn setup_state_with_pending_synthetic(
     cfg: @PerpetualsInitConfig, token_state: @TokenState,
 ) -> Core::ContractState {
     let mut state = init_state(:cfg, :token_state);
@@ -379,6 +400,26 @@ pub fn setup_state_with_pending_asset(
             risk_factor_tier_size: MAX_U128,
             quorum: SYNTHETIC_QUORUM,
             resolution_factor: SYNTHETIC_RESOLUTION_FACTOR,
+        );
+    state
+}
+
+pub fn setup_state_with_pending_spot_asset(
+    cfg: @PerpetualsInitConfig, token_state: @TokenState,
+) -> Core::ContractState {
+    let mut state = init_state(:cfg, :token_state);
+    cheat_caller_address_once(contract_address: test_address(), caller_address: *cfg.app_governor);
+    state
+        .assets
+        .add_spot_asset(
+            asset_id: *cfg.spot_cfg.collateral_id,
+            erc20_contract_address: *cfg.spot_cfg.contract_address,
+            quantum: *cfg.spot_cfg.quantum,
+            resolution_factor: *cfg.spot_cfg.resolution_factor,
+            risk_factor_tiers: array![RISK_FACTOR].span(),
+            risk_factor_first_tier_boundary: MAX_U128,
+            risk_factor_tier_size: MAX_U128,
+            quorum: *cfg.spot_cfg.quorum,
         );
     state
 }
@@ -655,6 +696,34 @@ pub fn init_position(cfg: @PerpetualsInitConfig, ref state: Core::ContractState,
         collateral_diff: COLLATERAL_BALANCE_AMOUNT.into(), asset_diff: Option::None,
     };
 
+    state.positions.apply_diff(:position_id, :position_diff);
+}
+
+pub fn init_position_with_spot_asset_balance(
+    cfg: @PerpetualsInitConfig,
+    ref state: Core::ContractState,
+    user: User,
+    spot_asset_id: AssetId,
+    spot_asset_balance: Balance,
+) {
+    cheat_caller_address_once(contract_address: test_address(), caller_address: *cfg.operator);
+    let position_id = user.position_id;
+    state
+        .new_position(
+            operator_nonce: state.get_operator_nonce(),
+            :position_id,
+            owner_public_key: user.get_public_key(),
+            owner_account: Zero::zero(),
+            owner_protection_enabled: false,
+        );
+    let position_diff = if spot_asset_id == *cfg.collateral_cfg.collateral_id {
+        PositionDiff { collateral_diff: spot_asset_balance, asset_diff: Option::None }
+    } else {
+        PositionDiff {
+            collateral_diff: Zero::zero(),
+            asset_diff: Option::Some((spot_asset_id, spot_asset_balance)),
+        }
+    };
     state.positions.apply_diff(:position_id, :position_diff);
 }
 
