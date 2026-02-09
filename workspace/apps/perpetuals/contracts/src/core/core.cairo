@@ -1245,7 +1245,7 @@ pub mod Core {
         }
 
         fn enable_escape_hatch(ref self: ContractState) { 
-            assert(self.roles.is_governance_admin(get_caller_address()), 'NOT-GOVERNANCE-ADMIN');
+            self.roles.only_app_governor();
             self.forced_actions_enabled.write(true);
         }
     }
