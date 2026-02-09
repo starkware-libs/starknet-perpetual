@@ -8,9 +8,45 @@ jobs:
     runs-on: namespace-profile-starkware-libs-starknet-perpetual-xlarge-hm-ubuntu-24-04-amd64
     steps:
       - uses: actions/checkout@v4
-      - uses: foundry-rs/setup-snfoundry@v3
-        with:
-          starknet-foundry-version: "0.55.0"
+
+      - name: Install Starknet Foundry (nightly)
+        env:
+          TAG: nightly-2026-02-03
+          GH_REPO: software-mansion-labs/starknet-foundry-nightlies
+        run: |
+          set -euo pipefail
+
+          url="$(
+            python3 - <<'PY'
+import json, os, re, sys, urllib.request
+
+tag = os.environ["TAG"]
+repo = os.environ["GH_REPO"]
+api = f"https://api.github.com/repos/{repo}/releases/tags/{tag}"
+
+with urllib.request.urlopen(api) as r:
+    data = json.load(r)
+
+assets = [a.get("browser_download_url","") for a in data.get("assets", [])]
+pat = re.compile(r"linux.*(amd64|x86_64).*\.tar\.gz$", re.IGNORECASE)
+cands = [u for u in assets if pat.search(u)]
+
+if not cands:
+    print("No matching linux amd64/x86_64 .tar.gz asset found.", file=sys.stderr)
+    for u in assets:
+        print(" -", u, file=sys.stderr)
+    sys.exit(1)
+
+print(cands[0])
+PY
+          )"
+
+          mkdir -p "$HOME/.snfoundry"
+          curl -sSfL "$url" | tar -xz -C "$HOME/.snfoundry"
+          echo "$HOME/.snfoundry/bin" >> "$GITHUB_PATH"
+
+          snforge --version
+          sncast --version
 
       - uses: software-mansion/setup-scarb@v1
         with:
@@ -28,6 +64,7 @@ jobs:
 
       - name: Check formatting
         run: scarb fmt -w --check
+
   python_tests:
     runs-on: namespace-profile-starkware-libs-starknet-perpetual-xlarge-hm-ubuntu-24-04-amd64
     steps:
@@ -51,8 +88,8 @@ jobs:
 
       - uses: actions/setup-python@v4
         with:
-          python-version: '3.10'
-          cache: 'pip'
+          python-version: "3.10"
+          cache: "pip"
 
       - run: pip install -r requirements.txt
 

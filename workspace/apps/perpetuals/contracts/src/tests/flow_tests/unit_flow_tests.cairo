@@ -2551,6 +2551,142 @@ fn test_spot_collateral_deposit_transfer_withdraw() {
 }
 
 #[test]
+#[should_panic(expected: 'INVALID_BASE_CHANGE')]
+fn test_spot_collateral_deposit_transfer_withdraw_fails() {
+    // Setup:
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+
+    let token = snforge_std::Token::STRK;
+    let erc20_contract_address = token.contract_address();
+    let asset_info = AssetInfoTrait::new_collateral(
+        asset_name: 'BTC', :risk_factor_data, oracles_len: 1, :erc20_contract_address,
+    );
+    let asset_id = asset_info.asset_id;
+    state.facade.add_active_collateral(asset_info: @asset_info, initial_price: 100);
+
+    let user_1 = state.new_user_with_position();
+    let user_2 = state.new_user_with_position();
+    snforge_std::set_balance(target: user_1.account.address, new_balance: 5000000, :token);
+    snforge_std::set_balance(target: user_2.account.address, new_balance: 5000000, :token);
+
+    // Deposit.
+    let deposit_info_user_1 = state
+        .facade
+        .deposit_spot(
+            depositor: user_1.account,
+            :asset_id,
+            position_id: user_1.position_id,
+            quantized_amount: 100000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_info_user_1);
+
+    // Transfer.
+    let transfer_info = state
+        .facade
+        .transfer_spot_request(sender: user_1, recipient: user_2, :asset_id, amount: 40000);
+    state.facade.transfer(:transfer_info);
+
+    // Trying to withdraw.
+    let withdraw_info = state.facade.withdraw_spot_request(user: user_1, :asset_id, amount: 70000);
+    state.facade.withdraw(withdraw_info: withdraw_info);
+}
+
+#[test]
+fn test_deposit_two_spot_collaterals() {
+    // Setup.
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+
+    // Create first spot collateral asset (BTC).
+    let token = snforge_std::Token::STRK;
+    let erc20_contract_address = token.contract_address();
+    let asset_info_btc = AssetInfoTrait::new_collateral(
+        asset_name: 'BTC', :risk_factor_data, oracles_len: 1, :erc20_contract_address,
+    );
+    let asset_id_btc = asset_info_btc.asset_id;
+    state.facade.add_active_collateral(asset_info: @asset_info_btc, initial_price: 100);
+
+    // Create second spot collateral asset (ETH).
+    let asset_info_eth = AssetInfoTrait::new_collateral(
+        asset_name: 'ETH', :risk_factor_data, oracles_len: 1, :erc20_contract_address,
+    );
+    let asset_id_eth = asset_info_eth.asset_id;
+    state.facade.add_active_collateral(asset_info: @asset_info_eth, initial_price: 50);
+
+    // Create user.
+    let user = state.new_user_with_position();
+    snforge_std::set_balance(target: user.account.address, new_balance: 5000000, :token);
+
+    // Deposit BTC spot collateral.
+    let deposit_info_btc = state
+        .facade
+        .deposit_spot(
+            depositor: user.account,
+            asset_id: asset_id_btc,
+            position_id: user.position_id,
+            quantized_amount: 100000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_info_btc);
+
+    // Deposit ETH spot collateral.
+    let deposit_info_eth = state
+        .facade
+        .deposit_spot(
+            depositor: user.account,
+            asset_id: asset_id_eth,
+            position_id: user.position_id,
+            quantized_amount: 200000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_info_eth);
+
+    // Verify both balances are correct.
+    let balance_btc: i64 = state
+        .facade
+        .get_position_asset_balance(user.position_id, asset_id_btc)
+        .into();
+    let balance_eth: i64 = state
+        .facade
+        .get_position_asset_balance(user.position_id, asset_id_eth)
+        .into();
+
+    assert_eq!(balance_btc, 100000_i64);
+    assert_eq!(balance_eth, 200000_i64);
+
+    // Verify that operations work independently on both spot collaterals.
+    // Withdraw some BTC.
+    let withdraw_info_btc = state
+        .facade
+        .withdraw_spot_request(user: user, asset_id: asset_id_btc, amount: 30000);
+    state.facade.withdraw(withdraw_info: withdraw_info_btc);
+
+    // Withdraw some ETH.
+    let withdraw_info_eth = state
+        .facade
+        .withdraw_spot_request(user: user, asset_id: asset_id_eth, amount: 50000);
+    state.facade.withdraw(withdraw_info: withdraw_info_eth);
+
+    // Verify final balances after withdrawals.
+    let balance_btc_after: i64 = state
+        .facade
+        .get_position_asset_balance(user.position_id, asset_id_btc)
+        .into();
+    let balance_eth_after: i64 = state
+        .facade
+        .get_position_asset_balance(user.position_id, asset_id_eth)
+        .into();
+
+    // user: 100000 (BTC deposit) - 30000 (BTC withdraw) = 70000
+    assert_eq!(balance_btc_after, 70000_i64);
+    // user: 200000 (ETH deposit) - 50000 (ETH withdraw) = 150000
+    assert_eq!(balance_eth_after, 150000_i64);
+}
+
+#[test]
 fn test_liquidate_spot_collateral_after_price_drop() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {
