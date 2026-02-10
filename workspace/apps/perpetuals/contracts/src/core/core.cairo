@@ -21,6 +21,7 @@ pub mod Core {
     use perpetuals::core::errors::{
         AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_ZERO_TIMEOUT, LENGTH_MISMATCH,
         ORDER_IS_NOT_EXPIRED, TRADE_ASSET_NOT_SYNTHETIC, TRANSFER_FAILED, ZERO_MAX_INTEREST_RATE,
+        ESCAPE_HATCH_DISABLED
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
@@ -810,7 +811,7 @@ pub mod Core {
             expiration: Timestamp,
             salt: felt252,
         ) {
-            assert(self._is_escape_hatch_enabled(), 'ESCAPE-HATCH-DISABLED');
+            assert(self._is_escape_hatch_enabled(), ESCAPE_HATCH_DISABLED);
             assert(!self._is_vault(vault_position: position_id), 'VAULT_CANNOT_INITIATE_WITHDRAW');
             self
                 .external_components
@@ -874,7 +875,7 @@ pub mod Core {
             order_a: Order,
             order_b: Order,
         ) {
-            assert(self._is_escape_hatch_enabled(), 'ESCAPE-HATCH-DISABLED');
+            assert(self._is_escape_hatch_enabled(), ESCAPE_HATCH_DISABLED);
             let position_a = self.positions.get_position_snapshot(position_id: order_a.position_id);
             let position_b = self.positions.get_position_snapshot(position_id: order_b.position_id);
 
@@ -1036,6 +1037,8 @@ pub mod Core {
             order: LimitOrder,
             vault_approval: LimitOrder,
         ) {
+            assert(self._is_escape_hatch_enabled(), ESCAPE_HATCH_DISABLED);
+
             let redeeming_position = self
                 .positions
                 .get_position_snapshot(position_id: order.source_position);

@@ -29,6 +29,7 @@ pub const ZERO_MAX_INTEREST_RATE: felt252 = 'ZERO_MAX_INTEREST_RATE';
 pub const NO_DELEVERAGE_VAULT_SHARES: felt252 = 'NO_DELEVERAGE_VAULT_SHARES';
 pub const NOT_TRANSFERABLE_ASSET: felt252 = 'NOT_TRANSFERABLE_ASSET';
 pub const VAULT_CANNOT_HOLD_SHARES: felt252 = 'VAULT_CANNOT_HOLD_SHARES';
+pub const ESCAPE_HATCH_DISABLED: felt252 = 'ESCAPE_HATCH_DISABLED';
 
 pub fn fulfillment_exceeded_err(position_id: PositionId) -> ByteArray {
     format!("FULFILLMENT_EXCEEDED position_id: {:?}", position_id)
