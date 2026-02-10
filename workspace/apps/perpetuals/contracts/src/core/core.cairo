@@ -19,9 +19,9 @@ pub mod Core {
     };
     use perpetuals::core::components::system_time::SystemTimeComponent;
     use perpetuals::core::errors::{
-        AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_ZERO_TIMEOUT, LENGTH_MISMATCH,
-        ORDER_IS_NOT_EXPIRED, TRADE_ASSET_NOT_SYNTHETIC, TRANSFER_FAILED, ZERO_MAX_INTEREST_RATE,
-        ESCAPE_HATCH_DISABLED
+        AMOUNT_OVERFLOW, ESCAPE_HATCH_DISABLED, FORCED_WAIT_REQUIRED, INVALID_ZERO_TIMEOUT,
+        LENGTH_MISMATCH, ORDER_IS_NOT_EXPIRED, TRADE_ASSET_NOT_SYNTHETIC, TRANSFER_FAILED,
+        ZERO_MAX_INTEREST_RATE,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
