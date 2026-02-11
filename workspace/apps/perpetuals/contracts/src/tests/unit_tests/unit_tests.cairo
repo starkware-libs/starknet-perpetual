@@ -6599,7 +6599,7 @@ fn test_withdraw_synthetic_asset() {
 
 #[test]
 #[should_panic(expected: 'INACTIVE_ASSET')]
-fn test_withdraw_inactive_asset_should_fail() {
+fn test_withdraw_inactive_asset() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
@@ -6724,7 +6724,7 @@ fn test_withdraw_to_create_unhealthy_position() {
 
 #[test]
 #[should_panic(expected: 'ASSET_NOT_EXISTS')]
-fn test_withdraw_non_existent_asset_should_fail() {
+fn test_withdraw_non_existent_asset() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
@@ -6732,11 +6732,7 @@ fn test_withdraw_non_existent_asset_should_fail() {
 
     // Create position
     let user: User = Default::default();
-    let spot_asset_id: AssetId = cfg.collateral_cfg.collateral_id;
-    let spot_asset_balance: Balance = 1_000_i64.into();
-    init_position_with_spot_asset_balance(
-        cfg: @cfg, ref :state, :user, :spot_asset_id, :spot_asset_balance,
-    );
+    init_position(cfg: @cfg, ref :state, :user);
 
     // Withdraw non-existent asset
     let expiration = Time::now().add(delta: Time::days(1));

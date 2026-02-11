@@ -138,7 +138,7 @@ fn test_protocol_vault_cancel_deposit_vault_shares() {
 
 #[test]
 #[should_panic(expected: 'DEPOSIT_VAULT_SHARES_INTO_VAULT')]
-fn test_protocol_vault_deposit_vault_shares_1() {
+fn test_protocol_vault_deposit_vault_shares_into_vault_position() {
     // Setup:
     let mut state: FlowTestBase = FlowTestBaseTrait::new();
     let vault_user_1 = state.new_user_with_position();
