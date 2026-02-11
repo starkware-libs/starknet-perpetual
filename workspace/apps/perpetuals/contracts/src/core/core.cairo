@@ -210,6 +210,7 @@ pub mod Core {
         ForcedTrade: events::ForcedTrade,
         ForcedRedeemFromVaultRequest: vault_events::ForcedRedeemFromVaultRequest,
         ForcedRedeemFromVault: vault_events::ForcedRedeemFromVault,
+        InterestApplied: events::InterestApplied,
         #[flat]
         FulfillmentEvent: Fulfillement::Event,
         #[flat]
@@ -1205,6 +1206,13 @@ pub mod Core {
                         :current_time,
                         :max_interest_rate_per_sec,
                         :interest_rate_scale,
+                    );
+
+                self
+                    .emit(
+                        events::InterestApplied {
+                            position_id: *position_id, interest_amount: interest_amount,
+                        },
                     );
                 i += 1;
             }

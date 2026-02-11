@@ -154,3 +154,10 @@ pub struct ForcedTrade {
     #[key]
     pub order_b_hash: felt252,
 }
+
+#[derive(Debug, Drop, PartialEq, starknet::Event)]
+pub struct InterestApplied {
+    #[key]
+    pub position_id: PositionId,
+    pub interest_amount: i64,
+}
