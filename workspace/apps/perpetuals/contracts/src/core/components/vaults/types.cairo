@@ -60,6 +60,7 @@ pub impl VaultConfigImpl of VaultConfigTrait {
     #[inline]
     fn read_version(entry: StoragePointer0Offset<VaultConfig>) -> felt252 {
         Self::read(entry, VaultConfigOffset::VERSION)
+
     }
 
     /// Returns true if the Option is Some, false if None.
