@@ -71,6 +71,8 @@ pub(crate) mod DeleverageManager {
     use crate::core::components::assets::errors::NO_SUCH_ASSET;
     use crate::core::components::external_components::interface::EXTERNAL_COMPONENT_DELEVERAGES;
     use crate::core::components::external_components::named_component::ITypedComponent;
+    use crate::core::components::vaults::vaults::Vaults::InternalTrait as VaultsInternal;
+    use crate::core::components::vaults::vaults::{Vaults as VaultsComponent};
     use crate::core::components::positions::interface::IPositions;
     use crate::core::errors::{NO_DELEVERAGE_VAULT_SHARES, position_not_deleveragable};
     use crate::core::types::position::{Position, PositionDiff};
@@ -106,6 +108,8 @@ pub(crate) mod DeleverageManager {
         AccessControlEvent: AccessControlComponent::Event,
         #[flat]
         RolesEvent: RolesComponent::Event,
+        #[flat]
+        VaultsEvent: VaultsComponent::Event,
     }
 
     #[storage]
@@ -131,6 +135,8 @@ pub(crate) mod DeleverageManager {
         src5: SRC5Component::Storage,
         #[substorage(v0)]
         pub request_approvals: RequestApprovalsComponent::Storage,
+        #[substorage(v0)]
+        pub vaults: VaultsComponent::Storage,
     }
 
     component!(path: FulfillmentComponent, storage: fulfillment_tracking, event: FulfillmentEvent);
@@ -145,6 +151,7 @@ pub(crate) mod DeleverageManager {
     component!(
         path: RequestApprovalsComponent, storage: request_approvals, event: RequestApprovalsEvent,
     );
+    component!(path: VaultsComponent, storage: vaults, event: VaultsEvent);
 
     #[abi(embed_v0)]
     impl TypedComponent of ITypedComponent<ContractState> {
@@ -401,13 +408,20 @@ pub(crate) mod DeleverageManager {
                     position: deleveraged_position,
                     position_diff: deleveraged_position_diff,
                 );
-            self
+            let tvtr = self
                 .positions
                 .validate_healthy_or_healthier_position(
                     position_id: deleverager_position_id,
                     position: deleverager_position,
                     position_diff: deleverager_position_diff,
                     tvtr_before: Default::default(),
+                );
+            self
+                .positions
+                .validate_against_vault_limits(
+                    position_id: deleverager_position_id,
+                    vault_protection_config: self.vaults.get_vault_protection_config(deleverager_position_id),
+                    :tvtr,
                 );
 
             // Apply diffs
