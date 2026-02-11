@@ -7,7 +7,6 @@ use starknet::storage_access::storage_address_from_base_and_offset;
 use starknet::syscalls::storage_read_syscall;
 use starknet::SyscallResultTrait;
 
-
 #[derive(Copy, Debug, Default, Drop, Hash, PartialEq, Serde, starknet::Store)]
 pub struct VaultConfig {
     pub version: u8,
