@@ -5,6 +5,7 @@
 /// and not exceed the current block timestamp.
 #[starknet::component]
 pub mod SystemTimeComponent {
+    use core::num::traits::Zero;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
@@ -20,7 +21,7 @@ pub mod SystemTimeComponent {
 
     #[storage]
     pub struct Storage {
-        system_time: Timestamp,
+        pub system_time: Timestamp,
     }
 
     #[event]
@@ -80,6 +81,19 @@ pub mod SystemTimeComponent {
             self.system_time.write(new_timestamp);
 
             self.emit(TimeTick { new_timestamp });
+        }
+    }
+    #[generate_trait]
+    pub impl InternalImpl<
+        TContractState,
+        +HasComponent<TContractState>,
+        +Drop<TContractState>,
+        +AccessControlComponent::HasComponent<TContractState>,
+        +SRC5Component::HasComponent<TContractState>,
+    > of InternalTrait<TContractState> {
+        fn initialize(ref self: ComponentState<TContractState>, system_time: Timestamp) {
+            assert(system_time.is_non_zero(), 'INVALID_ZERO_TIME');
+            self.system_time.write(system_time);
         }
     }
 }

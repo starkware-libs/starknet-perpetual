@@ -205,4 +205,6 @@ pub trait ICore<TContractState> {
         actual_liquidator_fee: u64,
         liquidated_fee_amount: u64,
     );
+    fn get_max_interest_rate_per_sec(self: @TContractState) -> u32;
+    fn set_max_interest_rate_per_sec(ref self: TContractState, max_interest_rate_per_sec: u32);
 }

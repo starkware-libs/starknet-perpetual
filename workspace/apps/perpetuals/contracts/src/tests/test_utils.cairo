@@ -47,7 +47,9 @@ use crate::core::components::external_components::interface::{
     EXTERNAL_COMPONENT_WITHDRAWALS, IExternalComponents, IExternalComponentsDispatcher,
     IExternalComponentsDispatcherTrait,
 };
-use super::constants::{FORCED_ACTION_TIMELOCK, MAX_INTEREST_RATE_PER_SEC, PREMIUM_COST};
+use super::constants::{
+    BEGINNING_OF_TIME, FORCED_ACTION_TIMELOCK, MAX_INTEREST_RATE_PER_SEC, PREMIUM_COST,
+};
 
 /// The `User` struct represents a user corresponding to a position in the state of the Core
 /// contract.
@@ -149,6 +151,7 @@ pub struct PerpetualsInitConfig {
     pub forced_action_timelock: u64,
     pub premium_cost: u64,
     pub max_interest_rate_per_sec: u32,
+    pub system_time: Timestamp,
     pub collateral_cfg: CollateralCfg,
     pub synthetic_cfg: SyntheticCfg,
     pub vault_share_cfg: SpotCollateralCfg,
@@ -174,6 +177,7 @@ pub impl CoreImpl of CoreTrait {
         self.forced_action_timelock.serialize(ref calldata);
         self.premium_cost.serialize(ref calldata);
         self.max_interest_rate_per_sec.serialize(ref calldata);
+        self.system_time.serialize(ref calldata);
 
         let core_contract = snforge_std::declare("Core").unwrap().contract_class();
         let (core_contract_address, _) = core_contract.deploy(@calldata).unwrap();
@@ -235,6 +239,7 @@ impl PerpetualsInitConfigDefault of Default<PerpetualsInitConfig> {
             forced_action_timelock: FORCED_ACTION_TIMELOCK,
             premium_cost: PREMIUM_COST,
             max_interest_rate_per_sec: MAX_INTEREST_RATE_PER_SEC,
+            system_time: Timestamp { seconds: BEGINNING_OF_TIME },
             collateral_cfg: CollateralCfg {
                 token_cfg: TokenConfig {
                     name: COLLATERAL_NAME(),
@@ -793,6 +798,7 @@ pub fn initialized_contract_state(
         forced_action_timelock: FORCED_ACTION_TIMELOCK,
         premium_cost: PREMIUM_COST,
         max_interest_rate_per_sec: MAX_INTEREST_RATE_PER_SEC,
+        system_time: Timestamp { seconds: BEGINNING_OF_TIME },
     );
     state
 }
