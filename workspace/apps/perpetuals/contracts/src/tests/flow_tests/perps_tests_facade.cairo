@@ -275,6 +275,7 @@ struct PerpetualsConfig {
     forced_action_timelock: u64,
     premium_cost: u64,
     max_interest_rate_per_sec: u32,
+    system_time: Timestamp,
 }
 
 #[generate_trait]
@@ -302,6 +303,7 @@ pub impl PerpetualsConfigImpl of PerpetualsConfigTrait {
             forced_action_timelock: FORCED_ACTION_TIMELOCK,
             premium_cost: PREMIUM_COST,
             max_interest_rate_per_sec: MAX_INTEREST_RATE_PER_SEC,
+            system_time: Timestamp { seconds: BEGINNING_OF_TIME },
         }
     }
 }
@@ -324,6 +326,7 @@ impl PerpetualsContractStateImpl of Deployable<PerpetualsConfig, ContractAddress
         self.forced_action_timelock.serialize(ref calldata);
         self.premium_cost.serialize(ref calldata);
         self.max_interest_rate_per_sec.serialize(ref calldata);
+        self.system_time.serialize(ref calldata);
 
         let perpetuals_contract = snforge_std::declare("Core").unwrap().contract_class();
         let (address, _) = perpetuals_contract.deploy(@calldata).unwrap();
@@ -542,7 +545,8 @@ impl PrivatePerpsTestsFacadeImpl of PrivatePerpsTestsFacadeTrait {
 #[generate_trait]
 pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
     fn new(token_state: TokenState) -> PerpsTestsFacade {
-        start_cheat_block_timestamp_global(BEGINNING_OF_TIME);
+        let init_time = BEGINNING_OF_TIME + 1;
+        start_cheat_block_timestamp_global(init_time);
 
         let vault_external_component = snforge_std::declare("VaultsManager")
             .unwrap()
@@ -593,8 +597,8 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         };
         perpetual_wrapper.set_roles();
 
-        // Initialize system time to BEGINNING_OF_TIME
-        let initial_timestamp = Timestamp { seconds: BEGINNING_OF_TIME };
+        // Initialize system time
+        let initial_timestamp = Timestamp { seconds: init_time };
         let operator_nonce = IOperatorNonceDispatcher {
             contract_address: perpetual_wrapper.perpetuals_contract,
         }

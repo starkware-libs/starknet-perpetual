@@ -18,6 +18,7 @@ pub mod Core {
         FEE_POSITION, InternalTrait as PositionsInternalTrait,
     };
     use perpetuals::core::components::system_time::SystemTimeComponent;
+    use perpetuals::core::components::system_time::SystemTimeComponent::InternalTrait as SystemInternal;
     use perpetuals::core::errors::{
         AMOUNT_OVERFLOW, ESCAPE_HATCH_DISABLED, FORCED_WAIT_REQUIRED, INVALID_ZERO_TIMEOUT,
         LENGTH_MISMATCH, ORDER_IS_NOT_EXPIRED, TRADE_ASSET_NOT_SYNTHETIC, TRANSFER_FAILED,
@@ -248,6 +249,7 @@ pub mod Core {
         forced_action_timelock: u64,
         premium_cost: u64,
         max_interest_rate_per_sec: u32,
+        system_time: Timestamp,
     ) {
         self.roles.initialize(:governance_admin);
         self.replaceability.initialize(:upgrade_delay);
@@ -272,6 +274,7 @@ pub mod Core {
         self.premium_cost.write(premium_cost);
         assert(max_interest_rate_per_sec.is_non_zero(), ZERO_MAX_INTEREST_RATE);
         self.max_interest_rate_per_sec.write(max_interest_rate_per_sec);
+        self.system_time.initialize(:system_time);
     }
 
     #[abi(embed_v0)]
@@ -1258,6 +1261,23 @@ pub mod Core {
         fn enable_escape_hatch(ref self: ContractState) {
             self.roles.only_app_governor();
             self.forced_actions_enabled.write(true);
+        }
+        fn get_max_interest_rate_per_sec(self: @ContractState) -> u32 {
+            self.max_interest_rate_per_sec.read()
+        }
+
+        /// Sets the maximum interest rate per second.
+        ///
+        /// Validations:
+        /// - Only the app governor can call this function.
+        /// - The `max_interest_rate_per_sec` must be non-zero.
+        ///
+        /// Execution:
+        /// - Updates the maximum interest rate per second.
+        fn set_max_interest_rate_per_sec(ref self: ContractState, max_interest_rate_per_sec: u32) {
+            self.roles.only_app_governor();
+            assert(max_interest_rate_per_sec.is_non_zero(), ZERO_MAX_INTEREST_RATE);
+            self.max_interest_rate_per_sec.write(max_interest_rate_per_sec);
         }
     }
 

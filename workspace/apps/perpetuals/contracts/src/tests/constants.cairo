@@ -83,6 +83,7 @@ pub const CONTRACT_INIT_BALANCE: u128 = 1_000_000_000;
 pub const USER_INIT_BALANCE: u128 = 10_000_000_000;
 pub const VAULT_SHARE_QUANTUM: u64 = 1_000;
 pub const MAX_INTEREST_RATE_PER_SEC: u32 = 1200; // 0.1% per hour.
+pub const BEGINNING_OF_TIME: u64 = DAY * 365 * 50;
 
 pub const POSITION_ID_100: PositionId = PositionId { value: 100 };
 pub const POSITION_ID_200: PositionId = PositionId { value: 200 };
