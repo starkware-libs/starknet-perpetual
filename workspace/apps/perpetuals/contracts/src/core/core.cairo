@@ -342,6 +342,7 @@ pub mod Core {
             amount: u64,
             expiration: Timestamp,
             salt: felt252,
+            interest_amount: i64,
         ) {
             self.pausable.assert_not_paused();
             self.assets.validate_assets_integrity();
@@ -349,7 +350,15 @@ pub mod Core {
             self
                 .external_components
                 ._get_withdrawal_manager_dispatcher()
-                .withdraw(:collateral_id, :recipient, :position_id, :amount, :expiration, :salt);
+                .withdraw(
+                    :collateral_id,
+                    :recipient,
+                    :position_id,
+                    :amount,
+                    :expiration,
+                    :salt,
+                    :interest_amount,
+                );
         }
 
         fn transfer_request(

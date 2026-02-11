@@ -82,6 +82,7 @@ pub trait IWithdrawalManager<TContractState> {
         amount: u64,
         expiration: Timestamp,
         salt: felt252,
+        interest_amount: i64,
     );
     fn forced_withdraw_request(
         ref self: TContractState,
@@ -106,7 +107,7 @@ pub trait IWithdrawalManager<TContractState> {
 
 #[starknet::contract]
 pub(crate) mod WithdrawalManager {
-    use core::num::traits::Zero;
+    use core::num::traits::{Pow, Zero};
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::interfaces::erc20::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin::introspection::src5::SRC5Component;
@@ -123,6 +124,7 @@ pub(crate) mod WithdrawalManager {
     use perpetuals::core::components::positions::Positions as PositionsComponent;
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
     use perpetuals::core::components::snip::SNIP12MetadataImpl;
+    use perpetuals::core::components::system_time::SystemTimeComponent;
     use perpetuals::core::errors::{
         AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED,
         TRANSFER_FAILED,
@@ -184,6 +186,8 @@ pub(crate) mod WithdrawalManager {
         AccessControlEvent: AccessControlComponent::Event,
         #[flat]
         RolesEvent: RolesComponent::Event,
+        #[flat]
+        SystemTimeEvent: SystemTimeComponent::Event,
     }
 
     #[storage]
@@ -207,10 +211,13 @@ pub(crate) mod WithdrawalManager {
         src5: SRC5Component::Storage,
         #[substorage(v0)]
         pub request_approvals: RequestApprovalsComponent::Storage,
+        #[substorage(v0)]
+        system_time: SystemTimeComponent::Storage,
         // Timelock before forced actions can be executed.
         forced_action_timelock: TimeDelta,
         // Cost for executing forced actions.
         premium_cost: u64,
+        max_interest_rate_per_sec: u32,
     }
 
     component!(path: FulfillmentComponent, storage: fulfillment_tracking, event: FulfillmentEvent);
@@ -224,6 +231,10 @@ pub(crate) mod WithdrawalManager {
     component!(
         path: RequestApprovalsComponent, storage: request_approvals, event: RequestApprovalsEvent,
     );
+    component!(path: SystemTimeComponent, storage: system_time, event: SystemTimeEvent);
+
+    #[abi(embed_v0)]
+    impl SystemTimeImpl = SystemTimeComponent::SystemTimeImpl<ContractState>;
 
     #[abi(embed_v0)]
     impl TypedComponent of ITypedComponent<ContractState> {
@@ -283,6 +294,7 @@ pub(crate) mod WithdrawalManager {
             amount: u64,
             expiration: super::Timestamp,
             salt: felt252,
+            interest_amount: i64,
         ) {
             let position = self.positions.get_position_snapshot(:position_id);
 
@@ -295,6 +307,7 @@ pub(crate) mod WithdrawalManager {
                     :salt,
                     :position,
                     :collateral_id,
+                    :interest_amount,
                 );
 
             self
@@ -423,6 +436,7 @@ pub(crate) mod WithdrawalManager {
                     :salt,
                     :position,
                     :collateral_id,
+                    interest_amount: 0,
                 );
 
             self
@@ -452,6 +466,7 @@ pub(crate) mod WithdrawalManager {
             salt: felt252,
             position: StoragePath<Position>,
             collateral_id: AssetId,
+            interest_amount: i64,
         ) -> (HashType, ContractAddress) {
             validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
 
@@ -463,6 +478,26 @@ pub(crate) mod WithdrawalManager {
                     },
                     public_key: position.get_owner_public_key(),
                 );
+
+            let mut base_collateral_diff: i64 = 0;
+            let signed_amount: i64 = -amount.try_into().expect(AMOUNT_OVERFLOW);
+            if (interest_amount.is_non_zero()) {
+                let position = self.positions.get_position_mut(:position_id);
+                let current_time = self.get_system_time();
+                let max_interest_rate_per_sec = self.max_interest_rate_per_sec.read();
+                let interest_rate_scale: u64 = 2_u64.pow(32);
+                self
+                    .positions
+                    .validate_interest(
+                        :position,
+                        :position_id,
+                        :interest_amount,
+                        :current_time,
+                        :max_interest_rate_per_sec,
+                        :interest_rate_scale,
+                    );
+                base_collateral_diff += interest_amount;
+            }
 
             /// Validations - Fundamentals:
             let (position_diff, quantum, token_contract) = if collateral_id != self
@@ -477,7 +512,6 @@ pub(crate) mod WithdrawalManager {
                 assert(
                     SyntheticTrait::at_asset_status(entry) == AssetStatus::ACTIVE, INACTIVE_ASSET,
                 );
-                let signed_amount: i64 = -amount.try_into().expect(AMOUNT_OVERFLOW);
                 self
                     .positions
                     ._validate_asset_shrink_non_negative(
@@ -485,20 +519,22 @@ pub(crate) mod WithdrawalManager {
                     );
                 (
                     PositionDiff {
-                        collateral_diff: Zero::zero(),
+                        collateral_diff: base_collateral_diff.into(),
                         asset_diff: Some((collateral_id, -amount.into())),
                     },
                     SyntheticTrait::at_quantum(entry),
                     IERC20Dispatcher { contract_address: SyntheticTrait::at_token_contract(entry) },
                 )
             } else {
+                base_collateral_diff += signed_amount;
                 (
-                    PositionDiff { collateral_diff: -amount.into(), asset_diff: Option::None },
+                    PositionDiff {
+                        collateral_diff: base_collateral_diff.into(), asset_diff: Option::None,
+                    },
                     self.assets.get_collateral_quantum(),
                     self.assets.get_base_collateral_token_contract(),
                 )
             };
-
             self
                 .positions
                 .validate_healthy_or_healthier_position(
