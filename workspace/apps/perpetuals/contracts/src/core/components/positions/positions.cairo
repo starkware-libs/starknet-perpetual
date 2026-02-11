@@ -11,10 +11,11 @@ pub mod Positions {
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalTrait as NonceInternal;
     use perpetuals::core::components::positions::errors::{
-        ALREADY_INITIALIZED, CALLER_IS_NOT_OWNER_ACCOUNT, INVALID_ZERO_OWNER_ACCOUNT,
-        INVALID_ZERO_PUBLIC_KEY, NO_OWNER_ACCOUNT, POSITION_ALREADY_EXISTS, POSITION_DOESNT_EXIST,
-        POSITION_HAS_OWNER_ACCOUNT, POSITION_SPOT_BALANCE_NEGATIVE, SAME_PUBLIC_KEY,
-        SET_POSITION_OWNER_EXPIRED, SET_PUBLIC_KEY_EXPIRED,
+        ALREADY_INITIALIZED, CALLER_IS_NOT_OWNER_ACCOUNT, INVALID_INTEREST_RATE,
+        INVALID_ZERO_OWNER_ACCOUNT, INVALID_ZERO_PUBLIC_KEY, NO_OWNER_ACCOUNT,
+        POSITION_ALREADY_EXISTS, POSITION_DOESNT_EXIST, POSITION_HAS_OWNER_ACCOUNT,
+        POSITION_SPOT_BALANCE_NEGATIVE, SAME_PUBLIC_KEY, SET_POSITION_OWNER_EXPIRED,
+        SET_PUBLIC_KEY_EXPIRED, ZERO_MAX_INTEREST_RATE,
     };
     use perpetuals::core::components::positions::events;
     use perpetuals::core::components::positions::interface::IPositions;
@@ -55,8 +56,8 @@ pub mod Positions {
     use crate::core::components::assets::errors::NO_SUCH_ASSET;
     use crate::core::components::snip::SNIP12MetadataImpl;
     use crate::core::errors::{
-        AMOUNT_OVERFLOW, INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE, INVALID_INTEREST_RATE,
-        INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT, NO_DELEVERAGE_VAULT_SHARES,
+        AMOUNT_OVERFLOW, INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE, INVALID_SAME_POSITIONS,
+        INVALID_ZERO_AMOUNT, NO_DELEVERAGE_VAULT_SHARES,
     };
     use crate::core::types::asset::synthetic::{AssetBalanceDiffEnriched, AssetType};
     use crate::core::types::balance::BalanceDiff;
@@ -72,6 +73,10 @@ pub mod Positions {
     #[storage]
     pub struct Storage {
         pub positions: Map<PositionId, Position>,
+        // Maximum interest rate per second (32-bit fixed-point with 32-bit fractional part).
+        // Example: max_interest_rate_per_sec = 10 means the rate is 10 / 2^32 ≈ 0.000000232 per
+        // second, which is approximately 7.4% per year.
+        pub max_interest_rate_per_sec: u32,
     }
 
     #[event]
@@ -410,6 +415,7 @@ pub mod Positions {
             ref self: ComponentState<TContractState>,
             fee_position_owner_public_key: PublicKey,
             insurance_fund_position_owner_public_key: PublicKey,
+            max_interest_rate_per_sec: u32,
         ) {
             // Checks that the component has not been initialized yet.
             let fee_position = self.positions.entry(FEE_POSITION);
@@ -418,6 +424,7 @@ pub mod Positions {
             // Checks that the input public keys are non-zero.
             assert(fee_position_owner_public_key.is_non_zero(), INVALID_ZERO_PUBLIC_KEY);
             assert(insurance_fund_position_owner_public_key.is_non_zero(), INVALID_ZERO_PUBLIC_KEY);
+            assert(max_interest_rate_per_sec.is_non_zero(), ZERO_MAX_INTEREST_RATE);
 
             // Create fee positions.
             fee_position.version.write(POSITION_VERSION);
@@ -428,6 +435,7 @@ pub mod Positions {
             insurance_fund_position
                 .owner_public_key
                 .write(insurance_fund_position_owner_public_key);
+            self.max_interest_rate_per_sec.write(max_interest_rate_per_sec);
         }
 
         fn apply_diff(

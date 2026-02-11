@@ -92,7 +92,7 @@ fn test_withdraw_vault_shares() {
     let withdraw_info = state
         .facade
         .withdraw_spot_request(user: receiving_user, asset_id: vault_config.asset_id, amount: 1000);
-    state.facade.withdraw(withdraw_info);
+    state.facade.withdraw(withdraw_info, interest_amount: 0);
 
     let balance: i64 = state
         .facade

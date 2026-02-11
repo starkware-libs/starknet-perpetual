@@ -7,6 +7,7 @@ use snforge_std::TokenTrait;
 use starknet::storage::{StoragePathEntry, StoragePointerReadAccess, StoragePointerWriteAccess};
 use starkware_utils::constants::{HOUR, MAX_U128};
 use starkware_utils::time::time::Timestamp;
+use starkware_utils_testing::test_utils::TokenTrait as StarknetTokenTrait;
 use super::perps_tests_facade::PerpsTestsFacadeTrait;
 
 #[test]
@@ -1009,19 +1010,19 @@ fn test_transfer() {
 
     // Withdraw.
     let mut withdraw_info = state.facade.withdraw_request(user: user_1, amount: 15000);
-    state.facade.withdraw(:withdraw_info);
+    state.facade.withdraw(:withdraw_info, interest_amount: 0);
 
     withdraw_info = state.facade.withdraw_request(user: user_2, amount: 15000);
-    state.facade.withdraw(:withdraw_info);
+    state.facade.withdraw(:withdraw_info, interest_amount: 0);
 
     withdraw_info = state.facade.withdraw_request(user: user_2, amount: 10000);
-    state.facade.withdraw(:withdraw_info);
+    state.facade.withdraw(:withdraw_info, interest_amount: 0);
 
     withdraw_info = state.facade.withdraw_request(user: user_2, amount: 30000);
-    state.facade.withdraw(:withdraw_info);
+    state.facade.withdraw(:withdraw_info, interest_amount: 0);
 
     withdraw_info = state.facade.withdraw_request(user: user_3, amount: 30000);
-    state.facade.withdraw(:withdraw_info);
+    state.facade.withdraw(:withdraw_info, interest_amount: 0);
 }
 
 #[test]
@@ -1042,7 +1043,7 @@ fn test_withdraw_with_owner() {
 
     // Withdraw.
     let mut withdraw_info = state.facade.withdraw_request(user: user_1, amount: 15000);
-    state.facade.withdraw(:withdraw_info);
+    state.facade.withdraw(:withdraw_info, interest_amount: 0);
 }
 
 #[test]
@@ -1069,7 +1070,7 @@ fn test_withdraw_with_owner_fails_if_not_caller() {
         .withdraw_request_with_caller(
             user: user_1, asset_id: state.facade.collateral_id, amount: 15000, caller: user_2,
         );
-    state.facade.withdraw(:withdraw_info);
+    state.facade.withdraw(:withdraw_info, interest_amount: 0);
 }
 
 #[test]
@@ -1139,7 +1140,7 @@ fn test_transfer_withdraw_with_negative_collateral() {
 
     // Withdraw.
     let withdraw_info = state.facade.withdraw_request(user: user_1, amount: 70);
-    state.facade.withdraw(:withdraw_info);
+    state.facade.withdraw(:withdraw_info, interest_amount: 0);
 
     //                    TV                                  TR                 TV / TR
     //         COLLATERAL*1 + SYNTHETIC*PRICE        |SYNTHETIC*PRICE*RISK|
@@ -1182,7 +1183,7 @@ fn test_withdraw_spot_collateral() {
 
     // Withdraw.
     let mut withdraw_info = state.facade.withdraw_spot_request(:user, :asset_id, amount: 15000);
-    state.facade.withdraw(:withdraw_info);
+    state.facade.withdraw(:withdraw_info, interest_amount: 0);
 }
 
 #[test]
@@ -2528,11 +2529,11 @@ fn test_spot_collateral_deposit_transfer_withdraw() {
     let mut withdraw_info = state
         .facade
         .withdraw_spot_request(user: user_1, :asset_id, amount: 30000);
-    state.facade.withdraw(withdraw_info: withdraw_info);
+    state.facade.withdraw(withdraw_info: withdraw_info, interest_amount: 0);
 
     // Withdraw from user_2 (second withdrawal).
     withdraw_info = state.facade.withdraw_spot_request(user: user_2, :asset_id, amount: 40000);
-    state.facade.withdraw(withdraw_info: withdraw_info);
+    state.facade.withdraw(withdraw_info: withdraw_info, interest_amount: 0);
 
     // Verify final balances.
     let balance_user_1: i64 = state
@@ -2591,7 +2592,7 @@ fn test_spot_collateral_deposit_transfer_withdraw_fails() {
 
     // Trying to withdraw.
     let withdraw_info = state.facade.withdraw_spot_request(user: user_1, :asset_id, amount: 70000);
-    state.facade.withdraw(withdraw_info: withdraw_info);
+    state.facade.withdraw(withdraw_info: withdraw_info, interest_amount: 0);
 }
 
 #[test]
@@ -2662,13 +2663,13 @@ fn test_deposit_two_spot_collaterals() {
     let withdraw_info_btc = state
         .facade
         .withdraw_spot_request(user: user, asset_id: asset_id_btc, amount: 30000);
-    state.facade.withdraw(withdraw_info: withdraw_info_btc);
+    state.facade.withdraw(withdraw_info: withdraw_info_btc, interest_amount: 0);
 
     // Withdraw some ETH.
     let withdraw_info_eth = state
         .facade
         .withdraw_spot_request(user: user, asset_id: asset_id_eth, amount: 50000);
-    state.facade.withdraw(withdraw_info: withdraw_info_eth);
+    state.facade.withdraw(withdraw_info: withdraw_info_eth, interest_amount: 0);
 
     // Verify final balances after withdrawals.
     let balance_btc_after: i64 = state
@@ -2791,7 +2792,7 @@ fn test_spot_collateral_deposit_buy_synthetic_transfer_then_withdraw_fails() {
     let withdraw_info = state
         .facade
         .withdraw_spot_request(user: user_1, asset_id: asset_id_btc, amount: 1);
-    state.facade.withdraw(withdraw_info: withdraw_info);
+    state.facade.withdraw(withdraw_info: withdraw_info, interest_amount: 0);
 }
 
 #[test]
@@ -3963,7 +3964,7 @@ fn test_withdraw_spot_collateral_negative_balance() {
     // The position has enough base collateral to stay healthy, so the validation
     // should fail specifically on the spot balance check.
     let withdraw_info = state.facade.withdraw_spot_request(:user, :asset_id, amount: 1500);
-    state.facade.withdraw(:withdraw_info);
+    state.facade.withdraw(:withdraw_info, interest_amount: 0);
 }
 
 #[test]
@@ -4114,4 +4115,122 @@ fn test_transfer_spot_collateral_negative_balance_fails() {
                 .facade
                 .transfer_spot_request(sender: user_1, recipient: user_2, :asset_id, amount: 1500),
         );
+}
+
+#[test]
+#[should_panic(
+    expected: "POSITION_NOT_HEALTHY_NOR_HEALTHIER position_id: PositionId { value: 101 } TV before 10000, TR before 0, TV after -5, TR after 0",
+)]
+fn test_withdraw_with_negative_interest_becomes_unhealthy() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let user = state.new_user_with_position();
+
+    // Deposit collateral
+    let deposit_info = state
+        .facade
+        .deposit(depositor: user.account, position_id: user.position_id, quantized_amount: 10_000);
+    state.facade.process_deposit(deposit_info: deposit_info);
+    state.facade.validate_collateral_balance(user.position_id, 10_000_u64.into());
+
+    // Advance time by 1 hour
+    state.facade.advance_time(seconds: HOUR);
+
+    // Calculate and apply interest
+    let balance: u64 = 10_000;
+    let time_diff: u64 = HOUR.into();
+    let scale: u64 = 2_u64.pow(32);
+    let max_allowed: u64 = (balance * time_diff * MAX_INTEREST_RATE_PER_SEC.into()) / scale;
+    let interest_amount: i64 = -(max_allowed).try_into().unwrap();
+
+    // Withdraw with interest
+    let withdraw_info = state.facade.withdraw_request(user: user, amount: 9_995);
+    state.facade.withdraw(:withdraw_info, :interest_amount);
+}
+
+#[test]
+fn test_withdraw_with_positive_interest_allows_to_withdraw() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    state.facade.token_state.fund(state.facade.perpetuals_contract, 1_000_000);
+
+    let user = state.new_user_with_position();
+
+    // Deposit collateral
+    let deposit_info = state
+        .facade
+        .deposit(depositor: user.account, position_id: user.position_id, quantized_amount: 10_000);
+    state.facade.process_deposit(deposit_info: deposit_info);
+    state.facade.validate_collateral_balance(user.position_id, 10_000_u64.into());
+
+    // Advance time by 1 hour
+    state.facade.advance_time(seconds: HOUR);
+
+    // Calculate and apply interest
+    let balance: u64 = 10_000;
+    let time_diff: u64 = HOUR.into();
+    let scale: u64 = 2_u64.pow(32);
+    let max_allowed: u64 = (balance * time_diff * MAX_INTEREST_RATE_PER_SEC.into()) / scale;
+    let interest_amount: i64 = max_allowed.try_into().unwrap();
+
+    // Withdraw with interest
+    let withdraw_info = state.facade.withdraw_request(user: user, amount: 10_005);
+    state.facade.withdraw(:withdraw_info, :interest_amount);
+    state.facade.validate_collateral_balance(user.position_id, 5_u64.into());
+}
+
+#[test]
+fn test_withdraw_spot_with_interest() {
+    // Setup.
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    state.facade.token_state.fund(state.facade.perpetuals_contract, 1_000_000);
+
+    // Create a custom asset configuration.
+    let token = snforge_std::Token::STRK;
+    let erc20_contract_address = token.contract_address();
+    let asset_info = AssetInfoTrait::new_collateral(
+        asset_name: 'COL', :risk_factor_data, oracles_len: 1, :erc20_contract_address,
+    );
+    let asset_id = asset_info.asset_id;
+    state.facade.add_active_collateral(asset_info: @asset_info, initial_price: 100);
+
+    // Create user
+    let user = state.new_user_with_position();
+    snforge_std::set_balance(target: user.account.address, new_balance: 5000000, :token);
+
+    // Deposit base collateral
+    let deposit_info = state
+        .facade
+        .deposit(depositor: user.account, position_id: user.position_id, quantized_amount: 10_000);
+    state.facade.process_deposit(deposit_info: deposit_info);
+    state.facade.validate_collateral_balance(user.position_id, 10_000_u64.into());
+
+    // Deposit spot collateral to user.
+    let deposit_info_user = state
+        .facade
+        .deposit_spot(
+            depositor: user.account, :asset_id, position_id: user.position_id, quantized_amount: 2,
+        );
+    state.facade.process_deposit(deposit_info: deposit_info_user);
+
+    // Advance time by 1 hour
+    state.facade.advance_time(seconds: HOUR);
+
+    // Calculate and apply interest
+    let balance: u64 = 10_000;
+    let time_diff: u64 = HOUR.into();
+    let scale: u64 = 2_u64.pow(32);
+    let max_allowed: u64 = (balance * time_diff * MAX_INTEREST_RATE_PER_SEC.into()) / scale;
+    let interest_amount: i64 = -(max_allowed).try_into().unwrap();
+
+    // Withdraw with interest
+    let withdraw_info = state.facade.withdraw_spot_request(:user, :asset_id, amount: 1);
+    state.facade.withdraw(:withdraw_info, :interest_amount);
+    state
+        .facade
+        .validate_asset_balance(
+            position_id: user.position_id, :asset_id, expected_balance: 1_u64.into(),
+        );
+    state.facade.validate_collateral_balance(user.position_id, 9_990_u64.into());
 }

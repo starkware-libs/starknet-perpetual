@@ -1079,7 +1079,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         }
     }
 
-    fn withdraw(ref self: PerpsTestsFacade, withdraw_info: RequestInfo) {
+    fn withdraw(ref self: PerpsTestsFacade, withdraw_info: RequestInfo, interest_amount: i64) {
         let RequestInfo {
             asset_id, recipient, position_id, amount, expiration, salt, request_hash,
         } = withdraw_info;
@@ -1113,12 +1113,16 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 :amount,
                 :expiration,
                 :salt,
+                :interest_amount,
             );
 
         if (asset_id == self.collateral_id) {
             self
                 .validate_collateral_balance(
-                    :position_id, expected_balance: position_balance_before - amount.into(),
+                    :position_id,
+                    expected_balance: position_balance_before
+                        - amount.into()
+                        + interest_amount.into(),
                 );
         } else {
             self
