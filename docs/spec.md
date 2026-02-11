@@ -2237,15 +2237,7 @@ Only APP\_GOVERNOR can execute.
 
   **Emits:**
 
-<<<<<<< HEAD
-<<<<<<< HEAD
   [VaultProtectionLimitUpdated](#VaultProtectionLimitUpdated)
-=======
-  [PerVaultProtectionLimitUpdated](#pervaultprotectionlimitupdated)
->>>>>>> 6e21297c (Addressed some PR review comments.)
-=======
-  [VaultProtectionLimitUpdated](#VaultProtectionLimitUpdated)
->>>>>>> 261a1996 (Changes according to pr review. Disallow zero limit percentage meaning disallow no withdrarwals.)
 
   **Errors:**
 
@@ -2268,27 +2260,11 @@ Only APP\_GOVERNOR can execute.
   }
   ```
 
-<<<<<<< HEAD
-<<<<<<< HEAD
   ###### VaultProtectionLimitUpdated
 
   ```rust
   #[derive(Debug, Drop, PartialEq, starknet::Event)]
   pub struct VaultProtectionLimitUpdated {
-=======
-  ###### PerVaultProtectionLimitUpdated
-
-  ```rust
-  #[derive(Debug, Drop, PartialEq, starknet::Event)]
-  pub struct PerVaultProtectionLimitUpdated {
->>>>>>> 6e21297c (Addressed some PR review comments.)
-=======
-  ###### VaultProtectionLimitUpdated
-
-  ```rust
-  #[derive(Debug, Drop, PartialEq, starknet::Event)]
-  pub struct VaultProtectionLimitUpdated {
->>>>>>> 261a1996 (Changes according to pr review. Disallow zero limit percentage meaning disallow no withdrarwals.)
       #[key]
       pub vault_position_id: PositionId,
       pub old_limit: u32,

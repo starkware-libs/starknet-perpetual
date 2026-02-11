@@ -41,8 +41,6 @@ pub mod Vaults {
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
     use starkware_utils::components::roles::RolesComponent;
-    use starkware_utils::math::abs::Abs;
-    use starkware_utils::math::utils::mul_wide_and_floor_div;
     use starkware_utils::signature::stark::Signature;
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,

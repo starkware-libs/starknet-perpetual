@@ -1452,6 +1452,13 @@ pub mod Core {
                     position_diff: position_diff_a,
                     tvtr_before: tvtr_a_before,
                 );
+            self
+                .positions
+                .validate_against_vault_limits(
+                    position_id: order_a.position_id,
+                    vault_protection_config: self.vaults.get_vault_protection_config(order_a.position_id),
+                    tvtr: tvtr_a_after,
+                );
             let tvtr_b_after = self
                 .positions
                 .validate_healthy_or_healthier_position(
@@ -1459,6 +1466,13 @@ pub mod Core {
                     position: position_b.into(),
                     position_diff: position_diff_b,
                     tvtr_before: tvtr_b_before,
+                );
+            self
+                .positions
+                .validate_against_vault_limits(
+                    position_id: order_b.position_id,
+                    vault_protection_config: self.vaults.get_vault_protection_config(order_b.position_id),
+                    tvtr: tvtr_b_after,
                 );
 
             // Apply Diffs.
