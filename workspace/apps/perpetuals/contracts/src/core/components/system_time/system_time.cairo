@@ -82,4 +82,16 @@ pub mod SystemTimeComponent {
             self.emit(TimeTick { new_timestamp });
         }
     }
+    #[generate_trait]
+    pub impl InternalImpl<
+        TContractState,
+        +HasComponent<TContractState>,
+        +Drop<TContractState>,
+        +AccessControlComponent::HasComponent<TContractState>,
+        +SRC5Component::HasComponent<TContractState>,
+    > of InternalTrait<TContractState> {
+        fn initialize(ref self: ComponentState<TContractState>) {
+            self.system_time.write(Time::now());
+        }
+    }
 }
