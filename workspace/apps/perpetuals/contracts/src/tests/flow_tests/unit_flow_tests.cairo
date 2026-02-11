@@ -1,10 +1,10 @@
-use core::num::traits::Pow;
+use core::num::traits::{Pow, Zero};
 use perpetuals::core::types::funding::{FUNDING_SCALE, FundingIndex, FundingTick};
 use perpetuals::tests::constants::*;
 use perpetuals::tests::flow_tests::infra::*;
 use perpetuals::tests::flow_tests::perps_tests_facade::*;
 use snforge_std::TokenTrait;
-use starknet::storage::{StoragePathEntry, StoragePointerWriteAccess};
+use starknet::storage::{StoragePathEntry, StoragePointerReadAccess, StoragePointerWriteAccess};
 use starkware_utils::constants::{HOUR, MAX_U128};
 use starkware_utils::time::time::Timestamp;
 use super::perps_tests_facade::PerpsTestsFacadeTrait;
@@ -3863,6 +3863,51 @@ fn test_apply_interest_twice_without_advancing_time() {
     // Any non-zero interest should fail with INVALID_INTEREST_RATE
     let interest_amounts = array![interest_1].span();
     state.facade.apply_interests(:position_ids, :interest_amounts);
+}
+
+#[test]
+fn test_apply_zero_interest_does_not_update_last_time() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let user = state.new_user_with_position();
+
+    let prev_time = snforge_std::interact_with_state(
+        state.facade.perpetuals_contract,
+        || {
+            let mut state = perpetuals::core::core::Core::contract_state_for_testing();
+
+            let prev_time = state
+                .positions
+                .positions
+                .entry(user.position_id)
+                .last_interest_applied_time
+                .read();
+
+            assert!(prev_time.is_non_zero());
+
+            prev_time
+        },
+    );
+
+    let position_ids = array![user.position_id].span();
+    let interest_amounts = array![0].span();
+    state.facade.apply_interests(:position_ids, :interest_amounts);
+
+    // Check last applied time wasnt changed.
+    snforge_std::interact_with_state(
+        state.facade.perpetuals_contract,
+        || {
+            let mut state = perpetuals::core::core::Core::contract_state_for_testing();
+
+            let new_time = state
+                .positions
+                .positions
+                .entry(user.position_id)
+                .last_interest_applied_time
+                .read();
+
+            assert_eq!(prev_time, new_time);
+        },
+    );
 }
 
 #[test]
