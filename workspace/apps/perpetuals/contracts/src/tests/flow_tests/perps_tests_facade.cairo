@@ -18,6 +18,7 @@ use perpetuals::core::components::deposit::deposit_manager::deposit_hash;
 use perpetuals::core::components::deposit::interface::{
     DepositStatus, IDepositDispatcher, IDepositDispatcherTrait,
 };
+use perpetuals::core::components::vaults::vaults::{IVaultsDispatcher, IVaultsDispatcherTrait};
 use perpetuals::core::components::operator_nonce::interface::{
     IOperatorNonceDispatcher, IOperatorNonceDispatcherTrait,
 };
@@ -2412,6 +2413,19 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         let dispatcher = ISystemTimeDispatcher { contract_address: self.perpetuals_contract };
         self.operator.set_as_caller(self.perpetuals_contract);
         dispatcher.update_system_time(:operator_nonce, :new_timestamp);
+    }
+
+    fn force_reset_protection_limit(
+        ref self: PerpsTestsFacade, vault_position: PositionId, percentage_basis_points: u32,
+    ) {
+        self.set_app_governor_as_caller();
+        IVaultsDispatcher { contract_address: self.perpetuals_contract }
+            .force_reset_protection_limit(:vault_position, :percentage_basis_points);
+    }
+
+    fn update_vault_protection_limit(ref self: PerpsTestsFacade, vault_position: PositionId, limit: u32) {
+        self.set_app_governor_as_caller();
+        IVaultsDispatcher { contract_address: self.perpetuals_contract }.update_vault_protection_limit(:vault_position, :limit);
     }
 }
 

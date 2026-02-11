@@ -87,6 +87,8 @@ pub(crate) mod VaultsManager {
     #[derive(Drop, starknet::Event)]
     pub enum Event {
         InvestInVault: events::InvestInVault,
+        LiquidateVaultShares: events::LiquidateVaultShares,
+        RedeemVaultShares: events::RedeemVaultShares,
         #[flat]
         FulfillmentEvent: FulfillmentComponent::Event,
         #[flat]
@@ -231,6 +233,10 @@ pub(crate) mod VaultsManager {
             assert(
                 !self.vaults.is_vault_position(receiving_position_id),
                 'RECEIVING_POSITION_IS_VAULT',
+            );
+            assert(
+                self.vaults.is_vault_position(vault_config.position_id.into()),
+                'TARGET_POSITION_NOT_VAULT',
             );
             let vault_share_config = self.assets.get_asset_config(vault_config.asset_id);
 
@@ -393,6 +399,21 @@ pub(crate) mod VaultsManager {
                     validate_user_order: false,
                     user_signature: array![0, 0].span(),
                     validate_signatures: true,
+                );
+
+            self
+                .emit(
+                    events::LiquidateVaultShares {
+                        vault_position_id: self
+                            .vaults
+                            .get_vault_config_for_asset(liquidated_asset_id)
+                            .position_id
+                            .into(),
+                        liquidated_position_id: liquidated_position_id,
+                        vault_asset_id: liquidated_asset_id,
+                        shares_liquidated: actual_shares_user.abs().try_into().unwrap(),
+                        collateral_received: actual_collateral_user.abs().try_into().unwrap(),
+                    },
                 );
         }
 
@@ -583,13 +604,20 @@ pub(crate) mod VaultsManager {
             };
 
             // vault health checks
-            self
+            let tvtr = self
                 .positions
                 .validate_healthy_or_healthier_position(
                     position_id: vault_position_id,
                     position: vault_position,
                     position_diff: vault_position_diff,
                     tvtr_before: Default::default(),
+                );
+            self
+                .positions
+                .validate_against_vault_limits(
+                    position_id: vault_position_id,
+                    vault_protection_config: self.vaults.get_vault_protection_config(vault_position_id),
+                    :tvtr
                 );
 
             self
@@ -639,6 +667,20 @@ pub(crate) mod VaultsManager {
                 new_perps_contract_balance == perps_contract_balance_before,
                 'COLLATERAL_NOT_RETURNED',
             );
+
+            self
+                .emit(
+                    events::RedeemVaultShares {
+                        vault_position_id: vault_position_id,
+                        redeeming_position_id: redeeming_position_id,
+                        receiving_position_id: receiving_position_id,
+                        shares_redeemed: amount_to_burn.abs().try_into().unwrap(),
+                        collateral_received: value_to_receive.abs().try_into().unwrap(),
+                        collateral_requested: order.quote_amount.abs(),
+                        vault_asset_id: vault_config.asset_id,
+                        invested_asset_id: self.assets.get_collateral_id(),
+                    },
+                );
         }
     }
 }

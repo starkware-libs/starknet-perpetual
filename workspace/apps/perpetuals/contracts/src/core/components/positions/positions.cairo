@@ -3,6 +3,7 @@ pub mod Positions {
     use core::nullable::{FromNullableResult, match_nullable};
     use core::num::traits::Zero;
     use core::panic_with_felt252;
+    use core::panics::panic_with_byte_array;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
@@ -54,6 +55,7 @@ pub mod Positions {
     use starkware_utils::time::time::{Timestamp, validate_expiration};
     use crate::core::components::assets::errors::NO_SUCH_ASSET;
     use crate::core::components::snip::SNIP12MetadataImpl;
+    use crate::core::components::vaults::types::VaultProtectionParams;
     use crate::core::errors::{
         AMOUNT_OVERFLOW, INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE, INVALID_INTEREST_RATE,
         INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT, NO_DELEVERAGE_VAULT_SHARES,
@@ -761,6 +763,33 @@ pub mod Positions {
             );
             assert_healthy_or_healthier(:position_id, :tvtr);
             tvtr.after
+        }
+
+        fn validate_against_vault_limits(
+            self: @ComponentState<TContractState>,
+            position_id: PositionId,
+            vault_protection_config: Option<VaultProtectionParams>,
+            tvtr: PositionTVTR,
+        ) {
+            if let Option::Some(config) = vault_protection_config {
+                let tv_after = tvtr.total_value;
+                let tv_at_last_check = config.tv_at_check;
+                let max_tvtr_loss = config.max_tv_loss;
+                let delta = tv_after - tv_at_last_check;
+                if (delta < 0_i64.into()) {
+                    let tv_loss = delta.abs();
+                    if (tv_loss > max_tvtr_loss) {
+                        panic_with_byte_array(
+                            err: @format!(
+                                "Vault Protection Limit Exceeded, tv_at_last_check: {}, tv_after_operation: {}, max_allowed_loss : {}",
+                                tv_at_last_check,
+                                tv_after,
+                                max_tvtr_loss,
+                            ),
+                        );
+                    }
+                }
+            }
         }
 
         fn _validate_synthetic_shrinks(

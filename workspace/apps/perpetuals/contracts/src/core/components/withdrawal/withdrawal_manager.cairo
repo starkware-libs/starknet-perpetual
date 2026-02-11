@@ -122,7 +122,9 @@ pub(crate) mod WithdrawalManager {
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalImpl as OperatorNonceInternal;
     use perpetuals::core::components::positions::Positions as PositionsComponent;
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
+    use perpetuals::core::components::system_time::SystemTimeComponent;
     use perpetuals::core::components::snip::SNIP12MetadataImpl;
+    use crate::core::components::vaults::vaults::{IVaults, Vaults as VaultsComponent};
     use perpetuals::core::errors::{
         AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED,
         TRANSFER_FAILED,
@@ -171,6 +173,8 @@ pub(crate) mod WithdrawalManager {
         #[flat]
         PausableEvent: PausableComponent::Event,
         #[flat]
+        SystemTimeEvent: SystemTimeComponent::Event,
+        #[flat]
         OperatorNonceEvent: OperatorNonceComponent::Event,
         #[flat]
         AssetsEvent: AssetsComponent::Event,
@@ -184,6 +188,8 @@ pub(crate) mod WithdrawalManager {
         AccessControlEvent: AccessControlComponent::Event,
         #[flat]
         RolesEvent: RolesComponent::Event,
+        #[flat]
+        VaultsEvent: VaultsComponent::Event,
     }
 
     #[storage]
@@ -197,6 +203,8 @@ pub(crate) mod WithdrawalManager {
         #[substorage(v0)]
         pub roles: RolesComponent::Storage,
         #[substorage(v0)]
+        system_time: SystemTimeComponent::Storage,
+        #[substorage(v0)]
         #[allow(starknet::colliding_storage_paths)]
         pub assets: AssetsComponent::Storage,
         #[substorage(v0)]
@@ -207,6 +215,8 @@ pub(crate) mod WithdrawalManager {
         src5: SRC5Component::Storage,
         #[substorage(v0)]
         pub request_approvals: RequestApprovalsComponent::Storage,
+        #[substorage(v0)]
+        pub vaults: VaultsComponent::Storage,
         // Timelock before forced actions can be executed.
         forced_action_timelock: TimeDelta,
         // Cost for executing forced actions.
@@ -215,6 +225,7 @@ pub(crate) mod WithdrawalManager {
 
     component!(path: FulfillmentComponent, storage: fulfillment_tracking, event: FulfillmentEvent);
     component!(path: PausableComponent, storage: pausable, event: PausableEvent);
+    component!(path: SystemTimeComponent, storage: system_time, event: SystemTimeEvent);
     component!(path: OperatorNonceComponent, storage: operator_nonce, event: OperatorNonceEvent);
     component!(path: AssetsComponent, storage: assets, event: AssetsEvent);
     component!(path: PositionsComponent, storage: positions, event: PositionsEvent);
@@ -224,6 +235,7 @@ pub(crate) mod WithdrawalManager {
     component!(
         path: RequestApprovalsComponent, storage: request_approvals, event: RequestApprovalsEvent,
     );
+    component!(path: VaultsComponent, storage: vaults, event: VaultsEvent);
 
     #[abi(embed_v0)]
     impl TypedComponent of ITypedComponent<ContractState> {
@@ -327,7 +339,7 @@ pub(crate) mod WithdrawalManager {
             // Validate position exists.
             let position = self.positions.get_position_snapshot(:position_id);
             assert(amount.is_non_zero(), INVALID_ZERO_AMOUNT);
-
+            
             let owner_account = if (position.owner_protection_enabled.read()) {
                 position.get_owner_account()
             } else {
@@ -453,6 +465,7 @@ pub(crate) mod WithdrawalManager {
             position: StoragePath<Position>,
             collateral_id: AssetId,
         ) -> (HashType, ContractAddress) {
+            assert!(!self.vaults.is_vault_position(position_id), "VAULT_CANNOT_WITHDRAW");
             validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
 
             let hash = self
@@ -502,7 +515,10 @@ pub(crate) mod WithdrawalManager {
             self
                 .positions
                 .validate_healthy_or_healthier_position(
-                    :position_id, :position, :position_diff, tvtr_before: Default::default(),
+                    :position_id,
+                    :position,
+                    :position_diff,
+                    tvtr_before: Default::default(),
                 );
 
             self.positions.apply_diff(:position_id, :position_diff);
