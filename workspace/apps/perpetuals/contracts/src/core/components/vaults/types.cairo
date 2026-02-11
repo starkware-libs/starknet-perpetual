@@ -8,6 +8,7 @@ use starkware_utils::math::utils::mul_wide_and_floor_div;
 use starkware_utils::time::time::Timestamp;
 
 
+
 #[derive(Copy, Debug, Drop, Hash, PartialEq, Serde, starknet::Store)]
 pub struct VaultConfig {
     pub version: u8,
