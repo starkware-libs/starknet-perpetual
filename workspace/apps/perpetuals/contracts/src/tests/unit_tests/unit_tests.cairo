@@ -194,6 +194,7 @@ fn test_expiration_validation() {
             amount: withdraw_args.amount,
             expiration: withdraw_args.expiration,
             salt: withdraw_args.salt,
+            interest_amount: 0,
         )
         .unwrap();
 
@@ -228,6 +229,7 @@ fn test_expiration_validation() {
             amount: withdraw_args.amount,
             expiration: withdraw_args.expiration,
             salt: withdraw_args.salt,
+            interest_amount: 0,
         );
     assert_panic_with_felt_error(:result, expected_error: SIGNED_TX_EXPIRED);
 }
@@ -3162,6 +3164,7 @@ fn test_successful_forced_withdraw_operator_executes() {
             amount: withdraw_args.amount,
             expiration: withdraw_args.expiration,
             salt: withdraw_args.salt,
+            interest_amount: 0,
         );
 
     // Check after forced withdraw:
@@ -3552,6 +3555,7 @@ fn test_forced_withdraw_after_operator_processed_withdraw() {
             amount: withdraw_args.amount,
             expiration: withdraw_args.expiration,
             salt: withdraw_args.salt,
+            interest_amount: 0,
         );
 
     // User tries to force withdraw after operator already processed the withdraw request.
@@ -3699,6 +3703,7 @@ fn test_withdraw_after_user_forced_withdraw_executed() {
             amount: withdraw_args.amount,
             expiration: withdraw_args.expiration,
             salt: withdraw_args.salt,
+            interest_amount: 0,
         );
 }
 
@@ -4466,6 +4471,7 @@ fn test_validate_asset_prices_expired() {
             amount: withdraw_args.amount,
             expiration: withdraw_args.expiration,
             salt: withdraw_args.salt,
+            interest_amount: 0,
         );
 }
 
@@ -4609,6 +4615,7 @@ fn test_validate_prices() {
             amount: withdraw_args.amount,
             expiration: withdraw_args.expiration,
             salt: withdraw_args.salt,
+            interest_amount: 0,
         );
 
     assert_eq!(state.assets.get_last_price_validation().into(), new_time);
@@ -6652,6 +6659,7 @@ fn test_withdraw_synthetic_asset() {
             amount: withdraw_amount,
             :expiration,
             salt: withdraw_args.salt,
+            interest_amount: 0,
         );
 }
 
@@ -6706,6 +6714,7 @@ fn test_withdraw_pending_asset() {
             amount: withdraw_amount,
             :expiration,
             salt: withdraw_args.salt,
+            interest_amount: 0,
         );
     validate_asset_balance(
         ref :state,
@@ -6781,6 +6790,7 @@ fn test_withdraw_to_create_unhealthy_position() {
             amount: withdraw_amount,
             :expiration,
             salt: withdraw_args.salt,
+            interest_amount: 0,
         );
 }
 
@@ -6834,5 +6844,6 @@ fn test_withdraw_non_existent_asset() {
             amount: withdraw_amount,
             :expiration,
             salt: withdraw_args.salt,
+            interest_amount: 0,
         );
 }

@@ -17,12 +17,12 @@ pub mod Core {
     use perpetuals::core::components::positions::Positions::{
         FEE_POSITION, InternalTrait as PositionsInternalTrait,
     };
+    use perpetuals::core::components::positions::errors::ZERO_MAX_INTEREST_RATE;
     use perpetuals::core::components::system_time::SystemTimeComponent;
     use perpetuals::core::components::system_time::SystemTimeComponent::InternalTrait as SystemInternal;
     use perpetuals::core::errors::{
         AMOUNT_OVERFLOW, ESCAPE_HATCH_DISABLED, FORCED_WAIT_REQUIRED, INVALID_ZERO_TIMEOUT,
         LENGTH_MISMATCH, ORDER_IS_NOT_EXPIRED, TRADE_ASSET_NOT_SYNTHETIC, TRANSFER_FAILED,
-        ZERO_MAX_INTEREST_RATE,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
@@ -342,6 +342,7 @@ pub mod Core {
             amount: u64,
             expiration: Timestamp,
             salt: felt252,
+            interest_amount: i64,
         ) {
             self.pausable.assert_not_paused();
             self.assets.validate_assets_integrity();
@@ -349,7 +350,15 @@ pub mod Core {
             self
                 .external_components
                 ._get_withdrawal_manager_dispatcher()
-                .withdraw(:collateral_id, :recipient, :position_id, :amount, :expiration, :salt);
+                .withdraw(
+                    :collateral_id,
+                    :recipient,
+                    :position_id,
+                    :amount,
+                    :expiration,
+                    :salt,
+                    :interest_amount,
+                );
         }
 
         fn transfer_request(

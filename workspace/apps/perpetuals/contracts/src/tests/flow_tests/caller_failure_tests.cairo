@@ -74,6 +74,7 @@ fn test_withdraw_only_operator() {
             amount: WITHDRAW_AMOUNT.into(),
             expiration: Time::now(),
             salt: 0,
+            interest_amount: 0,
         );
 }
 
