@@ -72,7 +72,7 @@ impl PriceMulU32 of PriceMulTrait<u32> {
 impl PriceMulBalance of PriceMulTrait<Balance> {
     type Target = i128;
     fn mul(self: @Price, rhs: Balance) -> Self::Target {
-        let price: i128 = (*self.value).try_into().unwrap();
+        let price: i128 = (*self.value).into();
         let balance: i128 = rhs.into();
         let intermediate: i128 = price * balance;
         return intermediate / PRICE_SCALE.into();

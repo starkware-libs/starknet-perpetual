@@ -308,9 +308,7 @@ pub(crate) mod LiquidationManager {
             let collateral_id = self.assets.get_collateral_id();
             let entry = (@self).assets.asset_config.entry(liquidator_order.base_asset_id).as_ptr();
             let liquidated_asset_type = SyntheticTrait::get_asset_type(entry).expect(NO_SUCH_ASSET);
-            if liquidated_asset_type != AssetType::SPOT_COLLATERAL {
-                panic_with_felt252('INVALID_ASSET_TYPE');
-            }
+            assert(liquidated_asset_type == AssetType::SPOT_COLLATERAL, 'INVALID_ASSET_TYPE');
 
             let liquidator_position_id = liquidator_order.source_position;
             let liquidator_position = self.positions.get_position_snapshot(liquidator_position_id);
@@ -319,10 +317,10 @@ pub(crate) mod LiquidationManager {
                 liquidator_order.receive_position != INSURANCE_FUND_POSITION,
                 CANT_LIQUIDATE_IF_POSITION,
             );
+            assert(liquidator_order.receive_position != FEE_POSITION, CANT_TRADE_WITH_FEE_POSITION);
             assert(
                 liquidator_order.receive_position != liquidated_position_id, INVALID_SAME_POSITIONS,
             );
-            assert(liquidator_order.receive_position != FEE_POSITION, CANT_TRADE_WITH_FEE_POSITION);
 
             let liquidated_order = LimitOrder {
                 source_position: liquidated_position_id,
