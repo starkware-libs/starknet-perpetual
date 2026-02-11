@@ -545,7 +545,7 @@ pub mod Positions {
             let position = self.get_position_mut(:position_id);
 
             self
-                .validate_interest(
+                .validate_interest_in_range(
                     :position,
                     :position_id,
                     :interest_amount,
@@ -554,22 +554,13 @@ pub mod Positions {
                     :interest_rate_scale,
                 );
 
-            let previous_timestamp = position.last_interest_applied_time.read();
-
-            // If previous timestamp is zero, this is the first interest calculation,
-            // so we need to set the current time.
-            if previous_timestamp.is_zero() {
-                position.last_interest_applied_time.write(current_time);
-            }
-
             // Apply interest
             if interest_amount.is_non_zero() {
                 position.collateral_balance.add_and_write(interest_amount.into());
-                position.last_interest_applied_time.write(current_time);
             }
         }
 
-        fn validate_interest(
+        fn validate_interest_in_range(
             ref self: ComponentState<TContractState>,
             position: StoragePath<Mutable<Position>>,
             position_id: PositionId,
@@ -582,7 +573,9 @@ pub mod Positions {
             if previous_timestamp.is_zero() {
                 // If `previous_timestamp` is zero, this indicates the first interest calculation,
                 // and the interest amount is required to be zero.
+                // so we need to set the current time.
                 assert(interest_amount.is_zero(), INVALID_INTEREST_RATE);
+                position.last_interest_applied_time.write(current_time);
                 return;
             }
 
@@ -606,6 +599,8 @@ pub mod Positions {
 
             // Check: |interest_amount| <= max_allowed_change
             assert(interest_amount.abs().into() <= max_allowed_change, INVALID_INTEREST_RATE);
+
+            position.last_interest_applied_time.write(current_time);
         }
 
         fn get_position_snapshot(
