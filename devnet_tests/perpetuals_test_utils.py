@@ -512,7 +512,7 @@ class PerpetualsTestUtils:
         depositer_address = self.perpetuals_contract_address
         await self.__process_deposit(depositer_address, asset_id, position_id, amount, salt)
 
-    async def withdraw(self, account: Account, amount: int):
+    async def withdraw(self, account: Account, amount: int, interest_amount: int = 0):
         expiration = self.now_timestamp + WEEK_IN_SECONDS
         salt = random.randint(0, MAX_UINT32)
         collateral_asset_id = await self.get_collateral_asset_id()
@@ -547,7 +547,9 @@ class PerpetualsTestUtils:
         await invocation.wait_for_acceptance(check_interval=0.1)
 
         # Process withdrawal request
-        async def _process_withdraw(account: Account, amount: int, expiration: int, salt: int):
+        async def _process_withdraw(
+            account: Account, amount: int, expiration: int, salt: int, interest_amount
+        ):
             asset_id = await self.get_collateral_asset_id()
 
             invocation = (
@@ -561,12 +563,13 @@ class PerpetualsTestUtils:
                     amount,
                     formatted_timestamp(expiration),
                     salt,
+                    interest_amount,
                     auto_estimate=True,
                 )
             )
             await invocation.wait_for_acceptance(check_interval=0.1)
 
-        await _process_withdraw(account, amount, expiration, salt)
+        await _process_withdraw(account, amount, expiration, salt, interest_amount)
 
     async def price_tick(self, asset_id: int, oracle_price: int, signed_prices: list[dict]):
         invocation = (
