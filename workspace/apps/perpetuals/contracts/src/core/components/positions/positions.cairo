@@ -543,7 +543,6 @@ pub mod Positions {
             interest_rate_scale: u64,
         ) {
             let position = self.get_position_mut(:position_id);
-
             self
                 .validate_interest_in_range(
                     :position,
@@ -554,9 +553,20 @@ pub mod Positions {
                     :interest_rate_scale,
                 );
 
-            // Apply interest
+            // Validate position health and apply interest.
             if interest_amount.is_non_zero() {
-                position.collateral_balance.add_and_write(interest_amount.into());
+                let position_diff = PositionDiff {
+                    collateral_diff: interest_amount.into(), asset_diff: Option::None,
+                };
+                self
+                    .validate_healthy_or_healthier_position(
+                        position_id: position_id,
+                        position: position.into(),
+                        position_diff: position_diff,
+                        tvtr_before: Default::default(),
+                    );
+
+                self.apply_diff(position_id: position_id, position_diff: position_diff);
             }
         }
 
