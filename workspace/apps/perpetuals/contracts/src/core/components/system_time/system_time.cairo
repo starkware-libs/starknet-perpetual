@@ -20,7 +20,7 @@ pub mod SystemTimeComponent {
 
     #[storage]
     pub struct Storage {
-        system_time: Timestamp,
+        pub system_time: Timestamp,
     }
 
     #[event]
@@ -80,6 +80,18 @@ pub mod SystemTimeComponent {
             self.system_time.write(new_timestamp);
 
             self.emit(TimeTick { new_timestamp });
+        }
+    }
+    #[generate_trait]
+    pub impl InternalImpl<
+        TContractState,
+        +HasComponent<TContractState>,
+        +Drop<TContractState>,
+        +AccessControlComponent::HasComponent<TContractState>,
+        +SRC5Component::HasComponent<TContractState>,
+    > of InternalTrait<TContractState> {
+        fn initialize(ref self: ComponentState<TContractState>) {
+            self.system_time.write(Time::now());
         }
     }
 }
