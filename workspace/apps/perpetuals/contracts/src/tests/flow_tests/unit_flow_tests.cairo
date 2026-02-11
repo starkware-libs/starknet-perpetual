@@ -4115,3 +4115,44 @@ fn test_transfer_spot_collateral_negative_balance_fails() {
                 .transfer_spot_request(sender: user_1, recipient: user_2, :asset_id, amount: 1500),
         );
 }
+
+#[test]
+#[should_panic(expected: 'VAULT_CANNOT_HOLD_SHARES')]
+fn test_protocol_vault_transfer_vault_shares_to_vault_position() {
+    // Setup:
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let vault_user = state.new_user_with_position();
+    let user = state.new_user_with_position();
+
+    let vault_init_deposit = state
+        .facade
+        .deposit(vault_user.account, vault_user.position_id, 5000_u64);
+    state.facade.process_deposit(vault_init_deposit);
+    let user_init_deposit = state.facade.deposit(user.account, user.position_id, 5000_u64);
+    state.facade.process_deposit(user_init_deposit);
+
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user, asset_name: 'VS');
+
+    state
+        .facade
+        .deposit_into_vault(
+            vault: vault_config,
+            amount_to_invest: 100,
+            min_shares_to_receive: 100,
+            depositing_user: user,
+            receiving_user: user,
+        );
+
+    state
+        .facade
+        .transfer(
+            transfer_info: state
+                .facade
+                .transfer_spot_request(
+                    sender: user,
+                    recipient: vault_user,
+                    asset_id: vault_config.asset_id,
+                    amount: 50,
+                ),
+        );
+}
