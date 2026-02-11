@@ -87,6 +87,8 @@ pub(crate) mod VaultsManager {
     #[derive(Drop, starknet::Event)]
     pub enum Event {
         InvestInVault: events::InvestInVault,
+        LiquidateVaultShares: events::LiquidateVaultShares,
+        RedeemVaultShares: events::RedeemVaultShares,
         #[flat]
         FulfillmentEvent: FulfillmentComponent::Event,
         #[flat]
@@ -394,6 +396,21 @@ pub(crate) mod VaultsManager {
                     user_signature: array![0, 0].span(),
                     validate_signatures: true,
                 );
+
+            self
+                .emit(
+                    events::LiquidateVaultShares {
+                        vault_position_id: self
+                            .vaults
+                            .get_vault_config_for_asset(liquidated_asset_id)
+                            .position_id
+                            .into(),
+                        liquidated_position_id: liquidated_position_id,
+                        vault_asset_id: liquidated_asset_id,
+                        shares_liquidated: actual_shares_user.abs().try_into().unwrap(),
+                        collateral_received: actual_collateral_user.abs().try_into().unwrap(),
+                    },
+                );
         }
 
         fn force_redeem_from_vault(
@@ -639,6 +656,20 @@ pub(crate) mod VaultsManager {
                 new_perps_contract_balance == perps_contract_balance_before,
                 'COLLATERAL_NOT_RETURNED',
             );
+
+            self
+                .emit(
+                    events::RedeemVaultShares {
+                        vault_position_id: vault_position_id,
+                        redeeming_position_id: redeeming_position_id,
+                        receiving_position_id: receiving_position_id,
+                        shares_redeemed: amount_to_burn.abs().try_into().unwrap(),
+                        collateral_received: value_to_receive.abs().try_into().unwrap(),
+                        collateral_requested: order.quote_amount.abs(),
+                        vault_asset_id: vault_config.asset_id,
+                        invested_asset_id: self.assets.get_collateral_id(),
+                    },
+                );
         }
     }
 }
