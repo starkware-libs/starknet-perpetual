@@ -7,7 +7,6 @@ const STORAGE_VERSION: u8 = 1;
 const CHECK_FREQUENCY: TimeDelta = TimeDelta { seconds: DAY };
 const DEFAULT_LIMIT_PERCENT: u32 = 5;
 
-
 #[starknet::interface]
 pub trait IVaults<TContractState> {
     fn is_vault_position(ref self: TContractState, vault_position: PositionId) -> bool;
@@ -42,6 +41,8 @@ pub mod Vaults {
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
     use starkware_utils::components::roles::RolesComponent;
+    use starkware_utils::math::abs::Abs;
+    use starkware_utils::math::utils::mul_wide_and_floor_div;
     use starkware_utils::signature::stark::Signature;
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
@@ -219,6 +220,7 @@ pub mod Vaults {
                 let limit_from_storage = self.vault_protection_limit_overrides.read(vault_position);
                 let limit = if limit_from_storage.is_zero() {
                     DEFAULT_LIMIT_PERCENT
+
                 } else {
                     limit_from_storage
                 };
