@@ -207,4 +207,6 @@ pub trait ICore<TContractState> {
     );
 
     fn enable_escape_hatch(ref self: TContractState);
+    fn get_max_interest_rate_per_sec(self: @TContractState) -> u32;
+    fn set_max_interest_rate_per_sec(ref self: TContractState, max_interest_rate_per_sec: u32);
 }

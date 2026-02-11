@@ -5,12 +5,15 @@
 /// and not exceed the current block timestamp.
 #[starknet::component]
 pub mod SystemTimeComponent {
+    use core::num::traits::Zero;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalTrait as NonceInternal;
     use perpetuals::core::components::system_time::constants::MAX_TIME_DRIFT;
-    use perpetuals::core::components::system_time::errors::{NON_MONOTONIC_TIME, STALE_TIME};
+    use perpetuals::core::components::system_time::errors::{
+        ALREADY_INITIALIZED, NON_MONOTONIC_TIME, STALE_TIME,
+    };
     use perpetuals::core::components::system_time::interface::ISystemTime;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use starkware_utils::components::pausable::PausableComponent;
@@ -80,6 +83,19 @@ pub mod SystemTimeComponent {
             self.system_time.write(new_timestamp);
 
             self.emit(TimeTick { new_timestamp });
+        }
+    }
+    #[generate_trait]
+    pub impl InternalImpl<
+        TContractState,
+        +HasComponent<TContractState>,
+        +Drop<TContractState>,
+        +AccessControlComponent::HasComponent<TContractState>,
+        +SRC5Component::HasComponent<TContractState>,
+    > of InternalTrait<TContractState> {
+        fn initialize(ref self: ComponentState<TContractState>) {
+            assert(self.system_time.read() == Zero::zero(), ALREADY_INITIALIZED);
+            self.system_time.write(Time::now());
         }
     }
 }
