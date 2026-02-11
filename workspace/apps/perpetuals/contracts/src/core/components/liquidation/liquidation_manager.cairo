@@ -100,6 +100,8 @@ pub(crate) mod LiquidationManager {
     use crate::core::utils::{validate_signature, validate_trade};
     use crate::core::value_risk_calculator::liquidated_position_validations;
     use super::{ILiquidationManager, LimitOrder, Liquidate, Order, Signature};
+    use crate::core::components::vaults::vaults::Vaults::InternalTrait as VaultsInternal;
+    use crate::core::components::vaults::vaults::{Vaults as VaultsComponent};
 
 
     #[event]
@@ -126,6 +128,8 @@ pub(crate) mod LiquidationManager {
         AccessControlEvent: AccessControlComponent::Event,
         #[flat]
         RolesEvent: RolesComponent::Event,
+        #[flat]
+        VaultsEvent: VaultsComponent::Event, 
     }
 
     #[storage]
@@ -151,6 +155,8 @@ pub(crate) mod LiquidationManager {
         src5: SRC5Component::Storage,
         #[substorage(v0)]
         pub request_approvals: RequestApprovalsComponent::Storage,
+        #[substorage(v0)]
+        pub vaults: VaultsComponent::Storage,
     }
 
     component!(path: FulfillmentComponent, storage: fulfillment_tracking, event: FulfillmentEvent);
@@ -165,6 +171,7 @@ pub(crate) mod LiquidationManager {
     component!(
         path: RequestApprovalsComponent, storage: request_approvals, event: RequestApprovalsEvent,
     );
+    component!(path: VaultsComponent, storage: vaults, event: VaultsEvent);
 
 
     #[abi(embed_v0)]
@@ -606,13 +613,20 @@ pub(crate) mod LiquidationManager {
                     position: liquidated_position.into(),
                     position_diff: liquidated_position_diff,
                 );
-            self
+            let tvtr = self
                 .positions
                 .validate_healthy_or_healthier_position(
                     position_id: liquidator_position_id,
                     position: liquidator_position.into(),
                     position_diff: liquidator_position_diff,
                     tvtr_before: Default::default(),
+                );
+            self
+                .positions
+                .validate_against_vault_limits(
+                    position_id: liquidator_position_id,
+                    vault_protection_config: self.vaults.get_vault_protection_config(liquidator_position_id),
+                    :tvtr
                 );
 
             if let Option::Some(liquidator_receive_position_diff) =
