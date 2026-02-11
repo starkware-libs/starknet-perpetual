@@ -11,10 +11,11 @@ pub mod Positions {
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalTrait as NonceInternal;
     use perpetuals::core::components::positions::errors::{
-        ALREADY_INITIALIZED, CALLER_IS_NOT_OWNER_ACCOUNT, INVALID_ZERO_OWNER_ACCOUNT,
-        INVALID_ZERO_PUBLIC_KEY, NO_OWNER_ACCOUNT, POSITION_ALREADY_EXISTS, POSITION_DOESNT_EXIST,
-        POSITION_HAS_OWNER_ACCOUNT, POSITION_SPOT_BALANCE_NEGATIVE, SAME_PUBLIC_KEY,
-        SET_POSITION_OWNER_EXPIRED, SET_PUBLIC_KEY_EXPIRED,
+        ALREADY_INITIALIZED, CALLER_IS_NOT_OWNER_ACCOUNT, INVALID_INTEREST_RATE,
+        INVALID_ZERO_OWNER_ACCOUNT, INVALID_ZERO_PUBLIC_KEY, NO_OWNER_ACCOUNT,
+        POSITION_ALREADY_EXISTS, POSITION_DOESNT_EXIST, POSITION_HAS_OWNER_ACCOUNT,
+        POSITION_SPOT_BALANCE_NEGATIVE, SAME_PUBLIC_KEY, SET_POSITION_OWNER_EXPIRED,
+        SET_PUBLIC_KEY_EXPIRED, ZERO_MAX_INTEREST_RATE,
     };
     use perpetuals::core::components::positions::events;
     use perpetuals::core::components::positions::interface::IPositions;
@@ -55,9 +56,8 @@ pub mod Positions {
     use crate::core::components::assets::errors::NO_SUCH_ASSET;
     use crate::core::components::snip::SNIP12MetadataImpl;
     use crate::core::errors::{
-        AMOUNT_OVERFLOW, INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE, INVALID_INTEREST_RATE,
-        INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT, NO_DELEVERAGE_VAULT_SHARES,
-        ZERO_MAX_INTEREST_RATE,
+        AMOUNT_OVERFLOW, INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE, INVALID_SAME_POSITIONS,
+        INVALID_ZERO_AMOUNT, NO_DELEVERAGE_VAULT_SHARES,
     };
     use crate::core::types::asset::synthetic::{AssetBalanceDiffEnriched, AssetType};
     use crate::core::types::balance::BalanceDiff;
@@ -436,8 +436,6 @@ pub mod Positions {
             insurance_fund_position
                 .owner_public_key
                 .write(insurance_fund_position_owner_public_key);
-
-            // Store max interest rate per second
             self.max_interest_rate_per_sec.write(max_interest_rate_per_sec);
         }
 

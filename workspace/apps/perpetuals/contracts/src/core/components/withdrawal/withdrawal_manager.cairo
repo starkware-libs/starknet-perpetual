@@ -82,6 +82,7 @@ pub trait IWithdrawalManager<TContractState> {
         amount: u64,
         expiration: Timestamp,
         salt: felt252,
+        interest_amount: i64,
     );
     fn forced_withdraw_request(
         ref self: TContractState,
@@ -286,6 +287,7 @@ pub(crate) mod WithdrawalManager {
             amount: u64,
             expiration: super::Timestamp,
             salt: felt252,
+            interest_amount: i64,
         ) {
             let position = self.positions.get_position_snapshot(:position_id);
 
@@ -298,6 +300,7 @@ pub(crate) mod WithdrawalManager {
                     :salt,
                     :position,
                     :collateral_id,
+                    :interest_amount,
                 );
 
             self
@@ -426,6 +429,7 @@ pub(crate) mod WithdrawalManager {
                     :salt,
                     :position,
                     :collateral_id,
+                    interest_amount: 0,
                 );
 
             self
@@ -455,6 +459,7 @@ pub(crate) mod WithdrawalManager {
             salt: felt252,
             position: StoragePath<Position>,
             collateral_id: AssetId,
+            interest_amount: i64,
         ) -> (HashType, ContractAddress) {
             validate_expiration(expiration: expiration, err: SIGNED_TX_EXPIRED);
 
@@ -467,6 +472,15 @@ pub(crate) mod WithdrawalManager {
                     public_key: position.get_owner_public_key(),
                 );
 
+            self
+                .positions
+                .validate_interest_in_range(
+                    position: position.into(),
+                    position_id: position_id,
+                    interest_amount: interest_amount,
+                );
+            let signed_amount: i64 = -amount.try_into().expect(AMOUNT_OVERFLOW);
+
             /// Validations - Fundamentals:
             let (position_diff, quantum, token_contract) = if collateral_id != self
                 .assets
@@ -477,7 +491,6 @@ pub(crate) mod WithdrawalManager {
                     SyntheticTrait::at_asset_type(entry) != AssetType::SYNTHETIC,
                     CANNOT_WITHDRAW_SYNTHETIC,
                 );
-                let signed_amount: i64 = -amount.try_into().expect(AMOUNT_OVERFLOW);
                 self
                     .positions
                     ._validate_asset_shrink_non_negative(
@@ -485,7 +498,7 @@ pub(crate) mod WithdrawalManager {
                     );
                 (
                     PositionDiff {
-                        collateral_diff: Zero::zero(),
+                        collateral_diff: interest_amount.into(),
                         asset_diff: Some((collateral_id, -amount.into())),
                     },
                     SyntheticTrait::at_quantum(entry),
@@ -493,12 +506,14 @@ pub(crate) mod WithdrawalManager {
                 )
             } else {
                 (
-                    PositionDiff { collateral_diff: -amount.into(), asset_diff: Option::None },
+                    PositionDiff {
+                        collateral_diff: interest_amount.into() + signed_amount.into(),
+                        asset_diff: Option::None,
+                    },
                     self.assets.get_collateral_quantum(),
                     self.assets.get_base_collateral_token_contract(),
                 )
             };
-
             self
                 .positions
                 .validate_healthy_or_healthier_position(

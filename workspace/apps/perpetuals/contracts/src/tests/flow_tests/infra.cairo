@@ -191,6 +191,11 @@ pub impl FlowTestImpl of FlowTestExtendedTrait {
     fn withdraw(ref self: FlowTestExtended, withdraw_info: RequestInfo) {
         self.flow_test_base.facade.withdraw(:withdraw_info)
     }
+    fn withdraw_with_interest(
+        ref self: FlowTestExtended, withdraw_info: RequestInfo, interest_amount: i64,
+    ) {
+        self.flow_test_base.facade.withdraw_with_interest(:withdraw_info, :interest_amount)
+    }
     fn transfer_request(
         ref self: FlowTestExtended, sender: User, recipient: User, amount: u64,
     ) -> RequestInfo {
