@@ -475,7 +475,7 @@ pub(crate) mod WithdrawalManager {
                     CANNOT_WITHDRAW_SYNTHETIC,
                 );
                 assert(
-                    SyntheticTrait::at_asset_status(entry) == AssetStatus::ACTIVE, INACTIVE_ASSET,
+                    SyntheticTrait::at_asset_status(entry) != AssetStatus::INACTIVE, INACTIVE_ASSET,
                 );
                 let signed_amount: i64 = -amount.try_into().expect(AMOUNT_OVERFLOW);
                 self

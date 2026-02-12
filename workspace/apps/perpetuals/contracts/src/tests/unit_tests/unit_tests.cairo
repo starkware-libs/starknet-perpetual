@@ -6640,8 +6640,7 @@ fn test_withdraw_synthetic_asset() {
 }
 
 #[test]
-#[should_panic(expected: 'INACTIVE_ASSET')]
-fn test_withdraw_inactive_asset() {
+fn test_withdraw_pending_asset() {
     // Setup:
     let cfg: PerpetualsInitConfig = Default::default();
     let token_state = cfg.collateral_cfg.token_cfg.deploy();
@@ -6692,6 +6691,12 @@ fn test_withdraw_inactive_asset() {
             :expiration,
             salt: withdraw_args.salt,
         );
+    validate_asset_balance(
+        ref :state,
+        position_id: user.position_id,
+        asset_id: spot_asset_id,
+        expected_balance: 900_i64.into(),
+    );
 }
 
 #[test]
