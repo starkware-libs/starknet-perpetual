@@ -421,6 +421,10 @@ pub fn setup_state_with_pending_spot_asset(
             risk_factor_tier_size: MAX_U128,
             quorum: *cfg.spot_cfg.quorum,
         );
+    cfg
+        .spot_cfg
+        .token_state
+        .fund(recipient: test_address(), amount: CONTRACT_INIT_BALANCE.try_into().unwrap());
     state
 }
 
