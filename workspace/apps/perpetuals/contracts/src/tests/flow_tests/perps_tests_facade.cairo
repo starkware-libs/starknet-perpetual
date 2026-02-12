@@ -150,6 +150,7 @@ pub struct DepositInfo {
     quantized_amount: u64,
     salt: felt252,
     asset_id: AssetId,
+    interest_amount: i64,
 }
 
 #[derive(Copy, Drop)]
@@ -915,11 +916,15 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             :salt,
         );
 
-        DepositInfo { depositor, position_id, quantized_amount, salt, asset_id }
+        DepositInfo {
+            depositor, position_id, quantized_amount, salt, asset_id, interest_amount: 0_i64,
+        }
     }
 
     fn cancel_deposit(ref self: PerpsTestsFacade, deposit_info: DepositInfo) {
-        let DepositInfo { depositor, position_id, quantized_amount, salt, asset_id } = deposit_info;
+        let DepositInfo {
+            depositor, position_id, quantized_amount, salt, asset_id, interest_amount: _,
+        } = deposit_info;
         let token_state = self.find_contract_for_asset_id(:asset_id);
         let user_balance_before = token_state.balance_of(depositor.address);
         let contract_balance_before = token_state.balance_of(self.perpetuals_contract);
@@ -964,7 +969,9 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
     }
 
     fn process_deposit(ref self: PerpsTestsFacade, deposit_info: DepositInfo) {
-        let DepositInfo { depositor, position_id, quantized_amount, salt, asset_id } = deposit_info;
+        let DepositInfo {
+            depositor, position_id, quantized_amount, salt, asset_id, interest_amount,
+        } = deposit_info;
         let collateral_balance_before = if (asset_id == self.collateral_id) {
             self.get_position_collateral_balance(position_id)
         } else {
@@ -983,6 +990,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 :position_id,
                 :quantized_amount,
                 :salt,
+                :interest_amount,
             );
 
         if (asset_id == self.collateral_id) {
@@ -2309,6 +2317,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             quantized_amount: deposit_event.quantized_amount,
             salt,
             asset_id: vault.asset_id,
+            interest_amount: 0_i64,
         }
     }
 

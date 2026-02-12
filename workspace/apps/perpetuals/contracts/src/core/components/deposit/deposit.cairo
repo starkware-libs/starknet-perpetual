@@ -200,6 +200,7 @@ pub(crate) mod Deposit {
             position_id: PositionId,
             quantized_amount: u64,
             salt: felt252,
+            interest_amount: i64,
         ) {
             /// Validations:
             get_dep_component!(@self, Pausable).assert_not_paused();
@@ -214,6 +215,7 @@ pub(crate) mod Deposit {
                     position_id: position_id,
                     quantized_amount: quantized_amount,
                     salt: salt,
+                    interest_amount: interest_amount,
                 );
         }
 
