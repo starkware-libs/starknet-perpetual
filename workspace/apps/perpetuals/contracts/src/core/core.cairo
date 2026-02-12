@@ -171,10 +171,6 @@ pub mod Core {
         forced_action_timelock: TimeDelta,
         // Cost for executing forced actions.
         premium_cost: u64,
-        // Maximum interest rate per second (32-bit fixed-point with 32-bit fractional part).
-        // Example: max_interest_rate_per_sec = 10 means the rate is 10 / 2^32 ≈ 0.000000232 per
-        // second, which is approximately 7.4% per year.
-        max_interest_rate_per_sec: u32,
         // Whether the new escape hatch logic is enabled.
         // Off by default to be enabled one time in the future
         forced_actions_enabled: bool,
@@ -266,13 +262,15 @@ pub mod Core {
         self.deposits.initialize(:cancel_delay);
         self
             .positions
-            .initialize(:fee_position_owner_public_key, :insurance_fund_position_owner_public_key);
+            .initialize(
+                :fee_position_owner_public_key,
+                :insurance_fund_position_owner_public_key,
+                :max_interest_rate_per_sec,
+            );
 
         assert(forced_action_timelock.is_non_zero(), INVALID_ZERO_TIMEOUT);
         self.forced_action_timelock.write(TimeDelta { seconds: forced_action_timelock });
         self.premium_cost.write(premium_cost);
-        assert(max_interest_rate_per_sec.is_non_zero(), ZERO_MAX_INTEREST_RATE);
-        self.max_interest_rate_per_sec.write(max_interest_rate_per_sec);
         self.system_time.initialize();
     }
 
@@ -1202,7 +1200,7 @@ pub mod Core {
 
             // Read once and pass as arguments to avoid redundant storage reads
             let current_time = self.get_system_time();
-            let max_interest_rate_per_sec = self.max_interest_rate_per_sec.read();
+            let max_interest_rate_per_sec = self.positions.max_interest_rate_per_sec.read();
             let interest_rate_scale: u64 = 2_u64.pow(32);
 
             let mut i: usize = 0;
@@ -1262,7 +1260,7 @@ pub mod Core {
             self.forced_actions_enabled.write(true);
         }
         fn get_max_interest_rate_per_sec(self: @ContractState) -> u32 {
-            self.max_interest_rate_per_sec.read()
+            self.positions.max_interest_rate_per_sec.read()
         }
 
         /// Sets the maximum interest rate per second.
@@ -1276,7 +1274,7 @@ pub mod Core {
         fn set_max_interest_rate_per_sec(ref self: ContractState, max_interest_rate_per_sec: u32) {
             self.roles.only_app_governor();
             assert(max_interest_rate_per_sec.is_non_zero(), ZERO_MAX_INTEREST_RATE);
-            self.max_interest_rate_per_sec.write(max_interest_rate_per_sec);
+            self.positions.max_interest_rate_per_sec.write(max_interest_rate_per_sec);
         }
     }
 

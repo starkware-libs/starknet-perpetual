@@ -63,6 +63,7 @@ pub(crate) mod DepositManager {
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::positions::Positions as PositionsComponent;
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
+    use perpetuals::core::components::system_time::SystemTimeComponent;
     use perpetuals::core::types::asset::AssetId;
     use perpetuals::core::types::position::PositionId;
     use starknet::storage::{StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess};
@@ -110,6 +111,8 @@ pub(crate) mod DepositManager {
         RolesEvent: RolesComponent::Event,
         #[flat]
         VaultsEvent: VaultsComponent::Event,
+        #[flat]
+        SystemTimeEvent: SystemTimeComponent::Event,
         Deposit: events::Deposit,
         DepositCanceled: events::DepositCanceled,
         DepositProcessed: events::DepositProcessed,
@@ -140,6 +143,8 @@ pub(crate) mod DepositManager {
         pub request_approvals: RequestApprovalsComponent::Storage,
         #[substorage(v0)]
         pub vaults: VaultsComponent::Storage,
+        #[substorage(v0)]
+        system_time: SystemTimeComponent::Storage,
     }
 
     component!(path: FulfillmentComponent, storage: fulfillment_tracking, event: FulfillmentEvent);
@@ -154,8 +159,8 @@ pub(crate) mod DepositManager {
     component!(
         path: RequestApprovalsComponent, storage: request_approvals, event: RequestApprovalsEvent,
     );
-
     component!(path: VaultsComponent, storage: vaults, event: VaultsEvent);
+    component!(path: SystemTimeComponent, storage: system_time, event: SystemTimeEvent);
 
     #[abi(embed_v0)]
     impl TypedComponent of ITypedComponent<ContractState> {

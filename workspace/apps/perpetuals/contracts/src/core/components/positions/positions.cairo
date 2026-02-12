@@ -1,7 +1,7 @@
 #[starknet::component]
 pub mod Positions {
     use core::nullable::{FromNullableResult, match_nullable};
-    use core::num::traits::Zero;
+    use core::num::traits::{Pow, Zero};
     use core::panic_with_felt252;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
@@ -57,6 +57,7 @@ pub mod Positions {
     use crate::core::errors::{
         AMOUNT_OVERFLOW, INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE, INVALID_INTEREST_RATE,
         INVALID_SAME_POSITIONS, INVALID_ZERO_AMOUNT, NO_DELEVERAGE_VAULT_SHARES,
+        ZERO_MAX_INTEREST_RATE,
     };
     use crate::core::types::asset::synthetic::{AssetBalanceDiffEnriched, AssetType};
     use crate::core::types::balance::BalanceDiff;
@@ -72,6 +73,10 @@ pub mod Positions {
     #[storage]
     pub struct Storage {
         pub positions: Map<PositionId, Position>,
+        // Maximum interest rate per second (32-bit fixed-point with 32-bit fractional part).
+        // Example: max_interest_rate_per_sec = 10 means the rate is 10 / 2^32 ≈ 0.000000232 per
+        // second, which is approximately 7.4% per year.
+        pub max_interest_rate_per_sec: u32,
     }
 
     #[event]
@@ -405,11 +410,13 @@ pub mod Positions {
         impl Pausable: PausableComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
         impl RequestApprovals: RequestApprovalsComponent::HasComponent<TContractState>,
+        impl SystemTime: SystemTimeComponent::HasComponent<TContractState>,
     > of InternalTrait<TContractState> {
         fn initialize(
             ref self: ComponentState<TContractState>,
             fee_position_owner_public_key: PublicKey,
             insurance_fund_position_owner_public_key: PublicKey,
+            max_interest_rate_per_sec: u32,
         ) {
             // Checks that the component has not been initialized yet.
             let fee_position = self.positions.entry(FEE_POSITION);
@@ -418,6 +425,7 @@ pub mod Positions {
             // Checks that the input public keys are non-zero.
             assert(fee_position_owner_public_key.is_non_zero(), INVALID_ZERO_PUBLIC_KEY);
             assert(insurance_fund_position_owner_public_key.is_non_zero(), INVALID_ZERO_PUBLIC_KEY);
+            assert(max_interest_rate_per_sec.is_non_zero(), ZERO_MAX_INTEREST_RATE);
 
             // Create fee positions.
             fee_position.version.write(POSITION_VERSION);
@@ -428,6 +436,9 @@ pub mod Positions {
             insurance_fund_position
                 .owner_public_key
                 .write(insurance_fund_position_owner_public_key);
+
+            // Store max interest rate per second
+            self.max_interest_rate_per_sec.write(max_interest_rate_per_sec);
         }
 
         fn apply_diff(
@@ -544,7 +555,7 @@ pub mod Positions {
         ) {
             let position = self.get_position_mut(:position_id);
             self
-                .validate_interest_in_range(
+                .validate_interest_in_range_with_params(
                     :position,
                     :position_id,
                     :interest_amount,
@@ -570,7 +581,36 @@ pub mod Positions {
             }
         }
 
+        /// Validates that the interest amount is within the allowed range.
+        /// This version reads current_time, max_interest_rate_per_sec, and calculates
+        /// interest_rate_scale internally.
+        /// Use this when you want the function to read these values from storage/components.
         fn validate_interest_in_range(
+            ref self: ComponentState<TContractState>,
+            position: StoragePath<Mutable<Position>>,
+            position_id: PositionId,
+            interest_amount: i64,
+        ) {
+            let system_time_component = get_dep_component!(@self, SystemTime);
+            let current_time = system_time_component.get_system_time();
+            let max_interest_rate_per_sec = self.max_interest_rate_per_sec.read();
+            let interest_rate_scale: u64 = 2_u64.pow(32);
+            self
+                .validate_interest_in_range_with_params(
+                    :position,
+                    :position_id,
+                    :interest_amount,
+                    :current_time,
+                    :max_interest_rate_per_sec,
+                    :interest_rate_scale,
+                );
+        }
+
+        /// Validates that the interest amount is within the allowed range.
+        /// This version receives all parameters explicitly (current_time,
+        /// max_interest_rate_per_sec, interest_rate_scale).
+        /// Use this when you already have these values to avoid redundant storage reads.
+        fn validate_interest_in_range_with_params(
             ref self: ComponentState<TContractState>,
             position: StoragePath<Mutable<Position>>,
             position_id: PositionId,
@@ -857,6 +897,7 @@ pub mod Positions {
         +Drop<TContractState>,
         +AccessControlComponent::HasComponent<TContractState>,
         +SRC5Component::HasComponent<TContractState>,
+        +SystemTimeComponent::HasComponent<TContractState>,
         impl Assets: AssetsComponent::HasComponent<TContractState>,
         impl OperatorNonce: OperatorNonceComponent::HasComponent<TContractState>,
         impl Pausable: PausableComponent::HasComponent<TContractState>,
