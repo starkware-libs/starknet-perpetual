@@ -357,6 +357,22 @@ pub(crate) mod VaultsManager {
                     user_signature: signature,
                     validate_signatures: true,
                 );
+
+
+            let vault_config = self.vaults.get_vault_config_for_asset(order.base_asset_id);
+            self
+                .emit(
+                    events::RedeemVaultShares {
+                        vault_position_id: vault_config.position_id.into(),
+                        redeeming_position_id: order.source_position,
+                        receiving_position_id: order.receive_position,
+                        shares_redeemed_amount: actual_shares_user,
+                        collateral_received_amount: actual_collateral_user,
+                        collateral_requested_amount: order.quote_amount,
+                        vault_asset_id: vault_config.asset_id,
+                        invested_asset_id: self.assets.get_collateral_id(),
+                    },
+                );
         }
 
         fn liquidate_vault_shares(
@@ -407,8 +423,8 @@ pub(crate) mod VaultsManager {
                             .into(),
                         liquidated_position_id: liquidated_position_id,
                         vault_asset_id: liquidated_asset_id,
-                        shares_liquidated: actual_shares_user.abs().try_into().unwrap(),
-                        collateral_received: actual_collateral_user.abs().try_into().unwrap(),
+                        shares_liquidated_amount: actual_shares_user,
+                        collateral_received_amount: actual_collateral_user,
                     },
                 );
         }
@@ -656,20 +672,6 @@ pub(crate) mod VaultsManager {
                 new_perps_contract_balance == perps_contract_balance_before,
                 'COLLATERAL_NOT_RETURNED',
             );
-
-            self
-                .emit(
-                    events::RedeemVaultShares {
-                        vault_position_id: vault_position_id,
-                        redeeming_position_id: redeeming_position_id,
-                        receiving_position_id: receiving_position_id,
-                        shares_redeemed: amount_to_burn.abs().try_into().unwrap(),
-                        collateral_received: value_to_receive.abs().try_into().unwrap(),
-                        collateral_requested: order.quote_amount.abs(),
-                        vault_asset_id: vault_config.asset_id,
-                        invested_asset_id: self.assets.get_collateral_id(),
-                    },
-                );
         }
     }
 }
