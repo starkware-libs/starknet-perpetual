@@ -41,6 +41,7 @@ pub trait IDeposit<TContractState> {
         position_id: PositionId,
         quantized_amount: u64,
         salt: felt252,
+        interest_amount: i64,
     );
     fn get_deposit_status(self: @TContractState, deposit_hash: HashType) -> DepositStatus;
     fn get_cancel_delay(self: @TContractState) -> TimeDelta;
