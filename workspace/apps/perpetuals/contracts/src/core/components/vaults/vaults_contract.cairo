@@ -358,7 +358,6 @@ pub(crate) mod VaultsManager {
                     validate_signatures: true,
                 );
 
-
             let vault_config = self.vaults.get_vault_config_for_asset(order.base_asset_id);
             self
                 .emit(
