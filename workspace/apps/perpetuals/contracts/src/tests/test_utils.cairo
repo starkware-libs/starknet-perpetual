@@ -543,6 +543,7 @@ pub fn deposit_vault_share(
             position_id: user.position_id,
             quantized_amount: quantized_amount,
             salt: user.salt_counter,
+            interest_amount: 0,
         );
 }
 

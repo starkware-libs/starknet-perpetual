@@ -44,6 +44,7 @@ pub trait IDepositExternal<TContractState> {
         position_id: PositionId,
         quantized_amount: u64,
         salt: felt252,
+        interest_amount: i64,
     );
     fn get_deposit_status(self: @TContractState, deposit_hash: HashType) -> DepositStatus;
     fn get_cancel_delay(self: @TContractState) -> TimeDelta;
@@ -232,6 +233,7 @@ pub(crate) mod DepositManager {
             position_id: PositionId,
             quantized_amount: u64,
             salt: felt252,
+            interest_amount: i64,
         ) {
             let (token_contract, quantum, position_diff) = if (self
                 .assets
@@ -239,7 +241,8 @@ pub(crate) mod DepositManager {
                 let token_contract = self.assets.get_base_collateral_token_contract();
                 let quantum = self.assets.get_collateral_quantum();
                 let position_diff = PositionDiff {
-                    collateral_diff: quantized_amount.into(), asset_diff: Option::None,
+                    collateral_diff: quantized_amount.into() + interest_amount.into(),
+                    asset_diff: Option::None,
                 };
                 (token_contract, quantum, position_diff)
             } else {
@@ -249,7 +252,7 @@ pub(crate) mod DepositManager {
                     contract_address: asset_config.token_contract.expect('NO_ERC20_CONFIGURED'),
                 };
                 let position_diff = PositionDiff {
-                    collateral_diff: 0_i64.into(),
+                    collateral_diff: interest_amount.into(),
                     asset_diff: Option::Some((asset_id, quantized_amount.into())),
                 };
                 (token_contract, asset_config.quantum, position_diff)
@@ -275,6 +278,20 @@ pub(crate) mod DepositManager {
                 DepositStatus::PENDING(_) => {},
             }
             self.deposits.registered_deposits.write(deposit_hash, DepositStatus::PROCESSED);
+
+            let position = self.positions.get_position_mut(:position_id);
+            // Validate interest in range
+            self.positions.validate_interest_in_range(:position, :position_id, :interest_amount);
+            // Validate healthy or healthier position
+            self
+                .positions
+                .validate_healthy_or_healthier_position(
+                    :position_id,
+                    position: position.into(),
+                    :position_diff,
+                    tvtr_before: Default::default(),
+                );
+
             self.positions.apply_diff(:position_id, :position_diff);
             self
                 .emit(

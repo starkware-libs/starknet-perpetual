@@ -458,6 +458,7 @@ class PerpetualsTestUtils:
         position_id: int,
         amount: int,
         salt: int,
+        interest_amount: int = 0,
     ):
         """Private method for processing deposits. Use the specific flow methods instead."""
         invocation = (
@@ -470,6 +471,7 @@ class PerpetualsTestUtils:
                 formatted_position_id(position_id),
                 amount,
                 salt,
+                interest_amount,
                 auto_estimate=True,
             )
         )
