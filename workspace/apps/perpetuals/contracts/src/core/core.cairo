@@ -609,7 +609,7 @@ pub mod Core {
         ) {
             /// Validations:
             self.pausable.assert_not_paused();
-            self.assets.validate_price_interval_integrity(Time::now());
+            self.assets.validate_assets_integrity();
             self.operator_nonce.use_checked_nonce(:operator_nonce);
             self
                 .external_components
