@@ -39,6 +39,7 @@ fn test_process_deposit_only_operator() {
             position_id: POSITION_ID_100,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: 0,
+            interest_amount: 0,
         );
 }
 

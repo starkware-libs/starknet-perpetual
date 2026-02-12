@@ -153,6 +153,7 @@ fn test_expiration_validation() {
             position_id: user.position_id,
             quantized_amount: amount,
             salt: user.salt_counter,
+            interest_amount: 0,
         );
 
     // Test:
@@ -385,6 +386,7 @@ fn test_signature_validation() {
             position_id: user_a.position_id,
             quantized_amount: amount,
             salt: user_a.salt_counter,
+            interest_amount: 0,
         );
 
     cheat_caller_address_once(:contract_address, caller_address: user_b.address);
@@ -402,6 +404,7 @@ fn test_signature_validation() {
             position_id: user_b.position_id,
             quantized_amount: amount,
             salt: user_b.salt_counter,
+            interest_amount: 0,
         );
 
     // Build orders.
@@ -2304,6 +2307,7 @@ fn test_successful_process_deposit() {
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter,
+            interest_amount: 0,
         );
 
     // Catch the event.
@@ -2574,6 +2578,7 @@ fn test_cancel_already_done_deposit() {
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter,
+            interest_amount: 0,
         );
 
     start_cheat_block_timestamp_global(
@@ -3069,6 +3074,7 @@ fn test_successful_forced_withdraw_operator_executes() {
             position_id: user.position_id,
             quantized_amount: deposit_amount,
             salt: user.salt_counter,
+            interest_amount: 0,
         );
 
     // Check user balance before forced withdraw request
@@ -3222,6 +3228,7 @@ fn test_successful_forced_withdraw_user_executes() {
             position_id: user.position_id,
             quantized_amount: deposit_amount,
             salt: user.salt_counter,
+            interest_amount: 0,
         );
 
     // Check user balance before forced withdraw request
@@ -3493,6 +3500,7 @@ fn test_forced_withdraw_after_operator_processed_withdraw() {
             position_id: user.position_id,
             quantized_amount: deposit_amount,
             salt: user.salt_counter,
+            interest_amount: 0,
         );
 
     // Fund user with premium cost
@@ -3617,6 +3625,7 @@ fn test_withdraw_after_user_forced_withdraw_executed() {
             position_id: user.position_id,
             quantized_amount: deposit_amount,
             salt: user.salt_counter,
+            interest_amount: 0,
         );
 
     // Fund user with premium cost
@@ -4499,6 +4508,7 @@ fn test_validate_asset_prices_pending_asset() {
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter,
+            interest_amount: 0,
         );
     // If no assertion error is thrown, the test passes
 }
@@ -4636,6 +4646,7 @@ fn test_validate_prices_no_update_needed() {
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter,
+            interest_amount: 0,
         );
 
     assert!(state.assets.get_last_price_validation() == old_time);
@@ -5879,6 +5890,7 @@ fn test_successful_vault_share_process_deposit() {
             position_id: user.position_id,
             quantized_amount: DEPOSIT_AMOUNT,
             salt: user.salt_counter,
+            interest_amount: 0,
         );
 
     // Catch the event.

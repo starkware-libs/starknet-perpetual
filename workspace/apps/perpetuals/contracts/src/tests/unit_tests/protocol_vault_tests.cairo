@@ -147,6 +147,7 @@ fn test_protocol_vault_initialisation_logic() {
             position_id: vault_user.position_id,
             quantized_amount: VAULT_DEPOSIT_AMOUNT,
             salt: vault_user.salt_counter,
+            interest_amount: 0,
         );
 
     // deposit into user position
@@ -172,6 +173,7 @@ fn test_protocol_vault_initialisation_logic() {
             position_id: depositing_user.position_id,
             quantized_amount: VAULT_DEPOSIT_AMOUNT,
             salt: depositing_user.salt_counter,
+            interest_amount: 0,
         );
 
     let deployed_vault = deploy_protocol_vault_with_dispatcher(
