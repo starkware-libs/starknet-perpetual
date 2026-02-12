@@ -112,9 +112,7 @@ pub(crate) mod WithdrawalManager {
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::AssetsComponent::InternalImpl as AssetsInternal;
-    use perpetuals::core::components::assets::errors::{
-        ASSET_NOT_EXISTS, CANNOT_WITHDRAW_SYNTHETIC, INACTIVE_ASSET,
-    };
+    use perpetuals::core::components::assets::errors::{ASSET_NOT_EXISTS, CANNOT_WITHDRAW_SYNTHETIC};
     use perpetuals::core::components::assets::interface::IAssets;
     use perpetuals::core::components::deposit::Deposit::InternalImpl as DepositInternal;
     use perpetuals::core::components::fulfillment::fulfillment::Fulfillement as FulfillmentComponent;
@@ -123,6 +121,7 @@ pub(crate) mod WithdrawalManager {
     use perpetuals::core::components::positions::Positions as PositionsComponent;
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
     use perpetuals::core::components::snip::SNIP12MetadataImpl;
+    use perpetuals::core::components::system_time::SystemTimeComponent;
     use perpetuals::core::errors::{
         AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED,
         TRANSFER_FAILED,
@@ -150,7 +149,6 @@ pub(crate) mod WithdrawalManager {
     use starkware_utils::time::time::{Time, TimeDelta, validate_expiration};
     use crate::core::components::external_components::interface::EXTERNAL_COMPONENT_WITHDRAWALS;
     use crate::core::components::external_components::named_component::ITypedComponent;
-    use crate::core::types::asset::AssetStatus;
     use crate::core::types::asset::synthetic::AssetType;
     use super::{
         ForcedWithdraw, ForcedWithdrawRequest, IWithdrawalManager, Signature, Timestamp, Withdraw,
@@ -184,6 +182,8 @@ pub(crate) mod WithdrawalManager {
         AccessControlEvent: AccessControlComponent::Event,
         #[flat]
         RolesEvent: RolesComponent::Event,
+        #[flat]
+        SystemTimeEvent: SystemTimeComponent::Event,
     }
 
     #[storage]
@@ -207,6 +207,8 @@ pub(crate) mod WithdrawalManager {
         src5: SRC5Component::Storage,
         #[substorage(v0)]
         pub request_approvals: RequestApprovalsComponent::Storage,
+        #[substorage(v0)]
+        system_time: SystemTimeComponent::Storage,
         // Timelock before forced actions can be executed.
         forced_action_timelock: TimeDelta,
         // Cost for executing forced actions.
@@ -224,6 +226,7 @@ pub(crate) mod WithdrawalManager {
     component!(
         path: RequestApprovalsComponent, storage: request_approvals, event: RequestApprovalsEvent,
     );
+    component!(path: SystemTimeComponent, storage: system_time, event: SystemTimeEvent);
 
     #[abi(embed_v0)]
     impl TypedComponent of ITypedComponent<ContractState> {

@@ -38,6 +38,7 @@ pub mod Vaults {
     use starkware_utils::time::time::validate_expiration;
     use vault::interface::{IProtocolVaultDispatcher, IProtocolVaultDispatcherTrait};
     use crate::core::components::snip::SNIP12MetadataImpl;
+    use crate::core::components::system_time::SystemTimeComponent;
     use crate::core::components::vaults::events;
     use crate::core::types::vault::ConvertPositionToVault;
     use crate::core::utils::validate_signature;
@@ -79,6 +80,7 @@ pub mod Vaults {
         +Drop<TContractState>,
         +AccessControlComponent::HasComponent<TContractState>,
         +SRC5Component::HasComponent<TContractState>,
+        +SystemTimeComponent::HasComponent<TContractState>,
         impl Assets: AssetsComponent::HasComponent<TContractState>,
         impl OperatorNonce: OperatorNonceComponent::HasComponent<TContractState>,
         impl Pausable: PausableComponent::HasComponent<TContractState>,
