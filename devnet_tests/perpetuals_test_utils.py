@@ -385,7 +385,9 @@ class PerpetualsTestUtils:
         assert error is not None
         raise Exception(f"Failed to create a new position: {error}")
 
-    async def deposit(self, account: Account, amount: int):
+    async def deposit(
+        self, account: Account, amount: int, process_deposit: bool = True
+    ) -> Optional[int]:
         # Fund the account with collateral tokens
         async def _fund_account_with_collateral(account: Account, amount: int):
             """Fund an account with collateral tokens using the rich USDC holder account."""
@@ -449,7 +451,10 @@ class PerpetualsTestUtils:
         await invocation.wait_for_acceptance(check_interval=0.1)
 
         # Process deposit
-        await self.process_base_collateral_deposit(account, amount, salt)
+        if process_deposit:
+            await self.process_base_collateral_deposit(account, amount, salt)
+            return
+        return salt
 
     async def __process_deposit(
         self,
@@ -512,7 +517,9 @@ class PerpetualsTestUtils:
         depositer_address = self.perpetuals_contract_address
         await self.__process_deposit(depositer_address, asset_id, position_id, amount, salt)
 
-    async def withdraw(self, account: Account, amount: int):
+    async def withdraw(
+        self, account: Account, amount: int, process_withdraw: bool = True
+    ) -> Optional[Tuple[int, int]]:
         expiration = self.now_timestamp + WEEK_IN_SECONDS
         salt = random.randint(0, MAX_UINT32)
         collateral_asset_id = await self.get_collateral_asset_id()
@@ -547,26 +554,29 @@ class PerpetualsTestUtils:
         await invocation.wait_for_acceptance(check_interval=0.1)
 
         # Process withdrawal request
-        async def _process_withdraw(account: Account, amount: int, expiration: int, salt: int):
-            asset_id = await self.get_collateral_asset_id()
+        if process_withdraw:
+            await self.process_withdraw(account, amount, expiration, salt)
+            return
+        return expiration, salt
 
-            invocation = (
-                await self.known_contracts["operator"]
-                .functions["withdraw"]
-                .invoke_v3(
-                    await self.consume_operator_nonce(),
-                    formatted_asset_id(asset_id),
-                    self.get_account_address(account),
-                    formatted_position_id(self.get_account_position_id(account)),
-                    amount,
-                    formatted_timestamp(expiration),
-                    salt,
-                    auto_estimate=True,
-                )
+    async def process_withdraw(self, account: Account, amount: int, expiration: int, salt: int):
+        asset_id = await self.get_collateral_asset_id()
+
+        invocation = (
+            await self.known_contracts["operator"]
+            .functions["withdraw"]
+            .invoke_v3(
+                await self.consume_operator_nonce(),
+                formatted_asset_id(asset_id),
+                self.get_account_address(account),
+                formatted_position_id(self.get_account_position_id(account)),
+                amount,
+                formatted_timestamp(expiration),
+                salt,
+                auto_estimate=True,
             )
-            await invocation.wait_for_acceptance(check_interval=0.1)
-
-        await _process_withdraw(account, amount, expiration, salt)
+        )
+        await invocation.wait_for_acceptance(check_interval=0.1)
 
     async def price_tick(self, asset_id: int, oracle_price: int, signed_prices: list[dict]):
         invocation = (
@@ -762,7 +772,8 @@ class PerpetualsTestUtils:
         sender: Account,
         recipient: Account,
         amount: int,
-    ):
+        process_transfer: bool = True,
+    ) -> Optional[dict]:
         transfer_args = await self.create_transfer_args(sender, recipient, amount)
         signature = self.sign_message(
             sender,
@@ -793,27 +804,31 @@ class PerpetualsTestUtils:
         )
         await invocation.wait_for_acceptance(check_interval=0.1)
 
-        async def _process_transfer(transfer_args: dict):
-            invocation = (
-                await self.known_contracts["operator"]
-                .functions["transfer"]
-                .invoke_v3(
-                    await self.consume_operator_nonce(),
-                    transfer_args[COLLATERAL_ID_STR],
-                    transfer_args[RECIPIENT_STR],
-                    transfer_args[POSITION_ID_STR],
-                    transfer_args[AMOUNT_STR],
-                    transfer_args[EXPIRATION_STR],
-                    transfer_args[SALT_STR],
-                    auto_estimate=True,
-                )
-            )
-            await invocation.wait_for_acceptance(check_interval=0.1)
+        if process_transfer:
+            await self.process_transfer(transfer_args)
+            return
+        return transfer_args
 
-        await _process_transfer(transfer_args)
+    async def process_transfer(self, transfer_args: dict):
+        invocation = (
+            await self.known_contracts["operator"]
+            .functions["transfer"]
+            .invoke_v3(
+                await self.consume_operator_nonce(),
+                transfer_args[COLLATERAL_ID_STR],
+                transfer_args[RECIPIENT_STR],
+                transfer_args[POSITION_ID_STR],
+                transfer_args[AMOUNT_STR],
+                transfer_args[EXPIRATION_STR],
+                transfer_args[SALT_STR],
+                auto_estimate=True,
+            )
+        )
+        await invocation.wait_for_acceptance(check_interval=0.1)
 
     async def upgrade_perpetuals_contract(
         self,
+        contract_name: str = "perpetuals_Core",
         eic_data: Optional[dict] = None,
     ):
         """
@@ -821,7 +836,7 @@ class PerpetualsTestUtils:
         """
         upgrade_governor_contract = self.known_contracts["upgrade_governor"]
         new_class_hash = (
-            await declare_contract("perpetuals_Core", self.known_accounts["upgrade_governor"])
+            await declare_contract(contract_name, self.known_accounts["upgrade_governor"])
         ).class_hash
 
         invocation = await upgrade_governor_contract.functions["add_new_implementation"].invoke_v3(
@@ -992,6 +1007,58 @@ class PerpetualsTestUtils:
                 vault_signature,
                 base_amount,
                 actual_quote_amount,
+                auto_estimate=True,
+            )
+        )
+        await invocation.wait_for_acceptance(check_interval=0.1)
+
+    ### USDC migration ###
+
+    async def register_token_admin(self, account: Account):
+        invocation = (
+            await self.known_contracts["governance_admin"]
+            .functions["register_token_admin"]
+            .invoke_v3(
+                account.address,
+                auto_estimate=True,
+            )
+        )
+        await invocation.wait_for_acceptance(check_interval=0.1)
+
+    async def migrate_usdc(self, contract: Contract, amount: int):
+        invocation = await contract.functions["migrate_usdc"].invoke_v3(
+            amount,
+            auto_estimate=True,
+        )
+        await invocation.wait_for_acceptance(check_interval=0.1)
+
+    async def reject_deposit(self, account: Account, amount: int, salt: int):
+        invocation = (
+            await self.known_contracts["operator"]
+            .functions["reject_deposit"]
+            .invoke_v3(
+                await self.consume_operator_nonce(),
+                self.get_account_address(account),
+                formatted_asset_id(await self.get_collateral_asset_id()),
+                formatted_position_id(self.get_account_position_id(account)),
+                amount,
+                salt,
+                auto_estimate=True,
+            )
+        )
+        await invocation.wait_for_acceptance(check_interval=0.1)
+
+    async def process_old_deposit(self, account: Account, amount: int, salt: int):
+        invocation = (
+            await self.known_contracts["operator"]
+            .functions["process_old_deposit"]
+            .invoke_v3(
+                await self.consume_operator_nonce(),
+                self.get_account_address(account),
+                formatted_asset_id(await self.get_collateral_asset_id()),
+                formatted_position_id(self.get_account_position_id(account)),
+                amount,
+                salt,
                 auto_estimate=True,
             )
         )
