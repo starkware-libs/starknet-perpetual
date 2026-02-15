@@ -3809,6 +3809,8 @@ fn test_successful_deleverage() {
             base_asset_id: synthetic_id,
             deleveraged_base_amount: BASE,
             deleveraged_quote_amount: QUOTE,
+            interest_amount_deleveraged: 0,
+            interest_amount_deleverager: 0,
         );
 
     // Catch the event.
@@ -3913,6 +3915,8 @@ fn test_successful_liquidate() {
             actual_amount_quote_liquidated: QUOTE,
             actual_liquidator_fee: FEE,
             liquidated_fee_amount: INSURANCE_FEE,
+            interest_amount_liquidated: 0,
+            interest_amount_liquidator: 0,
         );
     // Catch the event.
     let events = spy.get_events().emitted_by(test_address()).events;
