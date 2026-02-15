@@ -110,6 +110,8 @@ fn SETTLEMENT_1() -> Settlement {
         actual_amount_quote_a: -442389000_i64,
         actual_fee_a: 0x184d1.try_into().unwrap(),
         actual_fee_b: 0,
+        interest_amount_a: 0,
+        interest_amount_b: 0,
     }
 }
 
@@ -151,6 +153,8 @@ fn SETTLEMENT_2() -> Settlement {
         actual_amount_quote_a: -93927900_i64,
         actual_fee_a: 0,
         actual_fee_b: 0x5bb9.try_into().unwrap(),
+        interest_amount_a: 0,
+        interest_amount_b: 0,
     }
 }
 
@@ -192,6 +196,8 @@ fn SETTLEMENT_3() -> Settlement {
         actual_amount_quote_a: -25082200_i64,
         actual_fee_a: 0,
         actual_fee_b: 0x187e.try_into().unwrap(),
+        interest_amount_a: 0,
+        interest_amount_b: 0,
     }
 }
 

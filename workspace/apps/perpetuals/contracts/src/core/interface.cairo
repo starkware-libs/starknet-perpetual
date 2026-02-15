@@ -16,6 +16,8 @@ pub struct Settlement {
     pub actual_amount_quote_a: i64,
     pub actual_fee_a: u64,
     pub actual_fee_b: u64,
+    pub interest_amount_a: i64,
+    pub interest_amount_b: i64,
 }
 
 #[starknet::interface]
