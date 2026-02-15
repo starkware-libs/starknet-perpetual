@@ -1643,6 +1643,8 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 actual_amount_quote_liquidated: liquidated_quote,
                 actual_liquidator_fee: liquidator_fee,
                 liquidated_fee_amount: liquidated_insurance_fee,
+                interest_amount_liquidated: 0,
+                interest_amount_liquidator: 0,
             );
 
         self
@@ -1920,6 +1922,8 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 base_asset_id: base_asset_id,
                 deleveraged_base_amount: deleveraged_base,
                 deleveraged_quote_amount: deleveraged_quote,
+                interest_amount_deleveraged: 0,
+                interest_amount_deleverager: 0,
             );
 
         self

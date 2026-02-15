@@ -23,6 +23,8 @@ pub trait IDeleverageManager<TContractState> {
         base_asset_id: AssetId,
         deleveraged_base_amount: i64,
         deleveraged_quote_amount: i64,
+        interest_amount_deleveraged: i64,
+        interest_amount_deleverager: i64,
     );
     fn deleverage_spot_asset(
         ref self: TContractState,
@@ -36,6 +38,7 @@ pub trait IDeleverageManager<TContractState> {
 
 #[starknet::contract]
 pub(crate) mod DeleverageManager {
+    use core::num::traits::{Pow, Zero};
     use core::panic_with_felt252;
     use core::panics::panic_with_byte_array;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
@@ -52,9 +55,12 @@ pub(crate) mod DeleverageManager {
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
     use perpetuals::core::components::snip::SNIP12MetadataImpl;
     use perpetuals::core::components::system_time::SystemTimeComponent;
+    use perpetuals::core::components::system_time::interface::ISystemTime;
     use perpetuals::core::types::asset::synthetic::{AssetType, SyntheticTrait};
     use perpetuals::core::types::position::PositionId;
-    use starknet::storage::{StorageAsPointer, StoragePath, StoragePathEntry};
+    use starknet::storage::{
+        StorageAsPointer, StoragePath, StoragePathEntry, StoragePointerReadAccess,
+    };
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalImpl as PausableInternal;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
@@ -174,6 +180,8 @@ pub(crate) mod DeleverageManager {
             base_asset_id: AssetId,
             deleveraged_base_amount: i64,
             deleveraged_quote_amount: i64,
+            interest_amount_deleveraged: i64,
+            interest_amount_deleverager: i64,
         ) {
             let deleveraged_position = self
                 .positions
@@ -196,6 +204,25 @@ pub(crate) mod DeleverageManager {
                     quote_amount_a: deleveraged_quote_amount,
                 );
 
+            // Validate interest in range for both positions before applying diffs
+            let position_mut_deleveraged = self.positions.get_position_mut(deleveraged_position_id);
+            self
+                .positions
+                .validate_interest_in_range(
+                    position: position_mut_deleveraged,
+                    position_id: deleveraged_position_id,
+                    interest_amount: interest_amount_deleveraged,
+                );
+
+            let position_mut_deleverager = self.positions.get_position_mut(deleverager_position_id);
+            self
+                .positions
+                .validate_interest_in_range(
+                    position: position_mut_deleverager,
+                    position_id: deleverager_position_id,
+                    interest_amount: interest_amount_deleverager,
+                );
+
             /// Execution:
             self
                 ._execute_deleverage(
@@ -206,6 +233,8 @@ pub(crate) mod DeleverageManager {
                     asset_id: base_asset_id,
                     deleveraged_asset_amount: deleveraged_base_amount,
                     deleveraged_collateral_amount: deleveraged_quote_amount,
+                    :interest_amount_deleveraged,
+                    :interest_amount_deleverager,
                 );
         }
         fn deleverage_spot_asset(
@@ -238,6 +267,9 @@ pub(crate) mod DeleverageManager {
                 );
 
             /// Execution:
+            // Pass default values for interest validation parameters since deleverage_spot_asset
+            // doesn't support interest amounts. Interest validation is skipped when interest
+            // amounts are zero, so these parameters are not used.
             self
                 ._execute_deleverage(
                     :deleveraged_position_id,
@@ -247,12 +279,18 @@ pub(crate) mod DeleverageManager {
                     :asset_id,
                     deleveraged_asset_amount: deleveraged_amount,
                     deleveraged_collateral_amount: deleveraged_base_collateral_amount,
+                    interest_amount_deleveraged: 0,
+                    interest_amount_deleverager: 0,
                 );
         }
     }
 
     #[generate_trait]
     pub impl InternalFunctions of DeleverageManagerFunctionsTrait {
+        fn get_max_interest_rate_per_sec(self: @ContractState) -> u32 {
+            self.positions.max_interest_rate_per_sec.read()
+        }
+
         fn _validate_deleveraged_position(
             self: @ContractState,
             position_id: PositionId,
@@ -318,15 +356,19 @@ pub(crate) mod DeleverageManager {
             asset_id: AssetId,
             deleveraged_asset_amount: i64,
             deleveraged_collateral_amount: i64,
+            interest_amount_deleveraged: i64,
+            interest_amount_deleverager: i64,
         ) {
             let deleveraged_position_diff = PositionDiff {
-                collateral_diff: deleveraged_collateral_amount.into(),
+                collateral_diff: deleveraged_collateral_amount.into()
+                    + interest_amount_deleveraged.into(),
                 asset_diff: Option::Some((asset_id, deleveraged_asset_amount.into())),
             };
             // Passing the negative of actual amounts to deleverager as it is linked to
             // deleveraged.
             let deleverager_position_diff = PositionDiff {
-                collateral_diff: -deleveraged_collateral_amount.into(),
+                collateral_diff: -deleveraged_collateral_amount.into()
+                    + interest_amount_deleverager.into(),
                 asset_diff: Option::Some((asset_id, -deleveraged_asset_amount.into())),
             };
 

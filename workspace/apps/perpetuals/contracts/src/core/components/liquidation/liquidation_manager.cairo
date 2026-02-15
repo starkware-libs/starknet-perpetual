@@ -36,6 +36,8 @@ pub trait ILiquidationManager<TContractState> {
         actual_amount_quote_liquidated: i64,
         actual_liquidator_fee: u64,
         liquidated_fee_amount: u64,
+        interest_amount_liquidated: i64,
+        interest_amount_liquidator: i64,
     );
 
     fn liquidate_spot_asset(
@@ -203,6 +205,8 @@ pub(crate) mod LiquidationManager {
             actual_amount_quote_liquidated: i64,
             actual_liquidator_fee: u64,
             liquidated_fee_amount: u64,
+            interest_amount_liquidated: i64,
+            interest_amount_liquidator: i64,
         ) {
             let liquidator_position_id = liquidator_order.position_id;
 
@@ -250,6 +254,8 @@ pub(crate) mod LiquidationManager {
                     :liquidator_order,
                     :liquidated_fee_amount,
                     :actual_liquidator_fee,
+                    interest_amount_liquidated: 0,
+                    interest_amount_liquidator: 0,
                 );
 
             self
@@ -357,6 +363,9 @@ pub(crate) mod LiquidationManager {
                 );
 
             self
+                // Pass default values for interest validation parameters since liquidate_spot_asset
+                // doesn't support interest amounts. Interest validation is skipped when interest
+                // amounts are zero, so these parameters are not used.
                 ._execute_liquidate(
                     :liquidated_position_id,
                     :liquidator_position_id,
@@ -364,6 +373,8 @@ pub(crate) mod LiquidationManager {
                     :liquidator_order,
                     :liquidated_fee_amount,
                     :actual_liquidator_fee,
+                    interest_amount_liquidated: 0,
+                    interest_amount_liquidator: 0,
                 );
 
             self
@@ -477,6 +488,8 @@ pub(crate) mod LiquidationManager {
             liquidator_order: T,
             liquidated_fee_amount: u64,
             actual_liquidator_fee: u64,
+            interest_amount_liquidated: i64,
+            interest_amount_liquidator: i64,
         ) {
             let liquidated_position = self
                 .positions
@@ -487,7 +500,8 @@ pub(crate) mod LiquidationManager {
 
             let liquidated_position_diff = PositionDiff {
                 collateral_diff: liquidated_order.quote_amount().into()
-                    - liquidated_order.fee_amount().into(),
+                    - liquidated_order.fee_amount().into()
+                    + interest_amount_liquidated.into(),
                 asset_diff: Option::Some(
                     (liquidated_order.base_asset_id(), liquidated_order.base_amount().into()),
                 ),
@@ -502,7 +516,8 @@ pub(crate) mod LiquidationManager {
                 (
                     PositionDiff {
                         collateral_diff: -liquidated_order.quote_amount().into()
-                            - actual_liquidator_fee.into(),
+                            - actual_liquidator_fee.into()
+                            + interest_amount_liquidator.into(),
                         asset_diff: Option::None,
                     },
                     Option::Some(
@@ -521,7 +536,8 @@ pub(crate) mod LiquidationManager {
                 (
                     PositionDiff {
                         collateral_diff: -liquidated_order.quote_amount().into()
-                            - actual_liquidator_fee.into(),
+                            - actual_liquidator_fee.into()
+                            + interest_amount_liquidator.into(),
                         asset_diff: Option::Some(
                             (
                                 liquidated_order.base_asset_id(),
