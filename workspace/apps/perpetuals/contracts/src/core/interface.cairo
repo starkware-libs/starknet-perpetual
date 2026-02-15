@@ -59,6 +59,8 @@ pub trait ICore<TContractState> {
         amount: u64,
         expiration: Timestamp,
         salt: felt252,
+        interest_amount_sender: i64,
+        interest_amount_recipient: i64,
     );
     fn trade(
         ref self: TContractState,

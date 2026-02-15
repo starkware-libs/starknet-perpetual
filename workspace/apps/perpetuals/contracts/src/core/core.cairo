@@ -382,6 +382,8 @@ pub mod Core {
             amount: u64,
             expiration: Timestamp,
             salt: felt252,
+            interest_amount_sender: i64,
+            interest_amount_recipient: i64,
         ) {
             self.pausable.assert_not_paused();
             self.assets.validate_assets_integrity();
@@ -397,6 +399,8 @@ pub mod Core {
                     :amount,
                     :expiration,
                     :salt,
+                    :interest_amount_sender,
+                    :interest_amount_recipient,
                 );
         }
 

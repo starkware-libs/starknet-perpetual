@@ -196,5 +196,7 @@ fn test_should_activate_registered_component() {
             amount: 100,
             expiration: Timestamp { seconds: 0 },
             salt: 0,
+            interest_amount_sender: 0,
+            interest_amount_recipient: 0,
         )
 }

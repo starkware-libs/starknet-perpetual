@@ -36,6 +36,8 @@ pub mod MockValidExternalComponent {
             amount: u64,
             expiration: starkware_utils::time::time::Timestamp,
             salt: felt252,
+            interest_amount_sender: i64,
+            interest_amount_recipient: i64,
         ) {
             println!("MOCK_TRANSFER");
             panic_with_felt252('MOCK_TRANSFER');

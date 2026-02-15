@@ -108,6 +108,8 @@ fn test_transfer_only_operator() {
             amount: TRANSFER_AMOUNT.into(),
             expiration: Time::now(),
             salt: 0,
+            interest_amount_sender: 0,
+            interest_amount_recipient: 0,
         );
 }
 
