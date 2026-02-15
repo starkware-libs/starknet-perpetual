@@ -170,6 +170,8 @@ fn test_liquidate_only_operator() {
             actual_amount_quote_liquidated: 0,
             actual_liquidator_fee: 0,
             liquidated_fee_amount: 0,
+            interest_amount_liquidated: 0,
+            interest_amount_liquidator: 0,
         );
 }
 
@@ -186,6 +188,8 @@ fn test_deleverage_only_operator() {
             base_asset_id: cfg.collateral_cfg.collateral_id,
             deleveraged_base_amount: 0,
             deleveraged_quote_amount: 0,
+            interest_amount_deleveraged: 0,
+            interest_amount_deleverager: 0,
         );
 }
 
