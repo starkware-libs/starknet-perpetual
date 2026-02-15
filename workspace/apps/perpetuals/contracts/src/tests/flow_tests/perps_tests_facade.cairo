@@ -1464,6 +1464,8 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             actual_amount_quote_a: quote,
             actual_fee_a: fee_a,
             actual_fee_b: fee_b,
+            interest_amount_a: 0,
+            interest_amount_b: 0,
         }
     }
 

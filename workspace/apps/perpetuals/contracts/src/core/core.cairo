@@ -418,6 +418,11 @@ pub mod Core {
             self.operator_nonce.use_checked_nonce(:operator_nonce);
             self.assets.validate_assets_integrity();
 
+            // Read interest validation parameters once for all settlements
+            let current_time = self.get_system_time();
+            let max_interest_rate_per_sec = self.get_max_interest_rate_per_sec();
+            let interest_rate_scale: u64 = 2_u64.pow(32);
+
             let mut tvtr_cache: Felt252Dict<Nullable<PositionTVTR>> = Default::default();
 
             for _trade in trades {
@@ -437,6 +442,11 @@ pub mod Core {
                         actual_amount_quote_a: trade.actual_amount_quote_a,
                         actual_fee_a: trade.actual_fee_a,
                         actual_fee_b: trade.actual_fee_b,
+                        interest_amount_a: trade.interest_amount_a,
+                        interest_amount_b: trade.interest_amount_b,
+                        :current_time,
+                        :max_interest_rate_per_sec,
+                        :interest_rate_scale,
                         tvtr_a_before: cached_pos_a_tvtr,
                         tvtr_b_before: cached_pos_b_tvtr,
                         check_signature: true,
@@ -505,6 +515,9 @@ pub mod Core {
             self.assets.validate_assets_integrity();
             self.operator_nonce.use_checked_nonce(:operator_nonce);
 
+            // Pass default values for interest validation parameters since interest_amount_a and
+            // interest_amount_b are zero. Interest validation is skipped when interest amounts are
+            // zero, so these parameters are not used.
             self
                 ._execute_trade(
                     :signature_a,
@@ -515,6 +528,11 @@ pub mod Core {
                     :actual_amount_quote_a,
                     :actual_fee_a,
                     :actual_fee_b,
+                    interest_amount_a: 0,
+                    interest_amount_b: 0,
+                    current_time: Timestamp { seconds: 0 },
+                    max_interest_rate_per_sec: 0,
+                    interest_rate_scale: 0,
                     tvtr_a_before: Default::default(),
                     tvtr_b_before: Default::default(),
                     check_signature: true,
@@ -992,6 +1010,10 @@ pub mod Core {
             }
 
             // Execute trade.
+
+            // Pass default values for interest validation parameters since interest_amount_a and
+            // interest_amount_b are zero. Interest validation is skipped when interest amounts are
+            // zero, so these parameters are not used.
             self
                 ._execute_trade(
                     signature_a: array![].span(),
@@ -1002,6 +1024,11 @@ pub mod Core {
                     actual_amount_quote_a: order_a.quote_amount,
                     actual_fee_a: Zero::zero(),
                     actual_fee_b: Zero::zero(),
+                    interest_amount_a: 0,
+                    interest_amount_b: 0,
+                    current_time: Timestamp { seconds: 0 },
+                    max_interest_rate_per_sec: 0,
+                    interest_rate_scale: 0,
                     tvtr_a_before: Default::default(),
                     tvtr_b_before: Default::default(),
                     check_signature: false,
@@ -1303,6 +1330,11 @@ pub mod Core {
             actual_amount_quote_a: i64,
             actual_fee_a: u64,
             actual_fee_b: u64,
+            interest_amount_a: i64,
+            interest_amount_b: i64,
+            current_time: Timestamp,
+            max_interest_rate_per_sec: u32,
+            interest_rate_scale: u64,
             tvtr_a_before: Nullable<PositionTVTR>,
             tvtr_b_before: Nullable<PositionTVTR>,
             check_signature: bool,
@@ -1324,6 +1356,32 @@ pub mod Core {
 
             let position_a = self.positions.get_position_snapshot(position_id_a);
             let position_b = self.positions.get_position_snapshot(position_id_b);
+
+            // Validate interest in range for both positions before applying diffs
+            let position_mut_a = self.positions.get_position_mut(position_id_a);
+            self
+                .positions
+                .validate_interest_in_range_with_params(
+                    position: position_mut_a,
+                    position_id: position_id_a,
+                    interest_amount: interest_amount_a,
+                    :current_time,
+                    :max_interest_rate_per_sec,
+                    :interest_rate_scale,
+                );
+
+            let position_mut_b = self.positions.get_position_mut(position_id_b);
+            self
+                .positions
+                .validate_interest_in_range_with_params(
+                    position: position_mut_b,
+                    position_id: position_id_b,
+                    interest_amount: interest_amount_b,
+                    :current_time,
+                    :max_interest_rate_per_sec,
+                    :interest_rate_scale,
+                );
+
             // Signatures validation:
             let (hash_a, hash_b) = match check_signature {
                 true => (
@@ -1367,13 +1425,17 @@ pub mod Core {
 
             /// Positions' Diffs:
             let position_diff_a = PositionDiff {
-                collateral_diff: actual_amount_quote_a.into() - actual_fee_a.into(),
+                collateral_diff: actual_amount_quote_a.into()
+                    - actual_fee_a.into()
+                    + interest_amount_a.into(),
                 asset_diff: Option::Some((order_a.base_asset_id, actual_amount_base_a.into())),
             };
 
             // Passing the negative of actual amounts to order_b as it is linked to order_a.
             let position_diff_b = PositionDiff {
-                collateral_diff: -actual_amount_quote_a.into() - actual_fee_b.into(),
+                collateral_diff: -actual_amount_quote_a.into()
+                    - actual_fee_b.into()
+                    + interest_amount_b.into(),
                 asset_diff: Option::Some((order_b.base_asset_id, -actual_amount_base_a.into())),
             };
 
