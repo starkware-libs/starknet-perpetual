@@ -4299,6 +4299,8 @@ fn test_successful_transfer() {
             amount: transfer_args.amount,
             expiration: transfer_args.expiration,
             salt: transfer_args.salt,
+            interest_amount_sender: 0,
+            interest_amount_recipient: 0,
         );
 
     // Catch the event.
@@ -4397,6 +4399,8 @@ fn test_invalid_transfer_request_amount_is_zero() {
             amount: transfer_args.amount,
             expiration: transfer_args.expiration,
             salt: transfer_args.salt,
+            interest_amount_sender: 0,
+            interest_amount_recipient: 0,
         );
 }
 

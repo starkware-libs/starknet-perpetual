@@ -88,6 +88,8 @@ fn test_successful_transfer_of_vault_share() {
             amount: transfer_args.amount,
             expiration: transfer_args.expiration,
             salt: transfer_args.salt,
+            interest_amount_sender: 0,
+            interest_amount_recipient: 0,
         );
 
     validate_asset_balance(
@@ -175,6 +177,8 @@ fn test_unsuccessful_transfer_of_vault_share_not_enough_balance() {
             amount: transfer_args.amount,
             expiration: transfer_args.expiration,
             salt: transfer_args.salt,
+            interest_amount_sender: 0,
+            interest_amount_recipient: 0,
         );
 }
 
@@ -234,6 +238,8 @@ fn test_transfer_pending_asset() {
             amount: transfer_args.amount,
             expiration: transfer_args.expiration,
             salt: transfer_args.salt,
+            interest_amount_sender: 0,
+            interest_amount_recipient: 0,
         );
     validate_asset_balance(
         ref :state,
@@ -302,5 +308,7 @@ fn test_transfer_non_existent_asset() {
             amount: transfer_args.amount,
             expiration: transfer_args.expiration,
             salt: transfer_args.salt,
+            interest_amount_sender: 0,
+            interest_amount_recipient: 0,
         );
 }

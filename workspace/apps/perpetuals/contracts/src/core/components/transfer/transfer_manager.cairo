@@ -52,6 +52,8 @@ pub trait ITransferManager<TContractState> {
         amount: u64,
         expiration: Timestamp,
         salt: felt252,
+        interest_amount_sender: i64,
+        interest_amount_recipient: i64,
     );
 }
 
@@ -255,6 +257,8 @@ pub(crate) mod TransferManager {
             amount: u64,
             expiration: Timestamp,
             salt: felt252,
+            interest_amount_sender: i64,
+            interest_amount_recipient: i64,
         ) {
             validate_expiration(:expiration, err: SIGNED_TX_EXPIRED);
             assert(recipient != position_id, INVALID_SAME_POSITIONS);
@@ -268,7 +272,35 @@ pub(crate) mod TransferManager {
                     },
                     public_key: position.get_owner_public_key(),
                 );
-            self._execute_transfer(:recipient, :position_id, collateral_id: asset_id, :amount);
+            let sender_position = self.positions.get_position_mut(:position_id);
+            let recipient_position = self.positions.get_position_mut(position_id: recipient);
+
+            // Validate interest in range
+            self
+                .positions
+                .validate_interest_in_range(
+                    position: sender_position,
+                    position_id: position_id,
+                    interest_amount: interest_amount_sender,
+                );
+            self
+                .positions
+                .validate_interest_in_range(
+                    position: recipient_position,
+                    position_id: recipient,
+                    interest_amount: interest_amount_recipient,
+                );
+
+            // Execute transfer
+            self
+                ._execute_transfer(
+                    :recipient,
+                    :position_id,
+                    collateral_id: asset_id,
+                    :amount,
+                    :interest_amount_sender,
+                    :interest_amount_recipient,
+                );
             self
                 .emit(
                     Transfer {
@@ -292,6 +324,8 @@ pub(crate) mod TransferManager {
             position_id: PositionId,
             collateral_id: AssetId,
             amount: u64,
+            interest_amount_sender: i64,
+            interest_amount_recipient: i64,
         ) {
             // Parameters
 
@@ -300,11 +334,13 @@ pub(crate) mod TransferManager {
                 .assets
                 .get_collateral_id()) {
                 let position_diff_sender = PositionDiff {
-                    collateral_diff: -amount.into(), asset_diff: Option::None,
+                    collateral_diff: -amount.into() + interest_amount_sender.into(),
+                    asset_diff: Option::None,
                 };
 
                 let position_diff_recipient = PositionDiff {
-                    collateral_diff: amount.into(), asset_diff: Option::None,
+                    collateral_diff: amount.into() + interest_amount_recipient.into(),
+                    asset_diff: Option::None,
                 };
                 (position_diff_sender, position_diff_recipient)
             } else {
@@ -328,12 +364,12 @@ pub(crate) mod TransferManager {
                         position: sender_position, asset_id: collateral_id, amount: signed_amount,
                     );
                 let position_diff_sender = PositionDiff {
-                    collateral_diff: 0_i64.into(),
+                    collateral_diff: interest_amount_sender.into(),
                     asset_diff: Option::Some((collateral_id, signed_amount.into())),
                 };
 
                 let position_diff_recipient = PositionDiff {
-                    collateral_diff: 0_i64.into(),
+                    collateral_diff: interest_amount_recipient.into(),
                     asset_diff: Option::Some((collateral_id, -signed_amount.into())),
                 };
                 (position_diff_sender, position_diff_recipient)

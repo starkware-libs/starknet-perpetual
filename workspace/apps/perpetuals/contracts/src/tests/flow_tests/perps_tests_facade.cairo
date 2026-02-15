@@ -1258,6 +1258,8 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 amount: amount,
                 expiration: expiration,
                 salt: salt,
+                interest_amount_sender: 0,
+                interest_amount_recipient: 0,
             );
 
         self
