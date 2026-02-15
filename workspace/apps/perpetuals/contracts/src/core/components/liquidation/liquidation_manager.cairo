@@ -36,6 +36,8 @@ pub trait ILiquidationManager<TContractState> {
         actual_amount_quote_liquidated: i64,
         actual_liquidator_fee: u64,
         liquidated_fee_amount: u64,
+        interest_amount_liquidated: i64,
+        interest_amount_liquidator: i64,
     );
 
     fn liquidate_spot_asset(
@@ -47,6 +49,9 @@ pub trait ILiquidationManager<TContractState> {
         actual_amount_base_collateral: i64,
         actual_liquidator_fee: u64,
         liquidated_fee_amount: u64,
+        interest_amount_liquidated: i64,
+        interest_amount_liquidator: i64,
+        interest_amount_liquidator_receiver: i64,
     );
 }
 
@@ -203,6 +208,8 @@ pub(crate) mod LiquidationManager {
             actual_amount_quote_liquidated: i64,
             actual_liquidator_fee: u64,
             liquidated_fee_amount: u64,
+            interest_amount_liquidated: i64,
+            interest_amount_liquidator: i64,
         ) {
             let liquidator_position_id = liquidator_order.position_id;
 
@@ -250,6 +257,9 @@ pub(crate) mod LiquidationManager {
                     :liquidator_order,
                     :liquidated_fee_amount,
                     :actual_liquidator_fee,
+                    :interest_amount_liquidated,
+                    :interest_amount_liquidator,
+                    interest_amount_liquidator_receiver: 0,
                 );
 
             self
@@ -303,6 +313,9 @@ pub(crate) mod LiquidationManager {
             actual_amount_base_collateral: i64,
             actual_liquidator_fee: u64,
             liquidated_fee_amount: u64,
+            interest_amount_liquidated: i64,
+            interest_amount_liquidator: i64,
+            interest_amount_liquidator_receiver: i64,
         ) {
             /// Validations:
             let collateral_id = self.assets.get_collateral_id();
@@ -364,6 +377,9 @@ pub(crate) mod LiquidationManager {
                     :liquidator_order,
                     :liquidated_fee_amount,
                     :actual_liquidator_fee,
+                    :interest_amount_liquidated,
+                    :interest_amount_liquidator,
+                    :interest_amount_liquidator_receiver,
                 );
 
             self
@@ -477,17 +493,21 @@ pub(crate) mod LiquidationManager {
             liquidator_order: T,
             liquidated_fee_amount: u64,
             actual_liquidator_fee: u64,
+            interest_amount_liquidated: i64,
+            interest_amount_liquidator: i64,
+            interest_amount_liquidator_receiver: i64,
         ) {
             let liquidated_position = self
                 .positions
-                .get_position_snapshot(position_id: liquidated_position_id);
+                .get_position_mut(position_id: liquidated_position_id);
             let liquidator_position = self
                 .positions
-                .get_position_snapshot(position_id: liquidator_position_id);
+                .get_position_mut(position_id: liquidator_position_id);
 
             let liquidated_position_diff = PositionDiff {
                 collateral_diff: liquidated_order.quote_amount().into()
-                    - liquidated_order.fee_amount().into(),
+                    - liquidated_order.fee_amount().into()
+                    + interest_amount_liquidated.into(),
                 asset_diff: Option::Some(
                     (liquidated_order.base_asset_id(), liquidated_order.base_amount().into()),
                 ),
@@ -502,12 +522,13 @@ pub(crate) mod LiquidationManager {
                 (
                     PositionDiff {
                         collateral_diff: -liquidated_order.quote_amount().into()
-                            - actual_liquidator_fee.into(),
+                            - actual_liquidator_fee.into()
+                            + interest_amount_liquidator.into(),
                         asset_diff: Option::None,
                     },
                     Option::Some(
                         PositionDiff {
-                            collateral_diff: Zero::zero(),
+                            collateral_diff: interest_amount_liquidator_receiver.into(),
                             asset_diff: Option::Some(
                                 (
                                     liquidated_order.base_asset_id(),
@@ -521,7 +542,8 @@ pub(crate) mod LiquidationManager {
                 (
                     PositionDiff {
                         collateral_diff: -liquidated_order.quote_amount().into()
-                            - actual_liquidator_fee.into(),
+                            - actual_liquidator_fee.into()
+                            + interest_amount_liquidator.into(),
                         asset_diff: Option::Some(
                             (
                                 liquidated_order.base_asset_id(),
@@ -533,18 +555,49 @@ pub(crate) mod LiquidationManager {
                 )
             };
 
+            // Validate interest in range for both positions before applying diffs
+            self
+                .positions
+                .validate_interest_in_range(
+                    position: liquidated_position,
+                    position_id: liquidated_position_id,
+                    interest_amount: interest_amount_liquidated,
+                );
+
+            self
+                .positions
+                .validate_interest_in_range(
+                    position: liquidator_position,
+                    position_id: liquidator_position_id,
+                    interest_amount: interest_amount_liquidator,
+                );
+
+            if liquidator_order.receive_position() != liquidator_order.position_id() {
+                let reciever_position_id = liquidator_order.receive_position();
+
+                self
+                    .positions
+                    .validate_interest_in_range(
+                        position: self
+                            .positions
+                            .get_position_mut(position_id: reciever_position_id),
+                        position_id: reciever_position_id,
+                        interest_amount: interest_amount_liquidator_receiver,
+                    );
+            }
+
             /// Validations - Fundamentals:
             self
                 ._validate_liquidated_position(
                     position_id: liquidated_position_id,
-                    position: liquidated_position,
+                    position: liquidated_position.into(),
                     position_diff: liquidated_position_diff,
                 );
             self
                 .positions
                 .validate_healthy_or_healthier_position(
                     position_id: liquidator_position_id,
-                    position: liquidator_position,
+                    position: liquidator_position.into(),
                     position_diff: liquidator_position_diff,
                     tvtr_before: Default::default(),
                 );

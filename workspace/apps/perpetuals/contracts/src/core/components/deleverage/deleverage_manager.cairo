@@ -23,6 +23,8 @@ pub trait IDeleverageManager<TContractState> {
         base_asset_id: AssetId,
         deleveraged_base_amount: i64,
         deleveraged_quote_amount: i64,
+        interest_amount_deleveraged: i64,
+        interest_amount_deleverager: i64,
     );
     fn deleverage_spot_asset(
         ref self: TContractState,
@@ -31,6 +33,8 @@ pub trait IDeleverageManager<TContractState> {
         asset_id: AssetId,
         deleveraged_amount: i64,
         deleveraged_base_collateral_amount: i64,
+        interest_amount_deleveraged: i64,
+        interest_amount_deleverager: i64,
     );
 }
 
@@ -54,7 +58,9 @@ pub(crate) mod DeleverageManager {
     use perpetuals::core::components::system_time::SystemTimeComponent;
     use perpetuals::core::types::asset::synthetic::{AssetType, SyntheticTrait};
     use perpetuals::core::types::position::PositionId;
-    use starknet::storage::{StorageAsPointer, StoragePath, StoragePathEntry};
+    use starknet::storage::{
+        StorageAsPointer, StoragePath, StoragePathEntry, StoragePointerReadAccess,
+    };
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalImpl as PausableInternal;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
@@ -174,13 +180,15 @@ pub(crate) mod DeleverageManager {
             base_asset_id: AssetId,
             deleveraged_base_amount: i64,
             deleveraged_quote_amount: i64,
+            interest_amount_deleveraged: i64,
+            interest_amount_deleverager: i64,
         ) {
             let deleveraged_position = self
                 .positions
-                .get_position_snapshot(position_id: deleveraged_position_id);
+                .get_position_mut(position_id: deleveraged_position_id);
             let deleverager_position = self
                 .positions
-                .get_position_snapshot(position_id: deleverager_position_id);
+                .get_position_mut(position_id: deleverager_position_id);
 
             /// Validation:
             self.assets.validate_asset_active(asset_id: base_asset_id);
@@ -189,11 +197,28 @@ pub(crate) mod DeleverageManager {
                 ._validate_imposed_reduction_trade(
                     position_id_a: deleveraged_position_id,
                     position_id_b: deleverager_position_id,
-                    position_a: deleveraged_position,
-                    position_b: deleverager_position,
+                    position_a: deleveraged_position.into(),
+                    position_b: deleverager_position.into(),
                     :base_asset_id,
                     base_amount_a: deleveraged_base_amount,
                     quote_amount_a: deleveraged_quote_amount,
+                );
+
+            // Validate interest in range for both positions before applying diffs
+            self
+                .positions
+                .validate_interest_in_range(
+                    position: deleveraged_position,
+                    position_id: deleveraged_position_id,
+                    interest_amount: interest_amount_deleveraged,
+                );
+
+            self
+                .positions
+                .validate_interest_in_range(
+                    position: deleverager_position,
+                    position_id: deleverager_position_id,
+                    interest_amount: interest_amount_deleverager,
                 );
 
             /// Execution:
@@ -201,11 +226,13 @@ pub(crate) mod DeleverageManager {
                 ._execute_deleverage(
                     :deleveraged_position_id,
                     :deleverager_position_id,
-                    :deleveraged_position,
-                    :deleverager_position,
+                    deleveraged_position: deleveraged_position.into(),
+                    deleverager_position: deleverager_position.into(),
                     asset_id: base_asset_id,
                     deleveraged_asset_amount: deleveraged_base_amount,
                     deleveraged_collateral_amount: deleveraged_quote_amount,
+                    :interest_amount_deleveraged,
+                    :interest_amount_deleverager,
                 );
         }
         fn deleverage_spot_asset(
@@ -215,13 +242,15 @@ pub(crate) mod DeleverageManager {
             asset_id: AssetId,
             deleveraged_amount: i64,
             deleveraged_base_collateral_amount: i64,
+            interest_amount_deleveraged: i64,
+            interest_amount_deleverager: i64,
         ) {
             let deleveraged_position = self
                 .positions
-                .get_position_snapshot(position_id: deleveraged_position_id);
+                .get_position_mut(position_id: deleveraged_position_id);
             let deleverager_position = self
                 .positions
-                .get_position_snapshot(position_id: deleverager_position_id);
+                .get_position_mut(position_id: deleverager_position_id);
 
             /// Validation:
             self.assets.validate_asset_active(:asset_id);
@@ -230,23 +259,45 @@ pub(crate) mod DeleverageManager {
                 ._validate_imposed_reduction_trade(
                     position_id_a: deleveraged_position_id,
                     position_id_b: deleverager_position_id,
-                    position_a: deleveraged_position,
-                    position_b: deleverager_position,
+                    position_a: deleveraged_position.into(),
+                    position_b: deleverager_position.into(),
                     base_asset_id: asset_id,
                     base_amount_a: deleveraged_amount,
                     quote_amount_a: deleveraged_base_collateral_amount,
                 );
 
+            // Validate interest in range for both positions before applying diffs
+            self
+                .positions
+                .validate_interest_in_range(
+                    position: deleveraged_position,
+                    position_id: deleveraged_position_id,
+                    interest_amount: interest_amount_deleveraged,
+                );
+
+            self
+                .positions
+                .validate_interest_in_range(
+                    position: deleverager_position,
+                    position_id: deleverager_position_id,
+                    interest_amount: interest_amount_deleverager,
+                );
+
             /// Execution:
+            // Pass default values for interest validation parameters since deleverage_spot_asset
+            // doesn't support interest amounts. Interest validation is skipped when interest
+            // amounts are zero, so these parameters are not used.
             self
                 ._execute_deleverage(
                     :deleveraged_position_id,
                     :deleverager_position_id,
-                    :deleveraged_position,
-                    :deleverager_position,
+                    deleveraged_position: deleveraged_position.into(),
+                    deleverager_position: deleverager_position.into(),
                     :asset_id,
                     deleveraged_asset_amount: deleveraged_amount,
                     deleveraged_collateral_amount: deleveraged_base_collateral_amount,
+                    :interest_amount_deleveraged,
+                    :interest_amount_deleverager,
                 );
         }
     }
@@ -318,15 +369,19 @@ pub(crate) mod DeleverageManager {
             asset_id: AssetId,
             deleveraged_asset_amount: i64,
             deleveraged_collateral_amount: i64,
+            interest_amount_deleveraged: i64,
+            interest_amount_deleverager: i64,
         ) {
             let deleveraged_position_diff = PositionDiff {
-                collateral_diff: deleveraged_collateral_amount.into(),
+                collateral_diff: deleveraged_collateral_amount.into()
+                    + interest_amount_deleveraged.into(),
                 asset_diff: Option::Some((asset_id, deleveraged_asset_amount.into())),
             };
             // Passing the negative of actual amounts to deleverager as it is linked to
             // deleveraged.
             let deleverager_position_diff = PositionDiff {
-                collateral_diff: -deleveraged_collateral_amount.into(),
+                collateral_diff: -deleveraged_collateral_amount.into()
+                    + interest_amount_deleverager.into(),
                 asset_diff: Option::Some((asset_id, -deleveraged_asset_amount.into())),
             };
 

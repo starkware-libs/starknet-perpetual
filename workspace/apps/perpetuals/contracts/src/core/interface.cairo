@@ -91,6 +91,8 @@ pub trait ICore<TContractState> {
         actual_amount_quote_liquidated: i64,
         actual_liquidator_fee: u64,
         liquidated_fee_amount: u64,
+        interest_amount_liquidated: i64,
+        interest_amount_liquidator: i64,
     );
     fn deleverage(
         ref self: TContractState,
@@ -100,6 +102,8 @@ pub trait ICore<TContractState> {
         base_asset_id: AssetId,
         deleveraged_base_amount: i64,
         deleveraged_quote_amount: i64,
+        interest_amount_deleveraged: i64,
+        interest_amount_deleverager: i64,
     );
     fn deleverage_spot_asset(
         ref self: TContractState,
@@ -109,6 +113,8 @@ pub trait ICore<TContractState> {
         asset_id: AssetId,
         deleveraged_amount: i64,
         deleveraged_base_collateral_amount: i64,
+        interest_amount_deleveraged: i64,
+        interest_amount_deleverager: i64,
     );
     fn reduce_asset_position(
         ref self: TContractState,
@@ -209,6 +215,9 @@ pub trait ICore<TContractState> {
         actual_amount_base_collateral: i64,
         actual_liquidator_fee: u64,
         liquidated_fee_amount: u64,
+        interest_amount_liquidated: i64,
+        interest_amount_liquidator: i64,
+        interest_amount_liquidator_receiver: i64,
     );
 
     fn enable_escape_hatch(ref self: TContractState);
