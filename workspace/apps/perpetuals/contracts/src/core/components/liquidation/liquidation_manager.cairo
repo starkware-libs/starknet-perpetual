@@ -549,6 +549,21 @@ pub(crate) mod LiquidationManager {
                     tvtr_before: Default::default(),
                 );
 
+            if let Option::Some(liquidator_receive_position_diff) =
+                optional_liquidator_receive_position_diff {
+                let liquidator_receive_position = self
+                    .positions
+                    .get_position_snapshot(position_id: liquidator_order.receive_position());
+                self
+                    .positions
+                    .validate_healthy_or_healthier_position(
+                        position_id: liquidator_order.receive_position(),
+                        position: liquidator_receive_position,
+                        position_diff: liquidator_receive_position_diff,
+                        tvtr_before: Default::default(),
+                    );
+            }
+
             let insurance_position_diff = PositionDiff {
                 collateral_diff: liquidated_fee_amount.into(), asset_diff: Option::None,
             };

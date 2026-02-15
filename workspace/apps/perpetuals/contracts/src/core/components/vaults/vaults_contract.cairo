@@ -82,7 +82,6 @@ pub(crate) mod VaultsManager {
     use crate::core::utils::{validate_signature, validate_trade};
     use super::{ConvertPositionToVault, IVaultExternal, LimitOrder, Signature};
 
-
     #[event]
     #[derive(Drop, starknet::Event)]
     pub enum Event {
@@ -457,6 +456,7 @@ pub(crate) mod VaultsManager {
 
             let vault_position = self.positions.get_position_snapshot(vault_position_id);
             let redeeming_position = self.positions.get_position_snapshot(redeeming_position_id);
+            let receiving_position = self.positions.get_position_snapshot(receiving_position_id);
 
             let amount_to_burn = actual_shares_user;
             let value_to_receive = actual_collateral_user;
@@ -626,8 +626,15 @@ pub(crate) mod VaultsManager {
                     position: redeeming_position, asset_id: order.base_asset_id,
                 );
 
-            // no need to validate health as can only receive collateral
             if let Option::Some(position_diff) = receiving_position_diff {
+                self
+                    .positions
+                    .validate_healthy_or_healthier_position(
+                        position_id: receiving_position_id,
+                        position: receiving_position,
+                        position_diff: position_diff,
+                        tvtr_before: Default::default(),
+                    );
                 self
                     .positions
                     .apply_diff(position_id: receiving_position_id, position_diff: position_diff);
