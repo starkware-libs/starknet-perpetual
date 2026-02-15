@@ -54,6 +54,7 @@ pub(crate) mod VaultsManager {
     use perpetuals::core::components::positions::Positions as PositionsComponent;
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
     use perpetuals::core::components::system_time::SystemTimeComponent;
+    use perpetuals::core::errors::AMOUNT_OVERFLOW;
     use perpetuals::core::types::asset::AssetId;
     use perpetuals::core::types::position::{PositionId, PositionTrait};
     use starkware_utils::components::pausable::PausableComponent;
@@ -81,7 +82,6 @@ pub(crate) mod VaultsManager {
     use crate::core::types::position::PositionDiff;
     use crate::core::utils::{validate_signature, validate_trade};
     use super::{ConvertPositionToVault, IVaultExternal, LimitOrder, Signature};
-
 
     #[event]
     #[derive(Drop, starknet::Event)]
@@ -212,6 +212,10 @@ pub(crate) mod VaultsManager {
                 .positions
                 .get_position_snapshot(position_id: from_position_id);
 
+            let receiving_position = self
+                .positions
+                .get_position_snapshot(position_id: receiving_position_id);
+
             let order_hash = validate_signature(
                 public_key: sending_position_snapshot.get_owner_public_key(),
                 message: order,
@@ -279,6 +283,22 @@ pub(crate) mod VaultsManager {
                     position_diff: sending_position_diff,
                     tvtr_before: Default::default(),
                 );
+
+            if (receiving_position_id != from_position_id) {
+                let shares: i64 = quantised_minted_shares.try_into().expect(AMOUNT_OVERFLOW);
+                let position_diff_receiving = PositionDiff {
+                    collateral_diff: 0_i64.into(),
+                    asset_diff: Option::Some((vault_config.asset_id, shares.into())),
+                };
+                self
+                    .positions
+                    .validate_healthy_or_healthier_position(
+                        position_id: receiving_position_id,
+                        position: receiving_position,
+                        position_diff: position_diff_receiving,
+                        tvtr_before: Default::default(),
+                    );
+            }
 
             self
                 .positions
@@ -457,6 +477,7 @@ pub(crate) mod VaultsManager {
 
             let vault_position = self.positions.get_position_snapshot(vault_position_id);
             let redeeming_position = self.positions.get_position_snapshot(redeeming_position_id);
+            let receiving_position = self.positions.get_position_snapshot(receiving_position_id);
 
             let amount_to_burn = actual_shares_user;
             let value_to_receive = actual_collateral_user;
@@ -626,8 +647,15 @@ pub(crate) mod VaultsManager {
                     position: redeeming_position, asset_id: order.base_asset_id,
                 );
 
-            // no need to validate health as can only receive collateral
             if let Option::Some(position_diff) = receiving_position_diff {
+                self
+                    .positions
+                    .validate_healthy_or_healthier_position(
+                        position_id: receiving_position_id,
+                        position: receiving_position,
+                        position_diff: position_diff,
+                        tvtr_before: Default::default(),
+                    );
                 self
                     .positions
                     .apply_diff(position_id: receiving_position_id, position_diff: position_diff);

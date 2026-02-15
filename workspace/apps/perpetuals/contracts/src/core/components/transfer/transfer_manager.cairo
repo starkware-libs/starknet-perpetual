@@ -330,6 +330,7 @@ pub(crate) mod TransferManager {
             // Parameters
 
             let sender_position = self.positions.get_position_snapshot(:position_id);
+            let recipient_position = self.positions.get_position_snapshot(position_id: recipient);
             let (position_diff_sender, position_diff_recipient) = if (collateral_id == self
                 .assets
                 .get_collateral_id()) {
@@ -382,6 +383,15 @@ pub(crate) mod TransferManager {
                     :position_id,
                     position: sender_position,
                     position_diff: position_diff_sender,
+                    tvtr_before: Default::default(),
+                );
+
+            self
+                .positions
+                .validate_healthy_or_healthier_position(
+                    position_id: recipient,
+                    position: recipient_position,
+                    position_diff: position_diff_recipient,
                     tvtr_before: Default::default(),
                 );
 
