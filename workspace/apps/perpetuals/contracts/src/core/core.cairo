@@ -533,6 +533,8 @@ pub mod Core {
             /// The `liquidated_fee_amount` is paid by the liquidated position to the
             /// insurance fund position.
             liquidated_fee_amount: u64,
+            interest_amount_liquidated: i64,
+            interest_amount_liquidator: i64,
         ) {
             self.pausable.assert_not_paused();
             self.assets.validate_assets_integrity();
@@ -548,6 +550,8 @@ pub mod Core {
                     :actual_amount_quote_liquidated,
                     :actual_liquidator_fee,
                     :liquidated_fee_amount,
+                    :interest_amount_liquidated,
+                    :interest_amount_liquidator,
                 );
         }
 
@@ -576,6 +580,8 @@ pub mod Core {
             base_asset_id: AssetId,
             deleveraged_base_amount: i64,
             deleveraged_quote_amount: i64,
+            interest_amount_deleveraged: i64,
+            interest_amount_deleverager: i64,
         ) {
             /// Validations:
             self.pausable.assert_not_paused();
@@ -590,7 +596,9 @@ pub mod Core {
                     :base_asset_id,
                     :deleveraged_base_amount,
                     :deleveraged_quote_amount,
-                )
+                    :interest_amount_deleveraged,
+                    :interest_amount_deleverager,
+                );
         }
 
         /// Executes a spot asset deleverage of a user position with a deleverager position.
@@ -617,6 +625,8 @@ pub mod Core {
             asset_id: AssetId,
             deleveraged_amount: i64,
             deleveraged_base_collateral_amount: i64,
+            interest_amount_deleveraged: i64,
+            interest_amount_deleverager: i64,
         ) {
             /// Validations:
             self.pausable.assert_not_paused();
@@ -631,6 +641,8 @@ pub mod Core {
                     :asset_id,
                     :deleveraged_amount,
                     :deleveraged_base_collateral_amount,
+                    :interest_amount_deleveraged,
+                    :interest_amount_deleverager,
                 )
         }
 
@@ -1249,6 +1261,9 @@ pub mod Core {
             actual_amount_base_collateral: i64,
             actual_liquidator_fee: u64,
             liquidated_fee_amount: u64,
+            interest_amount_liquidated: i64,
+            interest_amount_liquidator: i64,
+            interest_amount_liquidator_receiver: i64,
         ) {
             self.pausable.assert_not_paused();
             self.assets.validate_assets_integrity();
@@ -1265,6 +1280,9 @@ pub mod Core {
                     :actual_amount_base_collateral,
                     :actual_liquidator_fee,
                     :liquidated_fee_amount,
+                    :interest_amount_liquidated,
+                    :interest_amount_liquidator,
+                    :interest_amount_liquidator_receiver,
                 );
         }
 
