@@ -12,8 +12,8 @@ pub mod ProtocolVault {
     use perpetuals::core::components::positions::interface::{
         IPositionsDispatcher, IPositionsDispatcherTrait,
     };
-    use starknet::ContractAddress;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
+    use starknet::{ContractAddress, get_caller_address};
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent::InternalReplaceabilityTrait;
     use starkware_utils::components::roles::RolesComponent;
@@ -134,7 +134,7 @@ pub mod ProtocolVault {
             self
                 .erc4626
                 ._withdraw(
-                    caller: perps,
+                    caller: get_caller_address(),
                     receiver: perps,
                     owner: perps,
                     assets: value_of_shares,
