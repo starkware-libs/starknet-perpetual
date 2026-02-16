@@ -758,6 +758,9 @@ pub mod Core {
             vault_signature: Signature,
             actual_shares_user: i64,
             actual_collateral_user: i64,
+            interest_amount_vault_position: i64,
+            interest_amount_sender: i64,
+            interest_amount_receiver: i64,
         ) {
             self.pausable.assert_not_paused();
             self.assets.validate_assets_integrity();
@@ -772,6 +775,9 @@ pub mod Core {
                     :vault_signature,
                     :actual_shares_user,
                     :actual_collateral_user,
+                    :interest_amount_vault_position,
+                    :interest_amount_sender,
+                    :interest_amount_receiver,
                 )
         }
 
@@ -784,6 +790,8 @@ pub mod Core {
             liquidated_asset_id: AssetId,
             actual_shares_user: i64,
             actual_collateral_user: i64,
+            interest_amount_vault_position: i64,
+            interest_amount_liquidated: i64,
         ) {
             self.pausable.assert_not_paused();
             self.assets.validate_assets_integrity();
@@ -798,6 +806,8 @@ pub mod Core {
                     :liquidated_asset_id,
                     :actual_shares_user,
                     :actual_collateral_user,
+                    :interest_amount_vault_position,
+                    :interest_amount_liquidated,
                 )
         }
         fn activate_vault(
@@ -820,6 +830,8 @@ pub mod Core {
             signature: Span<felt252>,
             order: LimitOrder,
             correlation_id: felt252,
+            interest_amount_vault_position: i64,
+            interest_amount_sender: i64,
         ) {
             self.pausable.assert_not_paused();
             self.assets.validate_assets_integrity();
@@ -827,7 +839,13 @@ pub mod Core {
             self
                 .external_components
                 ._get_vault_manager_dispatcher()
-                .invest_in_vault(:signature, :order, :correlation_id)
+                .invest_in_vault(
+                    :signature,
+                    :order,
+                    :correlation_id,
+                    :interest_amount_vault_position,
+                    :interest_amount_sender,
+                )
         }
 
         // Forced actions.
