@@ -365,9 +365,9 @@ pub(crate) mod VaultsManager {
                         vault_position_id: vault_config.position_id.into(),
                         redeeming_position_id: order.source_position,
                         receiving_position_id: order.receive_position,
-                        shares_redeemed_amount: actual_shares_user,
-                        collateral_received_amount: actual_collateral_user,
-                        collateral_requested_amount: order.quote_amount,
+                        shares_redeemed_amount: actual_shares_user.abs(),
+                        collateral_received_amount: actual_collateral_user.abs(),
+                        collateral_requested_amount: order.quote_amount.abs(),
                         vault_asset_id: vault_config.asset_id,
                         invested_asset_id: self.assets.get_collateral_id(),
                     },
@@ -422,8 +422,8 @@ pub(crate) mod VaultsManager {
                             .into(),
                         liquidated_position_id: liquidated_position_id,
                         vault_asset_id: liquidated_asset_id,
-                        shares_liquidated_amount: actual_shares_user,
-                        collateral_received_amount: actual_collateral_user,
+                        shares_liquidated_amount: actual_shares_user.abs(),
+                        collateral_received_amount: actual_collateral_user.abs(),
                     },
                 );
         }
