@@ -223,6 +223,8 @@ pub mod Core {
         DepositCanceled: deposit_events::DepositCanceled,
         DepositProcessed: deposit_events::DepositProcessed,
         InvestInVault: vault_events::InvestInVault,
+        LiquidateVaultShares: vault_events::LiquidateVaultShares,
+        RedeemVaultShares: vault_events::RedeemVaultShares,
     }
 
     #[constructor]
