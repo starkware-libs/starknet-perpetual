@@ -10,7 +10,12 @@ pub trait IVaultExternal<TContractState> {
         ref self: TContractState, order: ConvertPositionToVault, signature: Signature,
     );
     fn invest_in_vault(
-        ref self: TContractState, signature: Signature, order: LimitOrder, correlation_id: felt252,
+        ref self: TContractState,
+        signature: Signature,
+        order: LimitOrder,
+        correlation_id: felt252,
+        interest_amount_vault_position: i64,
+        interest_amount_sender: i64,
     );
     fn redeem_from_vault(
         ref self: TContractState,
@@ -20,6 +25,9 @@ pub trait IVaultExternal<TContractState> {
         vault_signature: Signature,
         actual_shares_user: i64,
         actual_collateral_user: i64,
+        interest_amount_vault_position: i64,
+        interest_amount_sender: i64,
+        interest_amount_receiver: i64,
     );
 
     fn liquidate_vault_shares(
@@ -30,6 +38,8 @@ pub trait IVaultExternal<TContractState> {
         liquidated_asset_id: AssetId,
         actual_shares_user: i64,
         actual_collateral_user: i64,
+        interest_amount_vault_position: i64,
+        interest_amount_liquidated: i64,
     );
     fn force_redeem_from_vault(
         ref self: TContractState, order: LimitOrder, vault_approval: LimitOrder,
@@ -188,6 +198,8 @@ pub(crate) mod VaultsManager {
             signature: Signature,
             order: LimitOrder,
             correlation_id: felt252,
+            interest_amount_vault_position: i64,
+            interest_amount_sender: i64,
         ) {
             let vault_config = self.vaults.get_vault_config_for_asset(order.base_asset_id);
             let from_position_id = order.source_position;
@@ -207,12 +219,10 @@ pub(crate) mod VaultsManager {
             let receiving_position_id = order.receive_position;
             let salt = order.salt;
 
-            let sending_position_snapshot = self
-                .positions
-                .get_position_snapshot(position_id: from_position_id);
+            let sending_position = self.positions.get_position_mut(position_id: from_position_id);
 
             let order_hash = validate_signature(
-                public_key: sending_position_snapshot.get_owner_public_key(),
+                public_key: sending_position.into().get_owner_public_key(),
                 message: order,
                 signature: signature,
             );
@@ -266,15 +276,33 @@ pub(crate) mod VaultsManager {
                     actual_fee: 0_u64,
                 );
 
+            // Validate interest amounts in range
+            self
+                .positions
+                .validate_interest_in_range(
+                    position: sending_position,
+                    position_id: from_position_id,
+                    interest_amount: interest_amount_sender,
+                );
+            let vault_position = self.positions.get_position_mut(vault_position_id);
+            self
+                .positions
+                .validate_interest_in_range(
+                    position: vault_position,
+                    position_id: vault_position_id,
+                    interest_amount: interest_amount_vault_position,
+                );
+
             let sending_position_diff = PositionDiff {
-                collateral_diff: order.quote_amount.into(), asset_diff: Option::None,
+                collateral_diff: order.quote_amount.into() + interest_amount_sender.into(),
+                asset_diff: Option::None,
             };
 
             self
                 .positions
                 .validate_healthy_or_healthier_position(
                     position_id: from_position_id,
-                    position: sending_position_snapshot,
+                    position: sending_position.into(),
                     position_diff: sending_position_diff,
                     tvtr_before: Default::default(),
                 );
@@ -291,8 +319,19 @@ pub(crate) mod VaultsManager {
             assert(new_collateral_balance == current_collateral_balance, 'COLLATERAL_NOT_RETURNED');
 
             let vault_position_diff = PositionDiff {
-                collateral_diff: order.quote_amount.abs().into(), asset_diff: Option::None,
+                collateral_diff: order.quote_amount.abs().into()
+                    + interest_amount_vault_position.into(),
+                asset_diff: Option::None,
             };
+
+            self
+                .positions
+                .validate_healthy_or_healthier_position(
+                    position_id: vault_position_id,
+                    position: vault_position.into(),
+                    position_diff: vault_position_diff,
+                    tvtr_before: Default::default(),
+                );
 
             self
                 .positions
@@ -342,6 +381,9 @@ pub(crate) mod VaultsManager {
             vault_signature: Span<felt252>,
             actual_shares_user: i64,
             actual_collateral_user: i64,
+            interest_amount_vault_position: i64,
+            interest_amount_sender: i64,
+            interest_amount_receiver: i64,
         ) {
             self
                 ._execute_redeem(
@@ -353,6 +395,9 @@ pub(crate) mod VaultsManager {
                     validate_user_order: true,
                     user_signature: signature,
                     validate_signatures: true,
+                    interest_amount_vault_position: interest_amount_vault_position,
+                    interest_amount_sender: interest_amount_sender,
+                    interest_amount_receiver: interest_amount_receiver,
                 );
         }
 
@@ -364,6 +409,8 @@ pub(crate) mod VaultsManager {
             liquidated_asset_id: AssetId,
             actual_shares_user: i64,
             actual_collateral_user: i64,
+            interest_amount_vault_position: i64,
+            interest_amount_liquidated: i64,
         ) {
             assert(
                 self.positions.is_liquidatable(liquidated_position_id), 'POSITION_NOT_LIQUIDATABLE',
@@ -392,6 +439,9 @@ pub(crate) mod VaultsManager {
                     validate_user_order: false,
                     user_signature: array![0, 0].span(),
                     validate_signatures: true,
+                    interest_amount_vault_position: interest_amount_vault_position,
+                    interest_amount_sender: interest_amount_liquidated,
+                    interest_amount_receiver: 0,
                 );
         }
 
@@ -409,6 +459,9 @@ pub(crate) mod VaultsManager {
                     validate_user_order: false,
                     user_signature: empty_signature,
                     validate_signatures: false,
+                    interest_amount_vault_position: 0,
+                    interest_amount_sender: 0,
+                    interest_amount_receiver: 0,
                 );
         }
     }
@@ -425,6 +478,9 @@ pub(crate) mod VaultsManager {
             validate_user_order: bool,
             user_signature: Signature,
             validate_signatures: bool,
+            interest_amount_vault_position: i64,
+            interest_amount_sender: i64,
+            interest_amount_receiver: i64,
         ) {
             let vault_config = self.vaults.get_vault_config_for_asset(order.base_asset_id);
             let vault_asset = self.assets.get_asset_config(vault_config.asset_id);
@@ -454,9 +510,25 @@ pub(crate) mod VaultsManager {
                 collateral_id: self.assets.get_collateral_id(),
             );
 
-            let vault_position = self.positions.get_position_snapshot(vault_position_id);
-            let redeeming_position = self.positions.get_position_snapshot(redeeming_position_id);
+            let vault_position = self.positions.get_position_mut(vault_position_id);
+            let redeeming_position = self.positions.get_position_mut(redeeming_position_id);
             let receiving_position = self.positions.get_position_snapshot(receiving_position_id);
+
+            // Validate interest amounts in range
+            self
+                .positions
+                .validate_interest_in_range(
+                    position: vault_position,
+                    position_id: vault_position_id,
+                    interest_amount: interest_amount_vault_position,
+                );
+            self
+                .positions
+                .validate_interest_in_range(
+                    position: redeeming_position,
+                    position_id: redeeming_position_id,
+                    interest_amount: interest_amount_sender,
+                );
 
             let amount_to_burn = actual_shares_user;
             let value_to_receive = actual_collateral_user;
@@ -464,12 +536,15 @@ pub(crate) mod VaultsManager {
             if (validate_user_order) {
                 let order_hash = if validate_signatures {
                     validate_signature(
-                        public_key: redeeming_position.get_owner_public_key(),
+                        public_key: redeeming_position.into().get_owner_public_key(),
                         message: order,
                         signature: user_signature,
                     )
                 } else {
-                    order.get_message_hash(public_key: redeeming_position.get_owner_public_key())
+                    order
+                        .get_message_hash(
+                            public_key: redeeming_position.into().get_owner_public_key(),
+                        )
                 };
                 self
                     .fulfillment_tracking
@@ -483,12 +558,13 @@ pub(crate) mod VaultsManager {
 
             let vault_order_hash = if validate_signatures {
                 validate_signature(
-                    public_key: vault_position.get_owner_public_key(),
+                    public_key: vault_position.into().get_owner_public_key(),
                     message: vault_approval,
                     signature: vault_signature,
                 )
             } else {
-                vault_approval.get_message_hash(public_key: vault_position.get_owner_public_key())
+                vault_approval
+                    .get_message_hash(public_key: vault_position.into().get_owner_public_key())
             };
             self
                 .fulfillment_tracking
@@ -558,26 +634,42 @@ pub(crate) mod VaultsManager {
             }
 
             let vault_position_diff = PositionDiff {
-                collateral_diff: -value_to_receive.into(), asset_diff: None,
+                collateral_diff: -value_to_receive.into() + interest_amount_vault_position.into(),
+                asset_diff: None,
             };
 
             let (redeeming_position_diff, receiving_position_diff) =
                 if (receiving_position_id == redeeming_position_id) {
                 (
                     PositionDiff {
-                        collateral_diff: value_to_receive.into(),
+                        collateral_diff: value_to_receive.into() + interest_amount_sender.into(),
                         asset_diff: Some((vault_config.asset_id, amount_to_burn.into())),
                     },
                     None,
                 )
             } else {
+                // Validate receiver interest if different position
+                let receiving_position_mut = self
+                    .positions
+                    .get_position_mut(position_id: receiving_position_id);
+                self
+                    .positions
+                    .validate_interest_in_range(
+                        position: receiving_position_mut,
+                        position_id: receiving_position_id,
+                        interest_amount: interest_amount_receiver,
+                    );
                 (
                     PositionDiff {
                         asset_diff: Some((vault_config.asset_id, amount_to_burn.into())),
-                        collateral_diff: 0_i64.into(),
+                        collateral_diff: interest_amount_sender.into(),
                     },
                     Some(
-                        PositionDiff { collateral_diff: value_to_receive.into(), asset_diff: None },
+                        PositionDiff {
+                            collateral_diff: value_to_receive.into()
+                                + interest_amount_receiver.into(),
+                            asset_diff: None,
+                        },
                     ),
                 )
             };
@@ -587,7 +679,7 @@ pub(crate) mod VaultsManager {
                 .positions
                 .validate_healthy_or_healthier_position(
                     position_id: vault_position_id,
-                    position: vault_position,
+                    position: vault_position.into(),
                     position_diff: vault_position_diff,
                     tvtr_before: Default::default(),
                 );
@@ -601,7 +693,7 @@ pub(crate) mod VaultsManager {
             self
                 .positions
                 .validate_asset_balance_is_not_negative(
-                    position: vault_position, asset_id: self.assets.get_collateral_id(),
+                    position: vault_position.into(), asset_id: self.assets.get_collateral_id(),
                 );
 
             // user health checks
@@ -609,7 +701,7 @@ pub(crate) mod VaultsManager {
                 .positions
                 .validate_healthy_or_healthier_position(
                     position_id: redeeming_position_id,
-                    position: redeeming_position,
+                    position: redeeming_position.into(),
                     position_diff: redeeming_position_diff,
                     tvtr_before: Default::default(),
                 );
@@ -623,9 +715,10 @@ pub(crate) mod VaultsManager {
             self
                 .positions
                 .validate_asset_balance_is_not_negative(
-                    position: redeeming_position, asset_id: order.base_asset_id,
+                    position: redeeming_position.into(), asset_id: order.base_asset_id,
                 );
 
+            // Validate health for receiving position if different from redeeming position
             if let Option::Some(position_diff) = receiving_position_diff {
                 self
                     .positions

@@ -137,6 +137,8 @@ pub trait ICore<TContractState> {
         signature: Signature,
         order: LimitOrder,
         correlation_id: felt252,
+        interest_amount_vault_position: i64,
+        interest_amount_sender: i64,
     );
     fn redeem_from_vault(
         ref self: TContractState,
@@ -147,6 +149,9 @@ pub trait ICore<TContractState> {
         vault_signature: Signature,
         actual_shares_user: i64,
         actual_collateral_user: i64,
+        interest_amount_vault_position: i64,
+        interest_amount_sender: i64,
+        interest_amount_receiver: i64,
     );
 
     fn liquidate_vault_shares(
@@ -158,6 +163,8 @@ pub trait ICore<TContractState> {
         liquidated_asset_id: AssetId,
         actual_shares_user: i64,
         actual_collateral_user: i64,
+        interest_amount_vault_position: i64,
+        interest_amount_liquidated: i64,
     );
     fn forced_withdraw_request(
         ref self: TContractState,

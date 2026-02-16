@@ -2251,6 +2251,9 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 vault_signature: vault_order_signature,
                 actual_shares_user: -actual_shares_user.try_into().unwrap(),
                 actual_collateral_user: actual_collateral_user.try_into().unwrap(),
+                interest_amount_vault_position: 0,
+                interest_amount_sender: 0,
+                interest_amount_receiver: 0,
             );
     }
 
@@ -2293,6 +2296,8 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 liquidated_asset_id: vault.asset_id,
                 actual_shares_user: -actual_shares_user.try_into().unwrap(),
                 actual_collateral_user: actual_collateral_user.try_into().unwrap(),
+                interest_amount_vault_position: 0,
+                interest_amount_liquidated: 0,
             );
     }
 
@@ -2326,7 +2331,12 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
 
         ICoreDispatcher { contract_address: self.perpetuals_contract }
             .invest_in_vault(
-                :operator_nonce, signature: signature, order: order, correlation_id: 1,
+                :operator_nonce,
+                signature: signature,
+                order: order,
+                correlation_id: 1,
+                interest_amount_vault_position: 0,
+                interest_amount_sender: 0,
             );
 
         let last_event = self.get_last_event(contract_address: self.perpetuals_contract);
