@@ -969,11 +969,19 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
     }
 
     fn process_deposit(ref self: PerpsTestsFacade, deposit_info: DepositInfo) {
+        self.process_deposit_with_interest(:deposit_info, interest_amount: 0)
+    }
+
+    fn process_deposit_with_interest(
+        ref self: PerpsTestsFacade, deposit_info: DepositInfo, interest_amount: i64,
+    ) {
         let DepositInfo {
-            depositor, position_id, quantized_amount, salt, asset_id, interest_amount,
+            depositor, position_id, quantized_amount, salt, asset_id, interest_amount: _,
         } = deposit_info;
-        let collateral_balance_before = if (asset_id == self.collateral_id) {
-            self.get_position_collateral_balance(position_id)
+
+        let base_collateral_balance_before = self.get_position_collateral_balance(position_id);
+        let asset_balance_before = if (asset_id == self.collateral_id) {
+            base_collateral_balance_before
         } else {
             self.get_position_asset_balance(position_id, asset_id)
         };
@@ -997,12 +1005,21 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             self
                 .validate_collateral_balance(
                     :position_id,
-                    expected_balance: collateral_balance_before + quantized_amount.into(),
+                    expected_balance: base_collateral_balance_before
+                        + quantized_amount.into()
+                        + interest_amount.into(),
                 );
         } else {
             self
                 .validate_asset_balance(
-                    :position_id, asset_id: asset_id, expected_balance: quantized_amount.into(),
+                    :position_id,
+                    asset_id: asset_id,
+                    expected_balance: asset_balance_before + quantized_amount.into(),
+                );
+            self
+                .validate_collateral_balance(
+                    :position_id,
+                    expected_balance: base_collateral_balance_before + interest_amount.into(),
                 );
         }
 
