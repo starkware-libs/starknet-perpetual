@@ -58,9 +58,7 @@ pub(crate) mod DeleverageManager {
     use perpetuals::core::components::system_time::SystemTimeComponent;
     use perpetuals::core::types::asset::synthetic::{AssetType, SyntheticTrait};
     use perpetuals::core::types::position::PositionId;
-    use starknet::storage::{
-        StorageAsPointer, StoragePath, StoragePathEntry, StoragePointerReadAccess,
-    };
+    use starknet::storage::{StorageAsPointer, StoragePath, StoragePathEntry};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalImpl as PausableInternal;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
