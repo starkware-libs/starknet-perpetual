@@ -150,7 +150,6 @@ pub struct DepositInfo {
     quantized_amount: u64,
     salt: felt252,
     asset_id: AssetId,
-    interest_amount: i64,
 }
 
 #[derive(Copy, Drop)]
@@ -916,15 +915,11 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             :salt,
         );
 
-        DepositInfo {
-            depositor, position_id, quantized_amount, salt, asset_id, interest_amount: 0_i64,
-        }
+        DepositInfo { depositor, position_id, quantized_amount, salt, asset_id }
     }
 
     fn cancel_deposit(ref self: PerpsTestsFacade, deposit_info: DepositInfo) {
-        let DepositInfo {
-            depositor, position_id, quantized_amount, salt, asset_id, interest_amount: _,
-        } = deposit_info;
+        let DepositInfo { depositor, position_id, quantized_amount, salt, asset_id } = deposit_info;
         let token_state = self.find_contract_for_asset_id(:asset_id);
         let user_balance_before = token_state.balance_of(depositor.address);
         let contract_balance_before = token_state.balance_of(self.perpetuals_contract);
@@ -969,11 +964,17 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
     }
 
     fn process_deposit(ref self: PerpsTestsFacade, deposit_info: DepositInfo) {
-        let DepositInfo {
-            depositor, position_id, quantized_amount, salt, asset_id, interest_amount,
-        } = deposit_info;
-        let collateral_balance_before = if (asset_id == self.collateral_id) {
-            self.get_position_collateral_balance(position_id)
+        self.process_deposit_with_interest(:deposit_info, interest_amount: 0)
+    }
+
+    fn process_deposit_with_interest(
+        ref self: PerpsTestsFacade, deposit_info: DepositInfo, interest_amount: i64,
+    ) {
+        let DepositInfo { depositor, position_id, quantized_amount, salt, asset_id } = deposit_info;
+
+        let base_collateral_balance_before = self.get_position_collateral_balance(position_id);
+        let asset_balance_before = if (asset_id == self.collateral_id) {
+            base_collateral_balance_before
         } else {
             self.get_position_asset_balance(position_id, asset_id)
         };
@@ -997,12 +998,21 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             self
                 .validate_collateral_balance(
                     :position_id,
-                    expected_balance: collateral_balance_before + quantized_amount.into(),
+                    expected_balance: base_collateral_balance_before
+                        + quantized_amount.into()
+                        + interest_amount.into(),
                 );
         } else {
             self
                 .validate_asset_balance(
-                    :position_id, asset_id: asset_id, expected_balance: quantized_amount.into(),
+                    :position_id,
+                    asset_id: asset_id,
+                    expected_balance: asset_balance_before + quantized_amount.into(),
+                );
+            self
+                .validate_collateral_balance(
+                    :position_id,
+                    expected_balance: base_collateral_balance_before + interest_amount.into(),
                 );
         }
 
@@ -2359,7 +2369,6 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             quantized_amount: deposit_event.quantized_amount,
             salt,
             asset_id: vault.asset_id,
-            interest_amount: 0_i64,
         }
     }
 

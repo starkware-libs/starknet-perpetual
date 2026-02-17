@@ -4275,3 +4275,239 @@ fn test_withdraw_spot_with_interest() {
         );
     state.facade.validate_collateral_balance(user.position_id, 9_990_u64.into());
 }
+
+#[test]
+fn test_deposit_spot_with_positive_interest() {
+    // Setup.
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    state.facade.token_state.fund(state.facade.perpetuals_contract, 1_000_000);
+
+    // Create a custom asset configuration.
+    let token = snforge_std::Token::STRK;
+    let erc20_contract_address = token.contract_address();
+    let asset_info = AssetInfoTrait::new_collateral(
+        asset_name: 'COL', :risk_factor_data, oracles_len: 1, :erc20_contract_address,
+    );
+    let asset_id = asset_info.asset_id;
+    state.facade.add_active_collateral(asset_info: @asset_info, initial_price: 100);
+
+    // Create user
+    let user = state.new_user_with_position();
+    snforge_std::set_balance(target: user.account.address, new_balance: 5000000, :token);
+
+    // Deposit base collateral for PnL so it will be non-zero
+    let deposit_info = state
+        .facade
+        .deposit(depositor: user.account, position_id: user.position_id, quantized_amount: 10_000);
+    state.facade.process_deposit(deposit_info: deposit_info);
+    state.facade.validate_collateral_balance(user.position_id, 10_000_u64.into());
+
+    // Deposit spot collateral to user.
+    let deposit_info_user = state
+        .facade
+        .deposit_spot(
+            depositor: user.account, :asset_id, position_id: user.position_id, quantized_amount: 2,
+        );
+    state.facade.process_deposit(deposit_info: deposit_info_user);
+
+    // Advance time by 1 hour
+    state.facade.advance_time(seconds: HOUR);
+
+    // Calculate positive interest
+    let balance: u64 = 10_000;
+    let time_diff: u64 = HOUR.into();
+    let scale: u64 = 2_u64.pow(32);
+    let max_allowed: u64 = (balance * time_diff * MAX_INTEREST_RATE_PER_SEC.into()) / scale;
+    let interest_amount: i64 = max_allowed.try_into().unwrap();
+
+    // Second spot deposit with positive interest
+    let deposit_info_2 = state
+        .facade
+        .deposit_spot(
+            depositor: user.account, :asset_id, position_id: user.position_id, quantized_amount: 1,
+        );
+    state.facade.process_deposit_with_interest(deposit_info: deposit_info_2, :interest_amount);
+    state
+        .facade
+        .validate_asset_balance(
+            position_id: user.position_id, :asset_id, expected_balance: 3_u64.into(),
+        );
+    state.facade.validate_collateral_balance(user.position_id, (10_000_u64 + max_allowed).into());
+}
+
+#[test]
+fn test_deposit_spot_with_negative_interest() {
+    // Setup.
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    state.facade.token_state.fund(state.facade.perpetuals_contract, 1_000_000);
+
+    // Create a custom asset configuration.
+    let token = snforge_std::Token::STRK;
+    let erc20_contract_address = token.contract_address();
+    let asset_info = AssetInfoTrait::new_collateral(
+        asset_name: 'COL', :risk_factor_data, oracles_len: 1, :erc20_contract_address,
+    );
+    let asset_id = asset_info.asset_id;
+    state.facade.add_active_collateral(asset_info: @asset_info, initial_price: 100);
+
+    // Create user
+    let user = state.new_user_with_position();
+    snforge_std::set_balance(target: user.account.address, new_balance: 5000000, :token);
+
+    // Deposit base collateral
+    let deposit_info = state
+        .facade
+        .deposit(depositor: user.account, position_id: user.position_id, quantized_amount: 10_000);
+    state.facade.process_deposit(deposit_info: deposit_info);
+    state.facade.validate_collateral_balance(user.position_id, 10_000_u64.into());
+
+    // Deposit spot collateral to user.
+    let deposit_info_user = state
+        .facade
+        .deposit_spot(
+            depositor: user.account, :asset_id, position_id: user.position_id, quantized_amount: 2,
+        );
+    state.facade.process_deposit(deposit_info: deposit_info_user);
+
+    // Advance time by 1 hour
+    state.facade.advance_time(seconds: HOUR);
+
+    // Calculate negative interest
+    let balance: u64 = 10_000;
+    let time_diff: u64 = HOUR.into();
+    let scale: u64 = 2_u64.pow(32);
+    let max_allowed: u64 = (balance * time_diff * MAX_INTEREST_RATE_PER_SEC.into()) / scale;
+    let interest_amount: i64 = -(max_allowed).try_into().unwrap();
+
+    // Second spot deposit with negative interest
+    let deposit_info_2 = state
+        .facade
+        .deposit_spot(
+            depositor: user.account, :asset_id, position_id: user.position_id, quantized_amount: 1,
+        );
+    state.facade.process_deposit_with_interest(deposit_info: deposit_info_2, :interest_amount);
+    state
+        .facade
+        .validate_asset_balance(
+            position_id: user.position_id, :asset_id, expected_balance: 3_u64.into(),
+        );
+    state.facade.validate_collateral_balance(user.position_id, (10_000_u64 - max_allowed).into());
+}
+
+#[test]
+#[should_panic(
+    expected: "POSITION_NOT_HEALTHY_NOR_HEALTHIER position_id: PositionId { value: 101 } TV before 10000, TR before 0, TV after -53, TR after 0",
+)]
+fn test_deposit_base_with_negative_interest_becomes_unhealthy() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let user = state.new_user_with_position();
+
+    // Deposit collateral
+    let deposit_info = state
+        .facade
+        .deposit(depositor: user.account, position_id: user.position_id, quantized_amount: 10_000);
+    state.facade.process_deposit(deposit_info: deposit_info);
+
+    // Advance time by ~42 days so max interest exceeds collateral
+    let long_duration: u64 = 3_600_000;
+    state.facade.advance_time(seconds: long_duration);
+
+    // Calculate large negative interest
+    let balance: u64 = 10_000;
+    let time_diff: u64 = long_duration;
+    let scale: u64 = 2_u64.pow(32);
+    let max_allowed: u64 = (balance * time_diff * MAX_INTEREST_RATE_PER_SEC.into()) / scale;
+    let interest_amount: i64 = -(max_allowed).try_into().unwrap();
+
+    // Deposit with large negative interest that exceeds deposit amount
+    let deposit_info_2 = state
+        .facade
+        .deposit(depositor: user.account, position_id: user.position_id, quantized_amount: 5);
+    state.facade.process_deposit_with_interest(deposit_info: deposit_info_2, :interest_amount);
+}
+
+#[test]
+fn test_deposit_base_with_negative_interest_exceeds_deposit_but_healthy() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let user = state.new_user_with_position();
+
+    // Deposit collateral
+    let deposit_info = state
+        .facade
+        .deposit(depositor: user.account, position_id: user.position_id, quantized_amount: 10_000);
+    state.facade.process_deposit(deposit_info: deposit_info);
+    state.facade.validate_collateral_balance(user.position_id, 10_000_u64.into());
+
+    // Advance time by 1 hour
+    state.facade.advance_time(seconds: HOUR);
+
+    // Calculate negative interest
+    let balance: u64 = 10_000;
+    let time_diff: u64 = HOUR.into();
+    let scale: u64 = 2_u64.pow(32);
+    let max_allowed: u64 = (balance * time_diff * MAX_INTEREST_RATE_PER_SEC.into()) / scale;
+    let interest_amount: i64 = -(max_allowed).try_into().unwrap();
+
+    // Deposit with negative interest (|interest| > deposit amount, but position stays healthy)
+    let deposit_info_2 = state
+        .facade
+        .deposit(depositor: user.account, position_id: user.position_id, quantized_amount: 5);
+    state.facade.process_deposit_with_interest(deposit_info: deposit_info_2, :interest_amount);
+    state
+        .facade
+        .validate_collateral_balance(user.position_id, (10_000_u64 + 5_u64 - max_allowed).into());
+}
+
+#[test]
+#[should_panic(expected: "POSITION_NOT_HEALTHY_NOR_HEALTHIER")]
+fn test_deposit_spot_with_negative_interest_becomes_unhealthy() {
+    // Setup.
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+
+    // Create a custom asset configuration.
+    let token = snforge_std::Token::STRK;
+    let erc20_contract_address = token.contract_address();
+    let asset_info = AssetInfoTrait::new_collateral(
+        asset_name: 'COL', :risk_factor_data, oracles_len: 1, :erc20_contract_address,
+    );
+    let asset_id = asset_info.asset_id;
+    state.facade.add_active_collateral(asset_info: @asset_info, initial_price: 50);
+
+    // Create user
+    let user = state.new_user_with_position();
+    snforge_std::set_balance(target: user.account.address, new_balance: 5000000, :token);
+
+    // Deposit base collateral
+    let deposit_info = state
+        .facade
+        .deposit(depositor: user.account, position_id: user.position_id, quantized_amount: 10_000);
+    state.facade.process_deposit(deposit_info: deposit_info);
+
+    // Advance time by ~42 days so max interest exceeds collateral
+    let long_duration: u64 = 3_600_000;
+    state.facade.advance_time(seconds: long_duration);
+
+    // Calculate large negative interest
+    let balance: u64 = 10_000;
+    let time_diff: u64 = long_duration;
+    let scale: u64 = 2_u64.pow(32);
+    let max_allowed: u64 = (balance * time_diff * MAX_INTEREST_RATE_PER_SEC.into()) / scale;
+    let interest_amount: i64 = -(max_allowed).try_into().unwrap();
+
+    // Spot deposit with large negative interest that makes position unhealthy
+    let deposit_info_2 = state
+        .facade
+        .deposit_spot(
+            depositor: user.account, :asset_id, position_id: user.position_id, quantized_amount: 1,
+        );
+    state.facade.process_deposit_with_interest(deposit_info: deposit_info_2, :interest_amount);
+}
