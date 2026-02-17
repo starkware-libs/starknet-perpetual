@@ -79,7 +79,7 @@ pub(crate) mod LiquidationManager {
     use perpetuals::core::components::system_time::SystemTimeComponent;
     use perpetuals::core::types::asset::synthetic::SyntheticTrait;
     use perpetuals::core::types::position::{PositionId, PositionTrait};
-    use starknet::storage::{StorageAsPointer, StoragePath, StoragePathEntry};
+    use starknet::storage::{Mutable, StorageAsPointer, StoragePath, StoragePathEntry};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalImpl as PausableInternal;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
@@ -512,6 +512,8 @@ pub(crate) mod LiquidationManager {
             let liquidator_position = self
                 .positions
                 .get_position_mut(position_id: liquidator_position_id);
+            let mut optional_reciever_position: Option<StoragePath<Mutable<Position>>> =
+                Option::None;
 
             let liquidated_position_diff = PositionDiff {
                 collateral_diff: liquidated_order.quote_amount().into()
@@ -567,7 +569,7 @@ pub(crate) mod LiquidationManager {
             // Validate interest in range for both positions before applying diffs
             self
                 .positions
-                .validate_interest_in_range(
+                .verify_and_update_interest_range(
                     position: liquidated_position,
                     position_id: liquidated_position_id,
                     interest_amount: interest_amount_liquidated,
@@ -575,7 +577,7 @@ pub(crate) mod LiquidationManager {
 
             self
                 .positions
-                .validate_interest_in_range(
+                .verify_and_update_interest_range(
                     position: liquidator_position,
                     position_id: liquidator_position_id,
                     interest_amount: interest_amount_liquidator,
@@ -583,13 +585,15 @@ pub(crate) mod LiquidationManager {
 
             if liquidator_order.receive_position() != liquidator_order.position_id() {
                 let reciever_position_id = liquidator_order.receive_position();
+                let reciever_position = self
+                    .positions
+                    .get_position_mut(position_id: liquidator_order.receive_position());
+                optional_reciever_position = Option::Some(reciever_position);
 
                 self
                     .positions
-                    .validate_interest_in_range(
-                        position: self
-                            .positions
-                            .get_position_mut(position_id: reciever_position_id),
+                    .verify_and_update_interest_range(
+                        position: reciever_position,
                         position_id: reciever_position_id,
                         interest_amount: interest_amount_liquidator_receiver,
                     );
@@ -613,14 +617,15 @@ pub(crate) mod LiquidationManager {
 
             if let Option::Some(liquidator_receive_position_diff) =
                 optional_liquidator_receive_position_diff {
-                let liquidator_receive_position = self
-                    .positions
-                    .get_position_snapshot(position_id: liquidator_order.receive_position());
+                let reciever_position: StoragePath<Position> = optional_reciever_position
+                    .unwrap()
+                    .into();
+
                 self
                     .positions
                     .validate_healthy_or_healthier_position(
                         position_id: liquidator_order.receive_position(),
-                        position: liquidator_receive_position,
+                        position: reciever_position,
                         position_diff: liquidator_receive_position_diff,
                         tvtr_before: Default::default(),
                     );

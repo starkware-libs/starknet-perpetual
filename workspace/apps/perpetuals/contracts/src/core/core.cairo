@@ -423,7 +423,6 @@ pub mod Core {
             // Read interest validation parameters once for all settlements
             let current_time = self.get_system_time();
             let max_interest_rate_per_sec = self.get_max_interest_rate_per_sec();
-            let interest_rate_scale: u64 = 2_u64.pow(32);
 
             let mut tvtr_cache: Felt252Dict<Nullable<PositionTVTR>> = Default::default();
 
@@ -448,7 +447,6 @@ pub mod Core {
                         interest_amount_b: trade.interest_amount_b,
                         :current_time,
                         :max_interest_rate_per_sec,
-                        :interest_rate_scale,
                         tvtr_a_before: cached_pos_a_tvtr,
                         tvtr_b_before: cached_pos_b_tvtr,
                         check_signature: true,
@@ -534,7 +532,6 @@ pub mod Core {
                     interest_amount_b: 0,
                     current_time: Timestamp { seconds: 0 },
                     max_interest_rate_per_sec: 0,
-                    interest_rate_scale: 0,
                     tvtr_a_before: Default::default(),
                     tvtr_b_before: Default::default(),
                     check_signature: true,
@@ -1060,7 +1057,6 @@ pub mod Core {
                     interest_amount_b: 0,
                     current_time: Timestamp { seconds: 0 },
                     max_interest_rate_per_sec: 0,
-                    interest_rate_scale: 0,
                     tvtr_a_before: Default::default(),
                     tvtr_b_before: Default::default(),
                     check_signature: false,
@@ -1262,10 +1258,8 @@ pub mod Core {
         fn apply_interests(
             ref self: ContractState,
             operator_nonce: u64,
-            position_ids: Span<PositionId>,
-            interest_amounts: Span<i64>,
+            position_interest_amounts: Span<(PositionId, i64)>,
         ) {
-            assert(position_ids.len() == interest_amounts.len(), LENGTH_MISMATCH);
             self.pausable.assert_not_paused();
             self.assets.validate_assets_integrity();
             self.operator_nonce.use_checked_nonce(:operator_nonce);
@@ -1273,28 +1267,38 @@ pub mod Core {
             // Read once and pass as arguments to avoid redundant storage reads
             let current_time = self.get_system_time();
             let max_interest_rate_per_sec = self.positions.max_interest_rate_per_sec.read();
-            let interest_rate_scale: u64 = 2_u64.pow(32);
 
-            let mut i: usize = 0;
-            for position_id in position_ids {
-                let interest_amount = *interest_amounts[i];
+            for (position_id, interest_amount) in position_interest_amounts {
+                let position_id = *position_id;
+                let interest_amount = *interest_amount;
+                let position = self.positions.get_position_mut(:position_id);
                 self
                     .positions
-                    .apply_interest(
-                        position_id: *position_id,
+                    .verify_and_update_interest_range_with_params(
+                        :position,
+                        :position_id,
                         :interest_amount,
                         :current_time,
                         :max_interest_rate_per_sec,
-                        :interest_rate_scale,
                     );
 
-                self
-                    .emit(
-                        events::InterestApplied {
-                            position_id: *position_id, interest_amount: interest_amount,
-                        },
-                    );
-                i += 1;
+                if interest_amount.is_non_zero() {
+                    let position_diff = PositionDiff {
+                        collateral_diff: interest_amount.into(), asset_diff: Option::None,
+                    };
+                    self
+                        .positions
+                        .validate_healthy_or_healthier_position(
+                            :position_id,
+                            position: position.into(),
+                            position_diff: position_diff,
+                            tvtr_before: Default::default(),
+                        );
+
+                    self.positions.apply_diff(:position_id, :position_diff);
+                }
+
+                self.emit(events::InterestApplied { position_id, interest_amount });
             }
         }
 
@@ -1372,7 +1376,6 @@ pub mod Core {
             interest_amount_b: i64,
             current_time: Timestamp,
             max_interest_rate_per_sec: u32,
-            interest_rate_scale: u64,
             tvtr_a_before: Nullable<PositionTVTR>,
             tvtr_b_before: Nullable<PositionTVTR>,
             check_signature: bool,
@@ -1398,24 +1401,22 @@ pub mod Core {
             // Validate interest in range for both positions before applying diffs
             self
                 .positions
-                .validate_interest_in_range_with_params(
+                .verify_and_update_interest_range_with_params(
                     position: position_a,
                     position_id: position_id_a,
                     interest_amount: interest_amount_a,
                     :current_time,
                     :max_interest_rate_per_sec,
-                    :interest_rate_scale,
                 );
 
             self
                 .positions
-                .validate_interest_in_range_with_params(
+                .verify_and_update_interest_range_with_params(
                     position: position_b,
                     position_id: position_id_b,
                     interest_amount: interest_amount_b,
                     :current_time,
                     :max_interest_rate_per_sec,
-                    :interest_rate_scale,
                 );
 
             // Signatures validation:

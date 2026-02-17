@@ -66,6 +66,7 @@ pub mod Positions {
     };
     pub const FEE_POSITION: PositionId = PositionId { value: 0 };
     pub const INSURANCE_FUND_POSITION: PositionId = PositionId { value: 1 };
+    pub const INTEREST_RATE_SCALE: u64 = 2_u64.pow(32);
 
     impl SnipImpl = SNIP12MetadataImpl;
 
@@ -512,9 +513,8 @@ pub mod Positions {
         /// plus base collateral. Similar to TV calculation but without vault and spot assets.
         /// Includes funding ticks in the calculation.
         fn calculate_position_pnl(
-            self: @ComponentState<TContractState>, position_id: PositionId,
+            self: @ComponentState<TContractState>, position: StoragePath<Position>,
         ) -> i64 {
-            let position = self.get_position_snapshot(:position_id);
             let assets_component = get_dep_component!(self, Assets);
 
             // Use existing function to derive funding delta and unchanged assets
@@ -540,47 +540,7 @@ pub mod Positions {
             )
         }
 
-        fn apply_interest(
-            ref self: ComponentState<TContractState>,
-            position_id: PositionId,
-            interest_amount: i64,
-            current_time: Timestamp,
-            max_interest_rate_per_sec: u32,
-            interest_rate_scale: u64,
-        ) {
-            let position = self.get_position_mut(:position_id);
-            self
-                .validate_interest_in_range_with_params(
-                    :position,
-                    :position_id,
-                    :interest_amount,
-                    :current_time,
-                    :max_interest_rate_per_sec,
-                    :interest_rate_scale,
-                );
-
-            // Validate position health and apply interest.
-            if interest_amount.is_non_zero() {
-                let position_diff = PositionDiff {
-                    collateral_diff: interest_amount.into(), asset_diff: Option::None,
-                };
-                self
-                    .validate_healthy_or_healthier_position(
-                        position_id: position_id,
-                        position: position.into(),
-                        position_diff: position_diff,
-                        tvtr_before: Default::default(),
-                    );
-
-                self.apply_diff(:position_id, :position_diff);
-            }
-        }
-
-        /// Validates that the interest amount is within the allowed range.
-        /// This version reads current_time, max_interest_rate_per_sec, and calculates
-        /// interest_rate_scale internally.
-        /// Use this when you want the function to read these values from storage/components.
-        fn validate_interest_in_range(
+        fn verify_and_update_interest_range(
             ref self: ComponentState<TContractState>,
             position: StoragePath<Mutable<Position>>,
             position_id: PositionId,
@@ -589,65 +549,45 @@ pub mod Positions {
             let system_time_component = get_dep_component!(@self, SystemTime);
             let current_time = system_time_component.get_system_time();
             let max_interest_rate_per_sec = self.max_interest_rate_per_sec.read();
-            let interest_rate_scale: u64 = 2_u64.pow(32);
+
             self
-                .validate_interest_in_range_with_params(
+                .verify_and_update_interest_range_with_params(
                     :position,
                     :position_id,
                     :interest_amount,
                     :current_time,
                     :max_interest_rate_per_sec,
-                    :interest_rate_scale,
-                );
+                )
         }
 
-        /// Validates that the interest amount is within the allowed range.
-        /// This version receives all parameters explicitly (current_time,
-        /// max_interest_rate_per_sec, interest_rate_scale).
-        /// Use this when you already have these values to avoid redundant storage reads.
-        fn validate_interest_in_range_with_params(
+        fn verify_and_update_interest_range_with_params(
             ref self: ComponentState<TContractState>,
             position: StoragePath<Mutable<Position>>,
             position_id: PositionId,
             interest_amount: i64,
             current_time: Timestamp,
             max_interest_rate_per_sec: u32,
-            interest_rate_scale: u64,
         ) {
             let previous_timestamp = position.last_interest_applied_time.read();
-            if previous_timestamp.is_zero() {
-                // If `previous_timestamp` is zero, this indicates the first interest calculation,
-                // and the interest amount is required to be zero.
-                // so we need to set the current time.
-                if !interest_amount.is_zero() {
-                    panic_with_byte_array(@invalid_interest_rate_err(:position_id));
-                }
-                position.last_interest_applied_time.write(current_time);
-                return;
-            }
-
             if interest_amount.is_zero() {
+                if previous_timestamp.is_zero() {
+                    // If `previous_timestamp` is zero, this indicates the first interest
+                    // calculation, and the interest amount is required to be zero.
+                    // so we need to set the current time.
+                    position.last_interest_applied_time.write(current_time);
+                }
                 return;
             }
 
-            // Calculate position PnL (total value of synthetic assets + base collateral)
-            let pnl = self.calculate_position_pnl(position_id);
-
-            // Calculate time difference
-            let time_diff: u64 = current_time.sub(previous_timestamp).into();
-
-            // Calculate maximum allowed change: |pnl| * time_diff *
-            // max_interest_rate_per_sec / 2^32.
-            let balance_time_product: u128 = pnl.abs().into() * time_diff.into();
-            let max_allowed_change = mul_wide_and_floor_div(
-                balance_time_product, max_interest_rate_per_sec.into(), interest_rate_scale.into(),
-            )
-                .expect(AMOUNT_OVERFLOW);
-
-            // Check: |interest_amount| <= max_allowed_change
-            if interest_amount.abs().into() > max_allowed_change {
-                panic_with_byte_array(@invalid_interest_rate_err(:position_id));
-            }
+            self
+                ._validate_interest_in_range(
+                    :position,
+                    :position_id,
+                    :interest_amount,
+                    :current_time,
+                    :previous_timestamp,
+                    :max_interest_rate_per_sec,
+                );
 
             position.last_interest_applied_time.write(current_time);
         }
@@ -974,6 +914,45 @@ pub mod Positions {
                     :position, provisional_delta: Option::Some(provisional_delta),
                 );
             evaluate_position(:unchanged_assets, :collateral_balance)
+        }
+
+        /// Validates that the interest amount is within the allowed range.
+        /// This version receives all parameters explicitly (current_time,
+        /// max_interest_rate_per_sec, interest_rate_scale).
+        /// Use this when you already have these values to avoid redundant storage reads.
+        fn _validate_interest_in_range(
+            ref self: ComponentState<TContractState>,
+            position: StoragePath<Mutable<Position>>,
+            position_id: PositionId,
+            interest_amount: i64,
+            current_time: Timestamp,
+            previous_timestamp: Timestamp,
+            max_interest_rate_per_sec: u32,
+        ) {
+            // If `previous_timestamp` is zero, this indicates the first interest calculation,
+            // and the interest amount is required to be zero.
+            if previous_timestamp.is_zero() {
+                panic_with_byte_array(@invalid_interest_rate_err(:position_id));
+            }
+
+            // Calculate position PnL (total value of synthetic assets + base collateral)
+            let pnl = self.calculate_position_pnl(position: position.into());
+
+            // Calculate time difference
+            let time_diff: u64 = current_time.sub(previous_timestamp).into();
+
+            // Calculate maximum allowed change: |pnl| * time_diff *
+            // max_interest_rate_per_sec / 2^32.
+            let balance_time_product: u128 = pnl.abs().into() * time_diff.into();
+            let max_allowed_change = mul_wide_and_floor_div(
+                balance_time_product, max_interest_rate_per_sec.into(), INTEREST_RATE_SCALE.into(),
+            )
+                .expect(AMOUNT_OVERFLOW);
+
+            // Check: |interest_amount| <= max_allowed_change
+            if interest_amount.abs().into() > max_allowed_change {
+                panic_with_byte_array(@invalid_interest_rate_err(:position_id));
+            }
         }
     }
 }

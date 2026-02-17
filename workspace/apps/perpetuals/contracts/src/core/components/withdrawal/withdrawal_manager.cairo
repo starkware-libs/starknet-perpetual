@@ -135,7 +135,7 @@ pub(crate) mod WithdrawalManager {
     use perpetuals::core::types::price::PriceImpl;
     use perpetuals::core::types::withdraw::{ForcedWithdrawArgs, WithdrawArgs};
     use starknet::storage::{
-        StorageAsPointer, StoragePath, StoragePathEntry, StoragePointerReadAccess,
+        Mutable, StorageAsPointer, StoragePath, StoragePathEntry, StoragePointerReadAccess,
     };
     use starknet::{ContractAddress, get_block_info, get_caller_address};
     use starkware_utils::components::pausable::PausableComponent;
@@ -290,7 +290,7 @@ pub(crate) mod WithdrawalManager {
             salt: felt252,
             interest_amount: i64,
         ) {
-            let position = self.positions.get_position_snapshot(:position_id);
+            let position = self.positions.get_position_mut(:position_id);
 
             let (hash, token_address) = self
                 ._withdraw(
@@ -403,8 +403,8 @@ pub(crate) mod WithdrawalManager {
             expiration: Timestamp,
             salt: felt252,
         ) {
-            let position = self.positions.get_position_snapshot(:position_id);
-            let public_key = position.get_owner_public_key();
+            let position = self.positions.get_position_mut(:position_id);
+            let public_key = position.into().get_owner_public_key();
 
             // Calculate forced withdraw hash
             let withdraw_args = WithdrawArgs {
@@ -459,7 +459,7 @@ pub(crate) mod WithdrawalManager {
             amount: u64,
             expiration: Timestamp,
             salt: felt252,
-            position: StoragePath<Position>,
+            position: StoragePath<Mutable<Position>>,
             collateral_id: AssetId,
             interest_amount: i64,
         ) -> (HashType, ContractAddress) {
@@ -471,15 +471,13 @@ pub(crate) mod WithdrawalManager {
                     args: WithdrawArgs {
                         position_id, salt, expiration, collateral_id, amount, recipient,
                     },
-                    public_key: position.get_owner_public_key(),
+                    public_key: position.into().get_owner_public_key(),
                 );
 
             self
                 .positions
-                .validate_interest_in_range(
-                    position: position.into(),
-                    position_id: position_id,
-                    interest_amount: interest_amount,
+                .verify_and_update_interest_range(
+                    :position, :position_id, interest_amount: interest_amount,
                 );
 
             /// Validations - Fundamentals:
@@ -496,7 +494,7 @@ pub(crate) mod WithdrawalManager {
                 self
                     .positions
                     ._validate_asset_shrink_non_negative(
-                        :position, asset_id: collateral_id, amount: negative_amount,
+                        position: position.into(), asset_id: collateral_id, amount: negative_amount,
                     );
                 (
                     PositionDiff {
@@ -519,7 +517,10 @@ pub(crate) mod WithdrawalManager {
             self
                 .positions
                 .validate_healthy_or_healthier_position(
-                    :position_id, :position, :position_diff, tvtr_before: Default::default(),
+                    :position_id,
+                    position: position.into(),
+                    :position_diff,
+                    tvtr_before: Default::default(),
                 );
 
             self.positions.apply_diff(:position_id, :position_diff);

@@ -3660,16 +3660,15 @@ fn test_apply_interest_to_position_with_zero_balance() {
     );
 
     // Apply zero interest to position with balance (first time, timestamp is zero)
-    let position_ids = array![user_1.position_id].span();
-    let interest_amounts = array![0].span();
-    state.facade.apply_interests(:position_ids, :interest_amounts);
+    let position_interest_amounts = array![(user_1.position_id, 0)].span();
+    state.facade.apply_interests(:position_interest_amounts);
 
     // Advance time by 1 hour
     state.facade.advance_time(seconds: HOUR);
 
-    let position_ids = array![user_1.position_id, user_2.position_id].span();
-    let interest_amounts = array![100, 100].span();
-    state.facade.apply_interests(:position_ids, :interest_amounts);
+    let position_interest_amounts = array![(user_1.position_id, 100), (user_2.position_id, 100)]
+        .span();
+    state.facade.apply_interests(:position_interest_amounts);
 }
 
 #[test]
@@ -3708,9 +3707,11 @@ fn test_apply_interest_to_multiple_positions() {
     // Apply valid interest to both positions
     let interest_a: i64 = (max_allowed_a / 2).try_into().unwrap();
     let interest_b: i64 = (max_allowed_b / 2).try_into().unwrap();
-    let position_ids = array![user_a.position_id, user_b.position_id].span();
-    let interest_amounts = array![interest_a, interest_b].span();
-    state.facade.apply_interests(:position_ids, :interest_amounts);
+    let position_interest_amounts = array![
+        (user_a.position_id, interest_a), (user_b.position_id, interest_b),
+    ]
+        .span();
+    state.facade.apply_interests(:position_interest_amounts);
 
     // Validate balances
     let expected_balance_a: i64 = 10_000 + interest_a;
@@ -3743,9 +3744,8 @@ fn test_apply_interest_exceeds_max_rate() {
 
     // Try to apply interest that exceeds max rate
     let invalid_interest: i64 = (max_allowed + 1).try_into().unwrap();
-    let position_ids = array![user.position_id].span();
-    let interest_amounts = array![invalid_interest].span();
-    state.facade.apply_interests(:position_ids, :interest_amounts);
+    let position_interest_amounts = array![(user.position_id, invalid_interest)].span();
+    state.facade.apply_interests(:position_interest_amounts);
 }
 
 #[test]
@@ -3757,9 +3757,8 @@ fn test_apply_non_zero_interest_to_zero_balance() {
     // Don't deposit anything, pnl is zero.
 
     // Try to apply non-zero interest to zero balance (first time)
-    let position_ids = array![user.position_id].span();
-    let interest_amounts = array![100_i64].span();
-    state.facade.apply_interests(:position_ids, :interest_amounts);
+    let position_interest_amounts = array![(user.position_id, 100)].span();
+    state.facade.apply_interests(:position_interest_amounts);
 }
 
 #[test]
@@ -3785,9 +3784,8 @@ fn test_apply_negative_interest() {
 
     // Apply valid negative interest
     let valid_interest: i64 = -(max_allowed / 2).try_into().unwrap();
-    let position_ids = array![user.position_id].span();
-    let interest_amounts = array![valid_interest].span();
-    state.facade.apply_interests(:position_ids, :interest_amounts);
+    let position_interest_amounts = array![(user.position_id, valid_interest)].span();
+    state.facade.apply_interests(:position_interest_amounts);
 
     // Balance should decrease
     let expected_balance: i64 = 10_000 + valid_interest;
@@ -3815,9 +3813,8 @@ fn test_apply_interest_sequential_updates() {
     let scale: u128 = 2_u128.pow(32);
     let max_allowed: u128 = (balance * time_diff * max_rate) / scale;
     let interest_1: i64 = (max_allowed / 2).try_into().unwrap();
-    let position_ids = array![user.position_id].span();
-    let interest_amounts = array![interest_1].span();
-    state.facade.apply_interests(:position_ids, :interest_amounts);
+    let position_interest_amounts = array![(user.position_id, interest_1)].span();
+    state.facade.apply_interests(:position_interest_amounts);
 
     let balance_after_first: i64 = 10_000 + interest_1;
     state.facade.validate_collateral_balance(user.position_id, balance_after_first.into());
@@ -3829,8 +3826,8 @@ fn test_apply_interest_sequential_updates() {
     let new_balance: u128 = balance_after_first.try_into().unwrap();
     let max_allowed_2: u128 = (new_balance * time_diff * max_rate) / scale;
     let interest_2: i64 = (max_allowed_2 / 2).try_into().unwrap();
-    let interest_amounts = array![interest_2].span();
-    state.facade.apply_interests(:position_ids, :interest_amounts);
+    let position_interest_amounts = array![(user.position_id, interest_2)].span();
+    state.facade.apply_interests(:position_interest_amounts);
 
     let expected_final_balance: i64 = balance_after_first + interest_2;
     state.facade.validate_collateral_balance(user.position_id, expected_final_balance.into());
@@ -3856,14 +3853,13 @@ fn test_apply_interest_twice_without_advancing_time() {
     let max_allowed: u128 = (balance * time_diff * max_rate) / scale;
     let interest_1: i64 = (max_allowed / 2).try_into().unwrap();
 
-    let position_ids = array![user.position_id].span();
-    let interest_amounts = array![interest_1].span();
-    state.facade.apply_interests(:position_ids, :interest_amounts);
+    let position_interest_amounts = array![(user.position_id, interest_1)].span();
+    state.facade.apply_interests(:position_interest_amounts);
 
     // Since time hasn't advanced, time_diff will be 0, so max_allowed_change will be 0
     // Any non-zero interest should fail with INVALID_INTEREST_RATE
-    let interest_amounts = array![interest_1].span();
-    state.facade.apply_interests(:position_ids, :interest_amounts);
+    let position_interest_amounts = array![(user.position_id, interest_1)].span();
+    state.facade.apply_interests(:position_interest_amounts);
 }
 
 #[test]
@@ -3889,9 +3885,8 @@ fn test_apply_zero_interest_does_not_update_last_time() {
         },
     );
 
-    let position_ids = array![user.position_id].span();
-    let interest_amounts = array![0].span();
-    state.facade.apply_interests(:position_ids, :interest_amounts);
+    let position_interest_amounts = array![(user.position_id, 0)].span();
+    state.facade.apply_interests(:position_interest_amounts);
 
     // Check last applied time wasnt changed.
     snforge_std::interact_with_state(

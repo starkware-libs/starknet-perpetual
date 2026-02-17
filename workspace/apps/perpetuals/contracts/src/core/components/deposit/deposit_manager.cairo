@@ -281,7 +281,9 @@ pub(crate) mod DepositManager {
 
             let position = self.positions.get_position_mut(:position_id);
             // Validate interest in range
-            self.positions.validate_interest_in_range(:position, :position_id, :interest_amount);
+            self
+                .positions
+                .verify_and_update_interest_range(:position, :position_id, :interest_amount);
             // Validate healthy or healthier position
             self
                 .positions

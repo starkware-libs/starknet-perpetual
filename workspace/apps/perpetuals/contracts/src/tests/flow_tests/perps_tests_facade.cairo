@@ -2173,12 +2173,12 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
     }
 
     fn apply_interests(
-        ref self: PerpsTestsFacade, position_ids: Span<PositionId>, interest_amounts: Span<i64>,
+        ref self: PerpsTestsFacade, position_interest_amounts: Span<(PositionId, i64)>,
     ) {
         let operator_nonce = self.get_nonce();
         self.operator.set_as_caller(self.perpetuals_contract);
         ICoreDispatcher { contract_address: self.perpetuals_contract }
-            .apply_interests(:operator_nonce, :position_ids, :interest_amounts);
+            .apply_interests(:operator_nonce, :position_interest_amounts);
     }
 
     fn get_position_asset_balance(

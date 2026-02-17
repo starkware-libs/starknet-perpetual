@@ -283,7 +283,7 @@ pub(crate) mod VaultsManager {
             // Validate interest amounts in range
             self
                 .positions
-                .validate_interest_in_range(
+                .verify_and_update_interest_range(
                     position: sending_position,
                     position_id: from_position_id,
                     interest_amount: interest_amount_sender,
@@ -291,7 +291,7 @@ pub(crate) mod VaultsManager {
             let vault_position = self.positions.get_position_mut(vault_position_id);
             self
                 .positions
-                .validate_interest_in_range(
+                .verify_and_update_interest_range(
                     position: vault_position,
                     position_id: vault_position_id,
                     interest_amount: interest_amount_vault_position,
@@ -548,19 +548,19 @@ pub(crate) mod VaultsManager {
 
             let vault_position = self.positions.get_position_mut(vault_position_id);
             let redeeming_position = self.positions.get_position_mut(redeeming_position_id);
-            let receiving_position = self.positions.get_position_snapshot(receiving_position_id);
+            let receiving_position = self.positions.get_position_mut(receiving_position_id);
 
             // Validate interest amounts in range
             self
                 .positions
-                .validate_interest_in_range(
+                .verify_and_update_interest_range(
                     position: vault_position,
                     position_id: vault_position_id,
                     interest_amount: interest_amount_vault_position,
                 );
             self
                 .positions
-                .validate_interest_in_range(
+                .verify_and_update_interest_range(
                     position: redeeming_position,
                     position_id: redeeming_position_id,
                     interest_amount: interest_amount_sender,
@@ -685,13 +685,10 @@ pub(crate) mod VaultsManager {
                 )
             } else {
                 // Validate receiver interest if different position
-                let receiving_position_mut = self
-                    .positions
-                    .get_position_mut(position_id: receiving_position_id);
                 self
                     .positions
-                    .validate_interest_in_range(
-                        position: receiving_position_mut,
+                    .verify_and_update_interest_range(
+                        position: receiving_position,
                         position_id: receiving_position_id,
                         interest_amount: interest_amount_receiver,
                     );
@@ -760,7 +757,7 @@ pub(crate) mod VaultsManager {
                     .positions
                     .validate_healthy_or_healthier_position(
                         position_id: receiving_position_id,
-                        position: receiving_position,
+                        position: receiving_position.into(),
                         position_diff: position_diff,
                         tvtr_before: Default::default(),
                     );
