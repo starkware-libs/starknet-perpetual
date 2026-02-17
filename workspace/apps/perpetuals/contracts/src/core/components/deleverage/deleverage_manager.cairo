@@ -207,17 +207,17 @@ pub(crate) mod DeleverageManager {
             // Validate interest in range for both positions before applying diffs
             self
                 .positions
-                .validate_interest_in_range(
-                    position: deleveraged_position,
+                .apply_interest(
                     position_id: deleveraged_position_id,
+                    position: deleveraged_position,
                     interest_amount: interest_amount_deleveraged,
                 );
 
             self
                 .positions
-                .validate_interest_in_range(
-                    position: deleverager_position,
+                .apply_interest(
                     position_id: deleverager_position_id,
+                    position: deleverager_position,
                     interest_amount: interest_amount_deleverager,
                 );
 
@@ -269,17 +269,17 @@ pub(crate) mod DeleverageManager {
             // Validate interest in range for both positions before applying diffs
             self
                 .positions
-                .validate_interest_in_range(
-                    position: deleveraged_position,
+                .apply_interest(
                     position_id: deleveraged_position_id,
+                    position: deleveraged_position,
                     interest_amount: interest_amount_deleveraged,
                 );
 
             self
                 .positions
-                .validate_interest_in_range(
-                    position: deleverager_position,
+                .apply_interest(
                     position_id: deleverager_position_id,
+                    position: deleverager_position,
                     interest_amount: interest_amount_deleverager,
                 );
 

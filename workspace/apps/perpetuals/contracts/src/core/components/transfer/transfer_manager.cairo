@@ -280,16 +280,16 @@ pub(crate) mod TransferManager {
             // Validate interest in range
             self
                 .positions
-                .validate_interest_in_range(
-                    position: sender_position,
+                .apply_interest(
                     position_id: position_id,
+                    position: sender_position,
                     interest_amount: interest_amount_sender,
                 );
             self
                 .positions
-                .validate_interest_in_range(
-                    position: recipient_position,
+                .apply_interest(
                     position_id: recipient,
+                    position: recipient_position,
                     interest_amount: interest_amount_recipient,
                 );
 
