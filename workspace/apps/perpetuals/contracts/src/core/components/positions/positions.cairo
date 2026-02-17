@@ -3,6 +3,7 @@ pub mod Positions {
     use core::nullable::{FromNullableResult, match_nullable};
     use core::num::traits::{Pow, Zero};
     use core::panic_with_felt252;
+    use core::panics::panic_with_byte_array;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
@@ -11,11 +12,11 @@ pub mod Positions {
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalTrait as NonceInternal;
     use perpetuals::core::components::positions::errors::{
-        ALREADY_INITIALIZED, CALLER_IS_NOT_OWNER_ACCOUNT, INVALID_INTEREST_RATE,
-        INVALID_ZERO_OWNER_ACCOUNT, INVALID_ZERO_PUBLIC_KEY, NO_OWNER_ACCOUNT,
-        POSITION_ALREADY_EXISTS, POSITION_DOESNT_EXIST, POSITION_HAS_OWNER_ACCOUNT,
-        POSITION_SPOT_BALANCE_NEGATIVE, SAME_PUBLIC_KEY, SET_POSITION_OWNER_EXPIRED,
-        SET_PUBLIC_KEY_EXPIRED, ZERO_MAX_INTEREST_RATE,
+        ALREADY_INITIALIZED, CALLER_IS_NOT_OWNER_ACCOUNT, INVALID_ZERO_OWNER_ACCOUNT,
+        INVALID_ZERO_PUBLIC_KEY, NO_OWNER_ACCOUNT, POSITION_ALREADY_EXISTS, POSITION_DOESNT_EXIST,
+        POSITION_HAS_OWNER_ACCOUNT, POSITION_SPOT_BALANCE_NEGATIVE, SAME_PUBLIC_KEY,
+        SET_POSITION_OWNER_EXPIRED, SET_PUBLIC_KEY_EXPIRED, ZERO_MAX_INTEREST_RATE,
+        invalid_interest_rate_err,
     };
     use perpetuals::core::components::positions::events;
     use perpetuals::core::components::positions::interface::IPositions;
@@ -619,7 +620,9 @@ pub mod Positions {
                 // If `previous_timestamp` is zero, this indicates the first interest calculation,
                 // and the interest amount is required to be zero.
                 // so we need to set the current time.
-                assert(interest_amount.is_zero(), INVALID_INTEREST_RATE);
+                if !interest_amount.is_zero() {
+                    panic_with_byte_array(@invalid_interest_rate_err(:position_id));
+                }
                 position.last_interest_applied_time.write(current_time);
                 return;
             }
@@ -643,7 +646,9 @@ pub mod Positions {
                 .expect(AMOUNT_OVERFLOW);
 
             // Check: |interest_amount| <= max_allowed_change
-            assert(interest_amount.abs().into() <= max_allowed_change, INVALID_INTEREST_RATE);
+            if interest_amount.abs().into() > max_allowed_change {
+                panic_with_byte_array(@invalid_interest_rate_err(:position_id));
+            }
 
             position.last_interest_applied_time.write(current_time);
         }

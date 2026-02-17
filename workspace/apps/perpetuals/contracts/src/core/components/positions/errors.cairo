@@ -1,3 +1,5 @@
+use perpetuals::core::types::position::PositionId;
+
 pub const POSITION_DOESNT_EXIST: felt252 = 'POSITION_DOESNT_EXIST';
 pub const ALREADY_INITIALIZED: felt252 = 'ALREADY_INITIALIZED';
 pub const CALLER_IS_NOT_OWNER_ACCOUNT: felt252 = 'CALLER_IS_NOT_OWNER_ACCOUNT';
@@ -10,5 +12,8 @@ pub const INVALID_ZERO_PUBLIC_KEY: felt252 = 'INVALID_ZERO_PUBLIC_KEY';
 pub const INVALID_ZERO_OWNER_ACCOUNT: felt252 = 'INVALID_ZERO_OWNER_ACCOUNT';
 pub const SAME_PUBLIC_KEY: felt252 = 'SAME_PUBLIC_KEY';
 pub const POSITION_SPOT_BALANCE_NEGATIVE: felt252 = 'POSITION_SPOT_BALANCE_NEGATIVE';
-pub const INVALID_INTEREST_RATE: felt252 = 'INVALID_INTEREST_RATE';
 pub const ZERO_MAX_INTEREST_RATE: felt252 = 'ZERO_MAX_INTEREST_RATE';
+
+pub fn invalid_interest_rate_err(position_id: PositionId) -> ByteArray {
+    format!("INVALID_INTEREST_RATE position_id: {:?}", position_id)
+}

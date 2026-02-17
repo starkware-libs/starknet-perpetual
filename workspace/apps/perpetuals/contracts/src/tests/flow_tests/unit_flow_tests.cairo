@@ -3622,7 +3622,7 @@ fn test_liquidate_spot_with_different_source_and_receive_positions() {
 }
 
 #[test]
-#[should_panic(expected: ('INVALID_INTEREST_RATE',))]
+#[should_panic(expected: "INVALID_INTEREST_RATE position_id: PositionId { value: 101 }")]
 fn test_apply_interest_to_position_with_zero_balance() {
     let mut state: FlowTestBase = FlowTestBaseTrait::new();
     let user_1 = state.new_user_with_position();
@@ -3720,7 +3720,7 @@ fn test_apply_interest_to_multiple_positions() {
 }
 
 #[test]
-#[should_panic(expected: ('INVALID_INTEREST_RATE',))]
+#[should_panic(expected: "INVALID_INTEREST_RATE position_id: PositionId { value: 101 }")]
 fn test_apply_interest_exceeds_max_rate() {
     let mut state: FlowTestBase = FlowTestBaseTrait::new();
     let user = state.new_user_with_position();
@@ -3749,7 +3749,7 @@ fn test_apply_interest_exceeds_max_rate() {
 }
 
 #[test]
-#[should_panic(expected: ('INVALID_INTEREST_RATE',))]
+#[should_panic(expected: "INVALID_INTEREST_RATE position_id: PositionId { value: 101 }")]
 fn test_apply_non_zero_interest_to_zero_balance() {
     let mut state: FlowTestBase = FlowTestBaseTrait::new();
     let user = state.new_user_with_position();
@@ -3837,7 +3837,7 @@ fn test_apply_interest_sequential_updates() {
 }
 
 #[test]
-#[should_panic(expected: ('INVALID_INTEREST_RATE',))]
+#[should_panic(expected: "INVALID_INTEREST_RATE position_id: PositionId { value: 101 }")]
 fn test_apply_interest_twice_without_advancing_time() {
     let mut state: FlowTestBase = FlowTestBaseTrait::new();
     let user = state.new_user_with_position();
