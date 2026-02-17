@@ -32,8 +32,7 @@ pub mod Positions {
     use perpetuals::core::types::set_owner_account::SetOwnerAccountArgs;
     use perpetuals::core::types::set_public_key::SetPublicKeyArgs;
     use perpetuals::core::value_risk_calculator::{
-        PositionState, PositionTVTR, calculate_position_pnl, calculate_position_tvtr,
-        evaluate_position,
+        PositionState, PositionTVTR, calculate_pnl, calculate_position_tvtr, evaluate_position,
     };
     use starknet::storage::{
         Map, Mutable, StorageAsPointer, StoragePath, StoragePathEntry, StoragePointerReadAccess,
@@ -52,7 +51,7 @@ pub mod Positions {
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
     use starkware_utils::storage::utils::AddToStorage;
-    use starkware_utils::time::time::{Timestamp, validate_expiration};
+    use starkware_utils::time::time::{Time, Timestamp, validate_expiration};
     use crate::core::components::assets::errors::NO_SUCH_ASSET;
     use crate::core::components::snip::SNIP12MetadataImpl;
     use crate::core::errors::{
@@ -513,32 +512,30 @@ pub mod Positions {
         /// plus base collateral. Similar to TV calculation but without vault and spot assets.
         /// Includes funding ticks in the calculation.
         fn calculate_position_pnl(
-            self: @ComponentState<TContractState>,
-            position_id: PositionId,
-            collateral_balance: Balance,
+            self: @ComponentState<TContractState>, position_id: PositionId,
         ) -> i64 {
             let position = self.get_position_snapshot(:position_id);
-            let assets = get_dep_component!(self, Assets);
+            let assets_component = get_dep_component!(self, Assets);
 
             // Use existing function to derive funding delta and unchanged assets
             // This already calculates funding and builds AssetBalanceInfo array
-            let (funding_delta, unchanged_assets) = self
+            let (funding_delta, assets) = self
                 .derive_funding_delta_and_unchanged_assets(
                     :position, position_diff: Default::default(),
                 );
 
             // Filter to only include synthetic assets (exclude vault and spot)
             let mut synthetic_assets = array![];
-            for asset in unchanged_assets {
-                let asset_config = assets.get_asset_config(*asset.id);
+            for asset in assets {
+                let asset_config = assets_component.get_asset_config(*asset.id);
                 if asset_config.asset_type == AssetType::SYNTHETIC {
                     synthetic_assets.append(*asset);
                 }
             }
-
+            let collateral_balance = position.collateral_balance.read();
             let collateral_balance_with_funding = collateral_balance + funding_delta;
-            calculate_position_pnl(
-                assets: synthetic_assets.span(),
+            calculate_pnl(
+                synthetic_assets: synthetic_assets.span(),
                 collateral_balance: collateral_balance_with_funding,
             )
         }
@@ -575,7 +572,7 @@ pub mod Positions {
                         tvtr_before: Default::default(),
                     );
 
-                self.apply_diff(position_id: position_id, position_diff: position_diff);
+                self.apply_diff(:position_id, :position_diff);
             }
         }
 
@@ -632,10 +629,10 @@ pub mod Positions {
             }
 
             // Calculate position PnL (total value of synthetic assets + base collateral)
-            let pnl = self.calculate_position_pnl(position_id, position.collateral_balance.read());
+            let pnl = self.calculate_position_pnl(position_id);
 
             // Calculate time difference
-            let time_diff: u64 = current_time.seconds - previous_timestamp.seconds;
+            let time_diff: u64 = current_time.sub(previous_timestamp).into();
 
             // Calculate maximum allowed change: |pnl| * time_diff *
             // max_interest_rate_per_sec / 2^32.
