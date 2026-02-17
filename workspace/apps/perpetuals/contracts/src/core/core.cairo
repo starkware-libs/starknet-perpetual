@@ -1260,10 +1260,8 @@ pub mod Core {
         fn apply_interests(
             ref self: ContractState,
             operator_nonce: u64,
-            position_ids: Span<PositionId>,
-            interest_amounts: Span<i64>,
+            position_interest_amounts: Span<(PositionId, i64)>,
         ) {
-            assert(position_ids.len() == interest_amounts.len(), LENGTH_MISMATCH);
             self.pausable.assert_not_paused();
             self.assets.validate_assets_integrity();
             self.operator_nonce.use_checked_nonce(:operator_nonce);
@@ -1271,28 +1269,23 @@ pub mod Core {
             // Read once and pass as arguments to avoid redundant storage reads
             let current_time = self.get_system_time();
             let max_interest_rate_per_sec = self.positions.max_interest_rate_per_sec.read();
-            let interest_rate_scale: u64 = 2_u64.pow(32);
 
-            let mut i: usize = 0;
-            for position_id in position_ids {
-                let interest_amount = *interest_amounts[i];
+            for (position_id, interest_amount) in position_interest_amounts {
                 self
                     .positions
                     .apply_interest(
                         position_id: *position_id,
-                        :interest_amount,
+                        interest_amount: *interest_amount,
                         :current_time,
                         :max_interest_rate_per_sec,
-                        :interest_rate_scale,
                     );
 
                 self
                     .emit(
                         events::InterestApplied {
-                            position_id: *position_id, interest_amount: interest_amount,
+                            position_id: *position_id, interest_amount: *interest_amount,
                         },
                     );
-                i += 1;
             }
         }
 
@@ -1402,7 +1395,6 @@ pub mod Core {
                     interest_amount: interest_amount_a,
                     :current_time,
                     :max_interest_rate_per_sec,
-                    :interest_rate_scale,
                 );
 
             self
@@ -1413,7 +1405,6 @@ pub mod Core {
                     interest_amount: interest_amount_b,
                     :current_time,
                     :max_interest_rate_per_sec,
-                    :interest_rate_scale,
                 );
 
             // Signatures validation:

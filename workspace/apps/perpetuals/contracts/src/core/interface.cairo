@@ -209,8 +209,7 @@ pub trait ICore<TContractState> {
     fn apply_interests(
         ref self: TContractState,
         operator_nonce: u64,
-        position_ids: Span<PositionId>,
-        interest_amounts: Span<i64>,
+        position_interest_amounts: Span<(PositionId, i64)>,
     );
     fn liquidate_spot_asset(
         ref self: TContractState,
