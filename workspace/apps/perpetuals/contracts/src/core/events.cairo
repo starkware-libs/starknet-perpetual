@@ -58,6 +58,8 @@ pub struct Trade {
     pub order_a_hash: felt252,
     #[key]
     pub order_b_hash: felt252,
+    pub interest_amount_a: i64,
+    pub interest_amount_b: i64,
 }
 
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
