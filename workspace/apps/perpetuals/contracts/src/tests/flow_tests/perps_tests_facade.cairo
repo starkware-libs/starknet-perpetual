@@ -1470,6 +1470,30 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         fee_a: u64,
         fee_b: u64,
     ) -> Settlement {
+        self
+            .create_settlement_with_interest(
+                :order_a,
+                :order_b,
+                :base,
+                :quote,
+                :fee_a,
+                :fee_b,
+                interest_amount_a: 0,
+                interest_amount_b: 0,
+            )
+    }
+
+    fn create_settlement_with_interest(
+        ref self: PerpsTestsFacade,
+        order_a: OrderInfo,
+        order_b: OrderInfo,
+        base: i64,
+        quote: i64,
+        fee_a: u64,
+        fee_b: u64,
+        interest_amount_a: i64,
+        interest_amount_b: i64,
+    ) -> Settlement {
         Settlement {
             signature_a: order_a.signature,
             signature_b: order_b.signature,
@@ -1479,8 +1503,8 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             actual_amount_quote_a: quote,
             actual_fee_a: fee_a,
             actual_fee_b: fee_b,
-            interest_amount_a: 0,
-            interest_amount_b: 0,
+            interest_amount_a,
+            interest_amount_b,
         }
     }
 
@@ -1535,13 +1559,15 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             PositionData {
                 collateral_balance: position_data_a.collateral_balance
                     + settlement.actual_amount_quote_a.into()
-                    - settlement.actual_fee_a.into(),
+                    - settlement.actual_fee_a.into()
+                    + settlement.interest_amount_a.into(),
                 assets: new_synthetics_a.span(),
             },
             PositionData {
                 collateral_balance: position_data_b.collateral_balance
                     - settlement.actual_amount_quote_a.into()
-                    - settlement.actual_fee_b.into(),
+                    - settlement.actual_fee_b.into()
+                    + settlement.interest_amount_b.into(),
                 assets: new_synthetics_b.span(),
             },
         )

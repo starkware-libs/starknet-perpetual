@@ -4511,3 +4511,542 @@ fn test_deposit_spot_with_negative_interest_becomes_unhealthy() {
         );
     state.facade.process_deposit_with_interest(deposit_info: deposit_info_2, :interest_amount);
 }
+
+#[test]
+fn test_multi_trade_with_mixed_interest() {
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let synthetic_info = AssetInfoTrait::new(
+        asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
+    );
+    let asset_id = synthetic_info.asset_id;
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    state.facade.add_active_synthetic(synthetic_info: @synthetic_info, initial_price: 100);
+
+    let user_a = state.new_user_with_position();
+    let user_b = state.new_user_with_position();
+
+    let deposit_a = state
+        .facade
+        .deposit(
+            depositor: user_a.account, position_id: user_a.position_id, quantized_amount: 100_000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_a);
+    let deposit_b = state
+        .facade
+        .deposit(
+            depositor: user_b.account, position_id: user_b.position_id, quantized_amount: 100_000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_b);
+
+    state.facade.advance_time(seconds: HOUR);
+
+    // PnL for both = 100000 (collateral only, no synthetics yet).
+    // max_allowed for an hour ~ 100
+    let interest_a: i64 = 50_i64;
+    let interest_b: i64 = -75_i64;
+
+    let order_a = state
+        .facade
+        .create_order(
+            user: user_a,
+            base_amount: 10,
+            base_asset_id: asset_id,
+            quote_amount: -1000,
+            fee_amount: 5,
+        );
+    let order_b = state
+        .facade
+        .create_order(
+            user: user_b,
+            base_amount: -15,
+            base_asset_id: asset_id,
+            quote_amount: 1500,
+            fee_amount: 8,
+        );
+
+    let settlement = state
+        .facade
+        .create_settlement_with_interest(
+            :order_a,
+            :order_b,
+            base: 10,
+            quote: -1000,
+            fee_a: 5,
+            fee_b: 5,
+            interest_amount_a: interest_a,
+            interest_amount_b: interest_b,
+        );
+
+    // Facade validates: user_a collateral = 100000 - 1000 - 5 + interest_a,
+    // user_b collateral = 100000 + 1000 - 5 + interest_b, and synthetic balances.
+    state.facade.multi_trade(trades: array![settlement].span());
+}
+
+#[test]
+fn test_multi_trade_positive_interest_enables_unhealthy_trade() {
+    // With risk_factor 50%, user_a opens a short that would make them unhealthy
+    // without positive interest. Interest tips the position back to exactly healthy.
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![500].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let synthetic_info = AssetInfoTrait::new(
+        asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
+    );
+    let asset_id = synthetic_info.asset_id;
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    state.facade.add_active_synthetic(synthetic_info: @synthetic_info, initial_price: 100);
+
+    let user_a = state.new_user_with_position();
+    let user_b = state.new_user_with_position();
+
+    let deposit_a = state
+        .facade
+        .deposit(
+            depositor: user_a.account, position_id: user_a.position_id, quantized_amount: 5_000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_a);
+    let deposit_b = state
+        .facade
+        .deposit(
+            depositor: user_b.account, position_id: user_b.position_id, quantized_amount: 100_000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_b);
+
+    state.facade.advance_time(seconds: HOUR);
+
+    // user_a PnL = 5000. max_allowed = floor(5000 * 3600 * 1200 / 2^32) = 5.
+    // Without interest: user_a sells 100 BTC, gets 10000 quote, pays fee 1.
+    //   collateral = 5000 + 10000 - 1 = 14999, BTC = -100
+    //   TV = 14999 - 10000 = 4999, TR = 10000 * 0.5 = 5000 -> UNHEALTHY
+    // With interest_a = +1:
+    //   collateral = 5000 + 10000 - 1 + 1 = 15000, BTC = -100
+    //   TV = 15000 - 10000 = 5000, TR = 5000 -> HEALTHY (barely)
+    let order_a = state
+        .facade
+        .create_order(
+            user: user_a,
+            base_amount: -100,
+            base_asset_id: asset_id,
+            quote_amount: 10000,
+            fee_amount: 1,
+        );
+    let order_b = state
+        .facade
+        .create_order(
+            user: user_b,
+            base_amount: 100,
+            base_asset_id: asset_id,
+            quote_amount: -10000,
+            fee_amount: 0,
+        );
+
+    let settlement = state
+        .facade
+        .create_settlement_with_interest(
+            :order_a,
+            :order_b,
+            base: -100,
+            quote: 10000,
+            fee_a: 1,
+            fee_b: 0,
+            interest_amount_a: 1,
+            interest_amount_b: 0,
+        );
+
+    state.facade.multi_trade(trades: array![settlement].span());
+}
+
+#[test]
+#[should_panic(
+    expected: "POSITION_NOT_HEALTHY_NOR_HEALTHIER position_id: PositionId { value: 101 } TV before 5001, TR before 0, TV after 4999, TR after 5000",
+)]
+fn test_multi_trade_negative_interest_makes_trade_unhealthy() {
+    // Without interest the trade is barely healthy. Negative interest tips it unhealthy.
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![500].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let synthetic_info = AssetInfoTrait::new(
+        asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
+    );
+    let asset_id = synthetic_info.asset_id;
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    state.facade.add_active_synthetic(synthetic_info: @synthetic_info, initial_price: 100);
+
+    let user_a = state.new_user_with_position();
+    let user_b = state.new_user_with_position();
+
+    let deposit_a = state
+        .facade
+        .deposit(
+            depositor: user_a.account, position_id: user_a.position_id, quantized_amount: 5_001,
+        );
+    state.facade.process_deposit(deposit_info: deposit_a);
+    let deposit_b = state
+        .facade
+        .deposit(
+            depositor: user_b.account, position_id: user_b.position_id, quantized_amount: 100_000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_b);
+
+    state.facade.advance_time(seconds: HOUR);
+
+    // user_a PnL = 5001. max_allowed = floor(5001 * 3600 * 1200 / 2^32) = 5.
+    // Without interest: user_a sells 100 BTC, gets 10000 quote, no fees.
+    //   collateral = 5001 + 10000 = 15001, BTC = -100
+    //   TV = 15001 - 10000 = 5001, TR = 5000 -> healthy by 1
+    // With interest_a = -2:
+    //   collateral = 5001 + 10000 - 2 = 14999
+    //   TV = 14999 - 10000 = 4999, TR = 5000 -> UNHEALTHY
+    let order_a = state
+        .facade
+        .create_order(
+            user: user_a,
+            base_amount: -100,
+            base_asset_id: asset_id,
+            quote_amount: 10000,
+            fee_amount: 0,
+        );
+    let order_b = state
+        .facade
+        .create_order(
+            user: user_b,
+            base_amount: 100,
+            base_asset_id: asset_id,
+            quote_amount: -10000,
+            fee_amount: 0,
+        );
+
+    let settlement = state
+        .facade
+        .create_settlement_with_interest(
+            :order_a,
+            :order_b,
+            base: -100,
+            quote: 10000,
+            fee_a: 0,
+            fee_b: 0,
+            interest_amount_a: -2,
+            interest_amount_b: 0,
+        );
+
+    state.facade.multi_trade(trades: array![settlement].span());
+}
+
+#[test]
+#[should_panic(expected: "INVALID_INTEREST_RATE position_id: PositionId { value: 101 }")]
+fn test_multi_trade_non_zero_interest_on_fresh_position() {
+    // No time has advanced since position creation, so time_diff = 0 and any non-zero
+    // interest exceeds max_allowed (which is 0).
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let synthetic_info = AssetInfoTrait::new(
+        asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
+    );
+    let asset_id = synthetic_info.asset_id;
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    state.facade.add_active_synthetic(synthetic_info: @synthetic_info, initial_price: 100);
+
+    let user_a = state.new_user_with_position();
+    let user_b = state.new_user_with_position();
+
+    let deposit_a = state
+        .facade
+        .deposit(
+            depositor: user_a.account, position_id: user_a.position_id, quantized_amount: 10_000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_a);
+    let deposit_b = state
+        .facade
+        .deposit(
+            depositor: user_b.account, position_id: user_b.position_id, quantized_amount: 100_000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_b);
+
+    let order_a = state
+        .facade
+        .create_order(
+            user: user_a,
+            base_amount: 10,
+            base_asset_id: asset_id,
+            quote_amount: -1000,
+            fee_amount: 0,
+        );
+    let order_b = state
+        .facade
+        .create_order(
+            user: user_b,
+            base_amount: -10,
+            base_asset_id: asset_id,
+            quote_amount: 1000,
+            fee_amount: 0,
+        );
+
+    let settlement = state
+        .facade
+        .create_settlement_with_interest(
+            :order_a,
+            :order_b,
+            base: 10,
+            quote: -1000,
+            fee_a: 0,
+            fee_b: 0,
+            interest_amount_a: 1,
+            interest_amount_b: 0,
+        );
+
+    state.facade.multi_trade(trades: array![settlement].span());
+}
+
+#[test]
+fn test_multi_trade_interest_with_synthetic_pnl() {
+    // A position with synthetics has PnL = collateral + synthetic_value, allowing more
+    // interest than a collateral-only position. We apply interest that would be invalid
+    // for the collateral alone but is valid thanks to the synthetic exposure.
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let synthetic_info = AssetInfoTrait::new(
+        asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
+    );
+    let asset_id = synthetic_info.asset_id;
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    state.facade.add_active_synthetic(synthetic_info: @synthetic_info, initial_price: 100);
+
+    let user_a = state.new_user_with_position();
+    let user_b = state.new_user_with_position();
+
+    let deposit_a = state
+        .facade
+        .deposit(
+            depositor: user_a.account, position_id: user_a.position_id, quantized_amount: 10_000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_a);
+    let deposit_b = state
+        .facade
+        .deposit(
+            depositor: user_b.account, position_id: user_b.position_id, quantized_amount: 100_000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_b);
+
+    // First trade: user_a buys 100 BTC at 80 quote each (below oracle price of 100).
+    // After trade: user_a collateral = 10000 - 8000 = 2000, BTC = 100
+    // PnL = 2000 + 100*100 = 12000
+    let order_a_1 = state
+        .facade
+        .create_order(
+            user: user_a,
+            base_amount: 100,
+            base_asset_id: asset_id,
+            quote_amount: -8000,
+            fee_amount: 0,
+        );
+    let order_b_1 = state
+        .facade
+        .create_order(
+            user: user_b,
+            base_amount: -100,
+            base_asset_id: asset_id,
+            quote_amount: 8000,
+            fee_amount: 0,
+        );
+
+    let settlement_1 = state
+        .facade
+        .create_settlement(
+            order_a: order_a_1, order_b: order_b_1, base: 100, quote: -8000, fee_a: 0, fee_b: 0,
+        );
+    state.facade.multi_trade(trades: array![settlement_1].span());
+
+    state.facade.advance_time(seconds: HOUR);
+
+    // user_a PnL = 12000 (collateral 2000 + synthetic 10000).
+    // max_allowed = floor(12000 * 3600 * 1200 / 2^32) = 12.
+    // With collateral alone (2000): max would be floor(2000 * 3600 * 1200 / 2^32) = 2.
+    // We apply interest_a = 5, which exceeds the collateral-only max (2) but is valid
+    // because the synthetic PnL pushes the limit to 12.
+    let order_a_2 = state
+        .facade
+        .create_order(
+            user: user_a,
+            base_amount: 1,
+            base_asset_id: asset_id,
+            quote_amount: -100,
+            fee_amount: 0,
+        );
+    let order_b_2 = state
+        .facade
+        .create_order(
+            user: user_b,
+            base_amount: -1,
+            base_asset_id: asset_id,
+            quote_amount: 100,
+            fee_amount: 0,
+        );
+
+    let settlement_2 = state
+        .facade
+        .create_settlement_with_interest(
+            order_a: order_a_2,
+            order_b: order_b_2,
+            base: 1,
+            quote: -100,
+            fee_a: 0,
+            fee_b: 0,
+            interest_amount_a: 5,
+            interest_amount_b: 0,
+        );
+
+    // After: user_a collateral = 2000 - 100 + 5 = 1905, BTC = 101
+    // TV = 1905 + 10100 = 12005, TR = 10100 * 0.01 = 101 -> healthy
+    state.facade.multi_trade(trades: array![settlement_2].span());
+}
+
+#[test]
+fn test_multi_trade_multiple_settlements_with_interest() {
+    // 3 positions, 3 settlements in a single multi_trade call.
+    // Tests that non-zero interest appears only in each position's last settlement,
+    // and that the TVTR cache correctly accumulates across settlements.
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let synthetic_info = AssetInfoTrait::new(
+        asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
+    );
+    let asset_id = synthetic_info.asset_id;
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    state.facade.add_active_synthetic(synthetic_info: @synthetic_info, initial_price: 100);
+
+    let user_a = state.new_user_with_position();
+    let user_b = state.new_user_with_position();
+    let user_c = state.new_user_with_position();
+
+    let deposit_a = state
+        .facade
+        .deposit(
+            depositor: user_a.account, position_id: user_a.position_id, quantized_amount: 100_000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_a);
+    let deposit_b = state
+        .facade
+        .deposit(
+            depositor: user_b.account, position_id: user_b.position_id, quantized_amount: 100_000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_b);
+    let deposit_c = state
+        .facade
+        .deposit(
+            depositor: user_c.account, position_id: user_c.position_id, quantized_amount: 100_000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_c);
+
+    state.facade.advance_time(seconds: HOUR);
+
+    // All positions PnL = 100000. max_allowed = floor(100000 * 3600 * 1200 / 2^32) = 100.
+
+    // Settlement 1: A buys 10 BTC from B. No interest (both participate later).
+    let order_a_1 = state
+        .facade
+        .create_order(
+            user: user_a,
+            base_amount: 10,
+            base_asset_id: asset_id,
+            quote_amount: -1000,
+            fee_amount: 0,
+        );
+    let order_b_1 = state
+        .facade
+        .create_order(
+            user: user_b,
+            base_amount: -10,
+            base_asset_id: asset_id,
+            quote_amount: 1000,
+            fee_amount: 0,
+        );
+    let settlement_1 = state
+        .facade
+        .create_settlement_with_interest(
+            order_a: order_a_1,
+            order_b: order_b_1,
+            base: 10,
+            quote: -1000,
+            fee_a: 0,
+            fee_b: 0,
+            interest_amount_a: 0,
+            interest_amount_b: 0,
+        );
+
+    // Settlement 2: A sells 5 BTC to C. Non-zero interest for A (A's last settlement).
+    let order_a_2 = state
+        .facade
+        .create_order(
+            user: user_a,
+            base_amount: -5,
+            base_asset_id: asset_id,
+            quote_amount: 500,
+            fee_amount: 0,
+        );
+    let order_c_2 = state
+        .facade
+        .create_order(
+            user: user_c,
+            base_amount: 5,
+            base_asset_id: asset_id,
+            quote_amount: -500,
+            fee_amount: 0,
+        );
+    let settlement_2 = state
+        .facade
+        .create_settlement_with_interest(
+            order_a: order_a_2,
+            order_b: order_c_2,
+            base: -5,
+            quote: 500,
+            fee_a: 0,
+            fee_b: 0,
+            interest_amount_a: 50,
+            interest_amount_b: 0,
+        );
+
+    // Settlement 3: B buys 5 BTC from C. Non-zero interest for both (last for B and C).
+    let order_b_3 = state
+        .facade
+        .create_order(
+            user: user_b,
+            base_amount: 5,
+            base_asset_id: asset_id,
+            quote_amount: -500,
+            fee_amount: 0,
+        );
+    let order_c_3 = state
+        .facade
+        .create_order(
+            user: user_c,
+            base_amount: -5,
+            base_asset_id: asset_id,
+            quote_amount: 500,
+            fee_amount: 0,
+        );
+    let settlement_3 = state
+        .facade
+        .create_settlement_with_interest(
+            order_a: order_b_3,
+            order_b: order_c_3,
+            base: 5,
+            quote: -500,
+            fee_a: 0,
+            fee_b: 0,
+            interest_amount_a: 50,
+            interest_amount_b: 50,
+        );
+
+    // Execute all 3 settlements in one multi_trade call.
+    // Expected final balances:
+    //   A: collateral = 100000 - 1000 + 500 + 50 = 99550, BTC = 10 - 5 = 5
+    //   B: collateral = 100000 + 1000 - 500 + 50 = 100550, BTC = -10 + 5 = -5
+    //   C: collateral = 100000 - 500 + 500 + 0 + 50 = 100050, BTC = 5 - 5 = 0
+    //   Fee: 0
+    state.facade.multi_trade(trades: array![settlement_1, settlement_2, settlement_3].span());
+}
