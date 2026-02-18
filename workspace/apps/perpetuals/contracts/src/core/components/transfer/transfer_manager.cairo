@@ -358,20 +358,21 @@ pub(crate) mod TransferManager {
                     assert(!self.vaults.is_vault_position(recipient), VAULT_CANNOT_HOLD_SHARES);
                 }
 
-                let signed_amount: i64 = -amount.try_into().expect(AMOUNT_OVERFLOW);
                 self
                     .positions
                     ._validate_asset_shrink_non_negative(
-                        position: sender_position, asset_id: collateral_id, amount: signed_amount,
+                        position: sender_position,
+                        asset_id: collateral_id,
+                        amount: -amount.try_into().expect(AMOUNT_OVERFLOW),
                     );
                 let position_diff_sender = PositionDiff {
                     collateral_diff: interest_amount_sender.into(),
-                    asset_diff: Option::Some((collateral_id, signed_amount.into())),
+                    asset_diff: Option::Some((collateral_id, -amount.into())),
                 };
 
                 let position_diff_recipient = PositionDiff {
                     collateral_diff: interest_amount_recipient.into(),
-                    asset_diff: Option::Some((collateral_id, -signed_amount.into())),
+                    asset_diff: Option::Some((collateral_id, amount.into())),
                 };
                 (position_diff_sender, position_diff_recipient)
             };

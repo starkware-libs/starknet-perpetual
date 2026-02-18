@@ -786,10 +786,10 @@ fn test_liquidate_after_price_tick() {
         .facade
         .create_order(
             user: liquidator_user_1,
-            base_amount: -2,
+            base_amount: -4,
             base_asset_id: asset_id,
-            quote_amount: 41,
-            fee_amount: 1,
+            quote_amount: 82,
+            fee_amount: 2,
         );
     state
         .facade
