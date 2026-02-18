@@ -29,6 +29,8 @@ pub struct Transfer {
     #[key]
     pub transfer_request_hash: felt252,
     pub salt: felt252,
+    pub interest_amount_sender: i64,
+    pub interest_amount_recipient: i64,
 }
 
 #[starknet::interface]
@@ -311,6 +313,8 @@ pub(crate) mod TransferManager {
                         expiration,
                         transfer_request_hash: hash,
                         salt,
+                        interest_amount_sender,
+                        interest_amount_recipient,
                     },
                 );
         }
