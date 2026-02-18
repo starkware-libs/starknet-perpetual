@@ -2774,6 +2774,8 @@ fn test_successful_trade() {
         actual_fee_b: FEE,
         order_a_hash: hash_a,
         order_b_hash: hash_b,
+        interest_amount_a: 0,
+        interest_amount_b: 0,
     );
 
     // Check:
@@ -4333,6 +4335,8 @@ fn test_successful_transfer() {
         expiration: transfer_args.expiration,
         transfer_request_hash: msg_hash,
         salt: transfer_args.salt,
+        interest_amount_sender: 0,
+        interest_amount_recipient: 0,
     );
 
     // Check:

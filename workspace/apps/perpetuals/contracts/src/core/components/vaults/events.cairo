@@ -27,6 +27,8 @@ pub struct InvestInVault {
     pub shares_received: u64,
     pub user_investment: u64,
     pub correlation_id: felt252,
+    pub interest_amount_vault_position: i64,
+    pub interest_amount_sender: i64,
 }
 
 #[derive(Debug, Drop, PartialEq, starknet::Event)]

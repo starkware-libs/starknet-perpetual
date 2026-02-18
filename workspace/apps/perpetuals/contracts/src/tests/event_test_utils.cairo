@@ -157,6 +157,7 @@ pub fn assert_withdraw_event_with_expected(
     expiration: Timestamp,
     withdraw_request_hash: felt252,
     salt: felt252,
+    interest_amount: i64,
 ) {
     let expected_event = events::Withdraw {
         position_id,
@@ -167,6 +168,7 @@ pub fn assert_withdraw_event_with_expected(
         expiration,
         withdraw_request_hash,
         salt,
+        interest_amount,
     };
     assert_expected_event_emitted(
         :spied_event,
@@ -250,6 +252,8 @@ pub fn assert_trade_event_with_expected(
     actual_fee_b: u64,
     order_a_hash: felt252,
     order_b_hash: felt252,
+    interest_amount_a: i64,
+    interest_amount_b: i64,
 ) {
     let expected_event = events::Trade {
         order_a_position_id,
@@ -272,6 +276,8 @@ pub fn assert_trade_event_with_expected(
         actual_fee_b,
         order_a_hash,
         order_b_hash,
+        interest_amount_a,
+        interest_amount_b,
     };
     assert_expected_event_emitted(
         :spied_event,
@@ -311,6 +317,9 @@ pub fn assert_liquidate_event_with_expected(
         insurance_fund_fee_asset_id: collateral_id,
         insurance_fund_fee_amount,
         liquidator_order_hash,
+        interest_amount_liquidated: 0,
+        interest_amount_liquidator: 0,
+        interest_amount_liquidator_receiver: 0,
     };
     assert_expected_event_emitted(
         :spied_event,
@@ -336,6 +345,8 @@ pub fn assert_deleverage_event_with_expected(
         deleveraged_base_amount,
         quote_asset_id: collateral_id,
         deleveraged_quote_amount,
+        interest_amount_deleveraged: 0,
+        interest_amount_deleverager: 0,
     };
     assert_expected_event_emitted(
         :spied_event,
@@ -375,9 +386,19 @@ pub fn assert_transfer_event_with_expected(
     expiration: Timestamp,
     transfer_request_hash: felt252,
     salt: felt252,
+    interest_amount_sender: i64,
+    interest_amount_recipient: i64,
 ) {
     let expected_event = Transfer {
-        position_id, recipient, collateral_id, amount, expiration, transfer_request_hash, salt,
+        position_id,
+        recipient,
+        collateral_id,
+        amount,
+        expiration,
+        transfer_request_hash,
+        salt,
+        interest_amount_sender,
+        interest_amount_recipient,
     };
     assert_expected_event_emitted(
         :spied_event,

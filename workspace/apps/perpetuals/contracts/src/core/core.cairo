@@ -1530,6 +1530,8 @@ pub mod Core {
                         actual_fee_b,
                         order_a_hash: hash_a,
                         order_b_hash: hash_b,
+                        interest_amount_a,
+                        interest_amount_b,
                     },
                 );
             (tvtr_a_after, tvtr_b_after)

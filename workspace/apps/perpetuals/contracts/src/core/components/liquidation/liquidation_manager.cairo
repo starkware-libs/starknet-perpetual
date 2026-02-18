@@ -23,6 +23,9 @@ pub struct Liquidate {
     pub insurance_fund_fee_amount: u64,
     #[key]
     pub liquidator_order_hash: felt252,
+    pub interest_amount_liquidated: i64,
+    pub interest_amount_liquidator: i64,
+    pub interest_amount_liquidator_receiver: i64,
 }
 
 #[starknet::interface]
@@ -279,6 +282,9 @@ pub(crate) mod LiquidationManager {
                         insurance_fund_fee_asset_id: self.assets.get_collateral_id(),
                         insurance_fund_fee_amount: liquidated_fee_amount,
                         liquidator_order_hash: liquidator_order_hash,
+                        interest_amount_liquidated,
+                        interest_amount_liquidator,
+                        interest_amount_liquidator_receiver: 0,
                     },
                 );
         }
@@ -399,6 +405,9 @@ pub(crate) mod LiquidationManager {
                         insurance_fund_fee_asset_id: collateral_id,
                         insurance_fund_fee_amount: liquidated_fee_amount,
                         liquidator_order_hash: liquidator_order_hash,
+                        interest_amount_liquidated,
+                        interest_amount_liquidator,
+                        interest_amount_liquidator_receiver,
                     },
                 );
         }
