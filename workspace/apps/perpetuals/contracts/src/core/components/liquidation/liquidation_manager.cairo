@@ -521,7 +521,7 @@ pub(crate) mod LiquidationManager {
                 .position_id() {
                 (
                     PositionDiff {
-                        collateral_diff: -liquidated_order.quote_amount().into()
+                        collateral_diff: liquidator_order.quote_amount().into()
                             - actual_liquidator_fee.into()
                             + interest_amount_liquidator.into(),
                         asset_diff: Option::None,
@@ -531,8 +531,8 @@ pub(crate) mod LiquidationManager {
                             collateral_diff: interest_amount_liquidator_receiver.into(),
                             asset_diff: Option::Some(
                                 (
-                                    liquidated_order.base_asset_id(),
-                                    -liquidated_order.base_amount().into(),
+                                    liquidator_order.base_asset_id(),
+                                    liquidator_order.base_amount().into(),
                                 ),
                             ),
                         },
@@ -541,13 +541,13 @@ pub(crate) mod LiquidationManager {
             } else {
                 (
                     PositionDiff {
-                        collateral_diff: -liquidated_order.quote_amount().into()
+                        collateral_diff: liquidator_order.quote_amount().into()
                             - actual_liquidator_fee.into()
                             + interest_amount_liquidator.into(),
                         asset_diff: Option::Some(
                             (
-                                liquidated_order.base_asset_id(),
-                                -liquidated_order.base_amount().into(),
+                                liquidator_order.base_asset_id(),
+                                liquidator_order.base_amount().into(),
                             ),
                         ),
                     },

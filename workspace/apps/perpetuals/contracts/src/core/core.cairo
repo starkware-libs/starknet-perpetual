@@ -1390,15 +1390,14 @@ pub mod Core {
             let position_id_a = order_a.position_id;
             let position_id_b = order_b.position_id;
 
-            let position_a = self.positions.get_position_snapshot(position_id_a);
-            let position_b = self.positions.get_position_snapshot(position_id_b);
+            let position_a = self.positions.get_position_mut(position_id_a);
+            let position_b = self.positions.get_position_mut(position_id_b);
 
             // Validate interest in range for both positions before applying diffs
-            let position_mut_a = self.positions.get_position_mut(position_id_a);
             self
                 .positions
                 .validate_interest_in_range_with_params(
-                    position: position_mut_a,
+                    position: position_a,
                     position_id: position_id_a,
                     interest_amount: interest_amount_a,
                     :current_time,
@@ -1406,11 +1405,10 @@ pub mod Core {
                     :interest_rate_scale,
                 );
 
-            let position_mut_b = self.positions.get_position_mut(position_id_b);
             self
                 .positions
                 .validate_interest_in_range_with_params(
-                    position: position_mut_b,
+                    position: position_b,
                     position_id: position_id_b,
                     interest_amount: interest_amount_b,
                     :current_time,
@@ -1422,19 +1420,19 @@ pub mod Core {
             let (hash_a, hash_b) = match check_signature {
                 true => (
                     validate_signature(
-                        public_key: position_a.get_owner_public_key(),
+                        public_key: position_a.into().get_owner_public_key(),
                         message: order_a,
                         signature: signature_a,
                     ),
                     validate_signature(
-                        public_key: position_b.get_owner_public_key(),
+                        public_key: position_b.into().get_owner_public_key(),
                         message: order_b,
                         signature: signature_b,
                     ),
                 ),
                 false => (
-                    order_a.get_message_hash(public_key: position_a.get_owner_public_key()),
-                    order_b.get_message_hash(public_key: position_b.get_owner_public_key()),
+                    order_a.get_message_hash(public_key: position_a.into().get_owner_public_key()),
+                    order_b.get_message_hash(public_key: position_b.into().get_owner_public_key()),
                 ),
             };
 
@@ -1485,7 +1483,7 @@ pub mod Core {
                 .positions
                 .validate_healthy_or_healthier_position(
                     position_id: order_a.position_id,
-                    position: position_a,
+                    position: position_a.into(),
                     position_diff: position_diff_a,
                     tvtr_before: tvtr_a_before,
                 );
@@ -1493,7 +1491,7 @@ pub mod Core {
                 .positions
                 .validate_healthy_or_healthier_position(
                     position_id: order_b.position_id,
-                    position: position_b,
+                    position: position_b.into(),
                     position_diff: position_diff_b,
                     tvtr_before: tvtr_b_before,
                 );
