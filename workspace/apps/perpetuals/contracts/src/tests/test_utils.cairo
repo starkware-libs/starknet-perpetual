@@ -11,6 +11,7 @@ use perpetuals::core::components::positions::interface::IPositions;
 use perpetuals::core::components::snip::SNIP12MetadataImpl;
 use perpetuals::core::core::Core;
 use perpetuals::core::core::Core::InternalCoreFunctions;
+use perpetuals::core::types::asset::synthetic::AssetType;
 use perpetuals::core::types::asset::{AssetId, AssetStatus};
 use perpetuals::core::types::balance::Balance;
 use perpetuals::core::types::funding::FundingIndex;
@@ -35,11 +36,13 @@ use starkware_utils::components::roles::interface::{
 use starkware_utils::constants::{MAX_U128, TWO_POW_32, TWO_POW_40};
 use starkware_utils::signature::stark::Signature;
 use starkware_utils::storage::iterable_map::*;
+use starkware_utils::storage::linked_iterable_map_felt::LinkedIterableMapFeltReadAccess;
 use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
 use starkware_utils_testing::signing::StarkKeyPair;
 use starkware_utils_testing::test_utils::{
     Deployable, TokenConfig, TokenState, TokenTrait, cheat_caller_address_once,
 };
+use crate::core::components::assets::AssetsComponent::InternalTrait;
 use crate::core::components::deposit::interface::IDeposit;
 use crate::core::components::external_components::interface::{
     EXTERNAL_COMPONENT_ASSETS, EXTERNAL_COMPONENT_DELEVERAGES, EXTERNAL_COMPONENT_DEPOSITS,
@@ -773,7 +776,11 @@ pub fn validate_asset_balance(
     expected_balance: Balance,
 ) {
     let snapshot = state.positions.get_position_snapshot(:position_id);
-    let balance = snapshot.asset_balances.read(asset_id).map_or(0_i64.into(), |b| b.balance);
+    let asset_type = state.assets.get_asset_type_unsafe(asset_id);
+    let balance = match asset_type {
+        AssetType::SPOT_COLLATERAL => { snapshot.spot_balances.read(key: asset_id).balance },
+        _ => { snapshot.asset_balances.read(asset_id).map_or(0_i64.into(), |b| b.balance) },
+    };
     assert!(balance == expected_balance);
 }
 

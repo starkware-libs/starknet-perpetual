@@ -1,9 +1,21 @@
 use core::num::traits::Zero;
 use core::traits::Neg;
+use starkware_utils::storage::utils::Castable64;
 
 #[derive(Copy, Debug, Default, Drop, PartialEq, Serde, starknet::Store)]
 pub struct Balance {
     value: i64,
+}
+
+pub impl Castable64SpotBalance of Castable64<Balance> {
+    fn encode(value: Balance) -> u64 {
+        Castable64::encode(value.value)
+    }
+
+    fn decode(value: u64) -> Balance {
+        let value: i64 = Castable64::decode(value);
+        Balance { value: value }
+    }
 }
 
 #[derive(Copy, Debug, Default, Drop, Serde)]

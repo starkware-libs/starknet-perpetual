@@ -1,4 +1,5 @@
 use core::num::traits::zero::Zero;
+use starkware_utils::storage::utils::CastableFelt;
 
 pub mod synthetic;
 pub mod vault;
@@ -6,6 +7,15 @@ pub mod vault;
 #[derive(Copy, Debug, Default, Drop, Hash, PartialEq, Serde, starknet::Store)]
 pub struct AssetId {
     value: felt252,
+}
+
+pub impl AssetIdFelt of CastableFelt<AssetId> {
+    fn encode(value: AssetId) -> felt252 {
+        value.value
+    }
+    fn decode(value: felt252) -> AssetId {
+        AssetId { value }
+    }
 }
 
 #[derive(Copy, Debug, Drop, PartialEq, Serde, starknet::Store)]
