@@ -25,11 +25,12 @@ pub mod Positions {
     use perpetuals::core::types::asset::AssetId;
     use perpetuals::core::types::asset::synthetic::{AssetBalanceInfo, SyntheticTrait};
     use perpetuals::core::types::balance::Balance;
-    use perpetuals::core::types::funding::calculate_funding;
+    use perpetuals::core::types::funding::{FundingIndex, calculate_funding};
     use perpetuals::core::types::position::{
         AssetBalance, POSITION_VERSION, Position, PositionData, PositionDiff, PositionId,
         PositionMutableTrait, PositionTrait,
     };
+    use perpetuals::core::types::risk_factor::RiskFactor;
     use perpetuals::core::types::set_owner_account::SetOwnerAccountArgs;
     use perpetuals::core::types::set_public_key::SetPublicKeyArgs;
     use perpetuals::core::value_risk_calculator::{
@@ -107,6 +108,7 @@ pub mod Positions {
             self: @ComponentState<TContractState>, position_id: PositionId,
         ) -> PositionData {
             let position = self.get_position_snapshot(:position_id);
+            // TODO: comibine assets and spots or change PositionData.
             let (provisional_delta, assets) = self
                 .derive_funding_delta_and_unchanged_assets(
                     :position, position_diff: Default::default(),
@@ -755,6 +757,33 @@ pub mod Positions {
                             risk_factor,
                             cached_funding_index: synthetic.funding_index,
                             asset_type,
+                        },
+                    );
+            }
+
+            for (spot_id, spot) in position.spot_balances {
+                let balance: Balance = spot.balance;
+                if balance.is_zero() || synthetic_diff_id == spot_id {
+                    continue;
+                }
+
+                let price = assets.get_asset_price_unsafe(asset_id: spot_id);
+                // TODO: consider moving this to another storage location.
+                let risk_factor = assets.get_asset_risk_factor(spot_id, balance, price);
+
+                unchanged_assets
+                    .append(
+                        // TODO: change AssetBalanceInfo to other struct. we don't need all the
+                        // fields.
+                        AssetBalanceInfo {
+                            id: spot_id,
+                            balance,
+                            price,
+                            risk_factor: risk_factor, // Spot assets have no risk factor.
+                            cached_funding_index: FundingIndex {
+                                value: 0,
+                            }, // Spot assets have no funding index.
+                            asset_type: AssetType::SPOT_COLLATERAL,
                         },
                     );
             }

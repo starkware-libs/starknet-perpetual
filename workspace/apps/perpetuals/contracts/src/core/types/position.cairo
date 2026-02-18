@@ -21,6 +21,9 @@ pub struct Position {
     pub collateral_balance: Balance,
     #[rename("synthetic_balance")]
     pub asset_balances: IterableMap<AssetId, AssetBalance>,
+    // TODO: change the value to from AssetBalance, because we don't need the funding index.
+    // TODO: change the IterableMap to more efficent impl.
+    pub spot_balances: IterableMap<AssetId, AssetBalance>,
     pub owner_protection_enabled: bool,
     pub last_interest_applied_time: Timestamp,
 }
