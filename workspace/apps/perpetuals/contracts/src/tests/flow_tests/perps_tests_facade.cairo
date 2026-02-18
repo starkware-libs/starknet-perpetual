@@ -1177,6 +1177,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             :expiration,
             withdraw_request_hash: request_hash,
             :salt,
+            :interest_amount,
         );
     }
 
@@ -1319,6 +1320,8 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             expiration: expiration,
             transfer_request_hash: request_hash,
             :salt,
+            interest_amount_sender: 0,
+            interest_amount_recipient: 0,
         );
     }
 
@@ -1443,6 +1446,8 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             actual_fee_b: fee_b,
             order_a_hash: hash_a,
             order_b_hash: hash_b,
+            interest_amount_a: 0,
+            interest_amount_b: 0,
         );
     }
 

@@ -12,6 +12,8 @@ pub struct Deleverage {
     pub deleveraged_base_amount: i64,
     pub quote_asset_id: AssetId,
     pub deleveraged_quote_amount: i64,
+    pub interest_amount_deleveraged: i64,
+    pub interest_amount_deleverager: i64,
 }
 
 #[starknet::interface]
@@ -429,6 +431,8 @@ pub(crate) mod DeleverageManager {
                         deleveraged_base_amount: deleveraged_asset_amount,
                         quote_asset_id: self.assets.get_collateral_id(),
                         deleveraged_quote_amount: deleveraged_collateral_amount,
+                        interest_amount_deleveraged,
+                        interest_amount_deleverager,
                     },
                 )
         }

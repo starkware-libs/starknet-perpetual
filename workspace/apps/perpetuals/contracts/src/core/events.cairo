@@ -30,6 +30,7 @@ pub struct Withdraw {
     #[key]
     pub withdraw_request_hash: felt252,
     pub salt: felt252,
+    pub interest_amount: i64,
 }
 
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
@@ -58,6 +59,8 @@ pub struct Trade {
     pub order_a_hash: felt252,
     #[key]
     pub order_b_hash: felt252,
+    pub interest_amount_a: i64,
+    pub interest_amount_b: i64,
 }
 
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
@@ -79,6 +82,9 @@ pub struct Liquidate {
     pub insurance_fund_fee_amount: u64,
     #[key]
     pub liquidator_order_hash: felt252,
+    pub interest_amount_liquidated: i64,
+    pub interest_amount_liquidator: i64,
+    pub interest_amount_liquidator_receiver: i64,
 }
 
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
@@ -103,6 +109,8 @@ pub struct Deleverage {
     pub deleveraged_base_amount: i64,
     pub quote_asset_id: AssetId,
     pub deleveraged_quote_amount: i64,
+    pub interest_amount_deleveraged: i64,
+    pub interest_amount_deleverager: i64,
 }
 
 #[derive(Debug, Drop, PartialEq, starknet::Event)]

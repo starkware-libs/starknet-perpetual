@@ -358,6 +358,8 @@ pub(crate) mod VaultsManager {
                         vault_asset_id: vault_config.asset_id,
                         invested_asset_id: self.assets.get_collateral_id(),
                         correlation_id: correlation_id,
+                        interest_amount_vault_position,
+                        interest_amount_sender,
                     },
                 );
 
