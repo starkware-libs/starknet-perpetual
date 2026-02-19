@@ -38,7 +38,7 @@ pub impl VaultConfigOffsetIntoU8 of Into<VaultConfigOffset, u8> {
     fn into(self: VaultConfigOffset) -> u8 {
         match self {
             VaultConfigOffset::VERSION => 0_u8,
-            VaultConfigOffset::ASSET_ID => 1_8,
+            VaultConfigOffset::ASSET_ID => 1_u8,
             VaultConfigOffset::POSITION_ID => 2_u8,
             VaultConfigOffset::LAST_TV_CHECK_TIMESTAMP => 3_u8,
             VaultConfigOffset::TV_AT_CHECK => 4_u8,
