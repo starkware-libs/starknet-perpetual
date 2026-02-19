@@ -279,7 +279,7 @@ pub(crate) mod LiquidationManager {
                         actual_amount_base_liquidated,
                         actual_amount_quote_liquidated,
                         actual_liquidator_fee,
-                        insurance_fund_fee_asset_id: self.assets.get_collateral_id(),
+                        insurance_fund_fee_asset_id: self.assets.get_base_collateral_id(),
                         insurance_fund_fee_amount: liquidated_fee_amount,
                         liquidator_order_hash: liquidator_order_hash,
                         interest_amount_liquidated,
@@ -324,7 +324,7 @@ pub(crate) mod LiquidationManager {
             interest_amount_liquidator_receiver: i64,
         ) {
             /// Validations:
-            let collateral_id = self.assets.get_collateral_id();
+            let collateral_id = self.assets.get_base_collateral_id();
             let entry = (@self).assets.asset_config.entry(liquidator_order.base_asset_id).as_ptr();
             let liquidated_asset_type = SyntheticTrait::get_asset_type(entry).expect(NO_SUCH_ASSET);
             assert(liquidated_asset_type == AssetType::SPOT_COLLATERAL, 'INVALID_ASSET_TYPE');

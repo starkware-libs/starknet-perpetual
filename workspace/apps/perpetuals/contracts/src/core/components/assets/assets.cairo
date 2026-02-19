@@ -195,7 +195,7 @@ pub mod AssetsComponent {
             self: @ComponentState<TContractState>, asset_id: AssetId,
         ) -> ContractAddress {
             // Base collateral is not registered in `asset_config`.
-            if asset_id == self.get_collateral_id() {
+            if asset_id == self.get_base_collateral_id() {
                 self.get_base_collateral_token_contract().contract_address
             } else {
                 let token_contract = self._get_asset_config(asset_id).token_contract;
@@ -222,7 +222,7 @@ pub mod AssetsComponent {
         fn get_num_of_active_synthetic_assets(self: @ComponentState<TContractState>) -> usize {
             self.num_of_active_synthetic_assets.read()
         }
-        fn get_collateral_id(self: @ComponentState<TContractState>) -> AssetId {
+        fn get_base_collateral_id(self: @ComponentState<TContractState>) -> AssetId {
             self.collateral_id.read().expect(COLLATERAL_NOT_REGISTERED)
         }
         fn get_asset_config(

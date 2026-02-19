@@ -2552,7 +2552,7 @@ fn test_spot_collateral_deposit_transfer_withdraw() {
 }
 
 #[test]
-#[should_panic(expected: 'INVALID_BASE_CHANGE')]
+#[should_panic(expected: 'INVALID_SHRINK_TO_NEGATIVE')]
 fn test_spot_collateral_deposit_transfer_withdraw_fails() {
     // Setup:
     let risk_factor_data = RiskFactorTiers {
@@ -3912,7 +3912,7 @@ fn test_apply_zero_interest_does_not_update_last_time() {
 }
 
 #[test]
-#[should_panic(expected: 'INVALID_BASE_CHANGE')]
+#[should_panic(expected: 'INVALID_SHRINK_TO_NEGATIVE')]
 fn test_withdraw_spot_collateral_negative_balance() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {
@@ -4054,7 +4054,7 @@ fn test_transfer_synthetic_asset_fails() {
 }
 
 #[test]
-#[should_panic(expected: 'INVALID_BASE_CHANGE')]
+#[should_panic(expected: 'INVALID_SHRINK_TO_NEGATIVE')]
 fn test_transfer_spot_collateral_negative_balance_fails() {
     // Setup.
     let risk_factor_data = RiskFactorTiers {

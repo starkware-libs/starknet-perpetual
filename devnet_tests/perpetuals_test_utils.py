@@ -185,7 +185,7 @@ class PerpetualsTestUtils:
         expiration: int,
     ):
         salt = random.randint(0, MAX_UINT32)
-        collateral_asset_id = await self.get_collateral_asset_id()
+        collateral_asset_id = await self.get_base_collateral_asset_id()
         return {
             POSITION_ID_STR: formatted_position_id(position_id),
             BASE_ASSET_ID_STR: formatted_asset_id(base_asset_id),
@@ -201,7 +201,7 @@ class PerpetualsTestUtils:
     async def create_limit_order(
         self, source_position_id: int, receive_position_id: int, base_amount: int, quote_amount: int
     ):
-        collateral_asset_id = await self.get_collateral_asset_id()
+        collateral_asset_id = await self.get_base_collateral_asset_id()
         expiration = self.now_timestamp + WEEK_IN_SECONDS
         salt = random.randint(0, MAX_UINT32)
         return {
@@ -223,7 +223,7 @@ class PerpetualsTestUtils:
         recipient: Account,
         amount: int,
     ):
-        collateral_asset_id = await self.get_collateral_asset_id()
+        collateral_asset_id = await self.get_base_collateral_asset_id()
         expiration = self.now_timestamp + WEEK_IN_SECONDS
         salt = random.randint(0, MAX_UINT32)
         return {
@@ -293,8 +293,8 @@ class PerpetualsTestUtils:
         self.operator_nonce += 1
         return nonce
 
-    async def get_collateral_asset_id(self) -> int:
-        (asset_id,) = await self.known_contracts["operator"].functions["get_collateral_id"].call()
+    async def get_base_collateral_asset_id(self) -> int:
+        (asset_id,) = await self.known_contracts["operator"].functions["get_base_collateral_id"].call()
         return asset_id["value"]
 
     async def get_base_collateral_token_contract(self) -> int:
@@ -319,7 +319,7 @@ class PerpetualsTestUtils:
             .functions["get_position_assets"]
             .call(formatted_position_id(position_id))
         )
-        if asset_id == await self.get_collateral_asset_id():
+        if asset_id == await self.get_base_collateral_asset_id():
             return position_data["collateral_balance"]["value"]
 
         for asset in position_data["assets"]:
@@ -439,7 +439,7 @@ class PerpetualsTestUtils:
             await self.new_account_contracts[account]
             .functions["deposit_asset"]
             .invoke_v3(
-                formatted_asset_id(await self.get_collateral_asset_id()),
+                formatted_asset_id(await self.get_base_collateral_asset_id()),
                 formatted_position_id(self.get_account_position_id(account)),
                 amount,
                 salt,
@@ -484,7 +484,7 @@ class PerpetualsTestUtils:
         salt: int,
     ):
         """Flow 1: Process base collateral deposit from user."""
-        asset_id = await self.get_collateral_asset_id()
+        asset_id = await self.get_base_collateral_asset_id()
         depositer_address = self.get_account_address(account)
         position_id = self.get_account_position_id(account)
         await self.__process_deposit(depositer_address, asset_id, position_id, amount, salt)
@@ -515,7 +515,7 @@ class PerpetualsTestUtils:
     async def withdraw(self, account: Account, amount: int, interest_amount: int = 0):
         expiration = self.now_timestamp + WEEK_IN_SECONDS
         salt = random.randint(0, MAX_UINT32)
-        collateral_asset_id = await self.get_collateral_asset_id()
+        collateral_asset_id = await self.get_base_collateral_asset_id()
 
         signature = self.sign_message(
             account,
@@ -550,7 +550,7 @@ class PerpetualsTestUtils:
         async def _process_withdraw(
             account: Account, amount: int, expiration: int, salt: int, interest_amount
         ):
-            asset_id = await self.get_collateral_asset_id()
+            asset_id = await self.get_base_collateral_asset_id()
 
             invocation = (
                 await self.known_contracts["operator"]
