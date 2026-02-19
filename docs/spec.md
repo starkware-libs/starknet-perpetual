@@ -2173,12 +2173,22 @@ Only APP\_GOVERNOR can execute.
 
   ###### Force Reset Protection Limit                                                                                                                                                                                 
                                                                                                                                                                                                                       
+<<<<<<< HEAD
   Force-resets the vault protection mechanism by snapshotting the current total value and recalculating the maximum allowed TV loss so that the limit for a day can be extended.                                                                                  
                                                                                                                                                                                                                     
   ```rust
   fn force_reset_daily_protection_limit(
       ref self: ContractState,
       vault_position: PositionId,
+=======
+  Force-resets the vault protection mechanism by snapshotting the current total value and recalculating the maximum allowed TV loss.                                                                                  
+                                                                                                                                                                                                                    
+  ```rust
+  fn force_reset_protection_limit(
+      ref self: ContractState,
+      vault_position: PositionId,
+      percentage: u32,
+>>>>>>> 6e21297c (Addressed some PR review comments.)
   )
   ```
 
@@ -2210,7 +2220,7 @@ Only APP\_GOVERNOR can execute.
   - UNKNOWN\_VAULT
 
   ###### Update Vault Protection Limit
-
+  
   Updates the per-vault protection limit percentage override. Default is 5%, 0 is not allowed as it prevents any withdraws.
 
   ```rust
@@ -2237,7 +2247,11 @@ Only APP\_GOVERNOR can execute.
 
   **Emits:**
 
+<<<<<<< HEAD
   [VaultProtectionLimitUpdated](#VaultProtectionLimitUpdated)
+=======
+  [PerVaultProtectionLimitUpdated](#pervaultprotectionlimitupdated)
+>>>>>>> 6e21297c (Addressed some PR review comments.)
 
   **Errors:**
 
@@ -2260,11 +2274,19 @@ Only APP\_GOVERNOR can execute.
   }
   ```
 
+<<<<<<< HEAD
   ###### VaultProtectionLimitUpdated
 
   ```rust
   #[derive(Debug, Drop, PartialEq, starknet::Event)]
   pub struct VaultProtectionLimitUpdated {
+=======
+  ###### PerVaultProtectionLimitUpdated
+
+  ```rust
+  #[derive(Debug, Drop, PartialEq, starknet::Event)]
+  pub struct PerVaultProtectionLimitUpdated {
+>>>>>>> 6e21297c (Addressed some PR review comments.)
       #[key]
       pub vault_position_id: PositionId,
       pub old_limit: u32,
