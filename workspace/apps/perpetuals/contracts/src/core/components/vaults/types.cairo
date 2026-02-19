@@ -13,7 +13,7 @@ pub struct VaultConfig {
     pub version: u8,
     pub asset_id: AssetId,
     pub position_id: u32,
-    pub last_tv_check: Seconds,
+    pub last_tv_check_timestamp: Seconds,
     pub tv_at_check: i128,
     pub max_tv_loss: u128,
 }
@@ -24,23 +24,46 @@ pub struct VaultProtectionParams {
     pub max_tv_loss: u128,
 }
 
+#[derive(Copy, Drop, Debug, PartialEq, Serde)]
+pub enum VaultConfigOffset {
+    VERSION,
+    ASSET_ID,
+    POSITION_ID,
+    LAST_TV_CHECK_TIMESTAMP,
+    TV_AT_CHECK,
+    MAX_TV_LOSS,
+}
+
+pub impl VaultConfigOffsetIntoU8 of Into<VaultConfigOffset, u8> {
+    fn into(self: VaultConfigOffset) -> u8 {
+        match self {
+            VaultConfigOffset::VERSION => 0_u8,
+            VaultConfigOffset::ASSET_ID => 1_8,
+            VaultConfigOffset::POSITION_ID => 2_u8,
+            VaultConfigOffset::LAST_TV_CHECK_TIMESTAMP => 3_u8,
+            VaultConfigOffset::TV_AT_CHECK => 4_u8,
+            VaultConfigOffset::MAX_TV_LOSS => 5_u8,
+        }
+    }
+}
+
 #[generate_trait]
 pub impl VaultConfigImpl of VaultConfigTrait {
     
     #[inline]
     fn read(
-        entry: StoragePointer0Offset<VaultConfig>, offset: u8,
+        entry: StoragePointer0Offset<VaultConfig>, offset: VaultConfigOffset,
     ) -> felt252 {
         storage_read_syscall(
             0,
-            storage_address_from_base_and_offset(entry.__storage_pointer_address__, offset),
+            storage_address_from_base_and_offset(entry.__storage_pointer_address__, offset.into()),
         )
             .unwrap_syscall()
     }
 
     #[inline]
     fn read_version(entry: StoragePointer0Offset<VaultConfig>) -> felt252 {
-        Self::read(entry, 0)
+        Self::read(entry, VaultConfigOffset::VERSION)
     }
 
    /// Returns true if the Option is Some, false if None.

@@ -1,6 +1,5 @@
 use crate::core::types::asset::AssetId;
 use crate::core::types::position::PositionId;
-use super::types::VaultProtectionParams;
 use starkware_utils::constants::DAY;
 
 const STORAGE_VERSION: u8 = 1;
@@ -24,6 +23,7 @@ pub mod Vaults {
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::interfaces::erc4626::{IERC4626Dispatcher, IERC4626DispatcherTrait};
     use openzeppelin::introspection::src5::SRC5Component;
+    
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::interface::IAssets;
     use perpetuals::core::components::deposit::Deposit::InternalImpl as DepositInternal;
@@ -40,8 +40,6 @@ pub mod Vaults {
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
     use starkware_utils::components::roles::RolesComponent;
-    use starkware_utils::math::abs::Abs;
-    use starkware_utils::math::utils::mul_wide_and_floor_div;
     use starkware_utils::signature::stark::Signature;
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
@@ -52,9 +50,10 @@ pub mod Vaults {
     use perpetuals::core::components::system_time::SystemTimeComponent;
     use crate::core::components::snip::SNIP12MetadataImpl;
     use crate::core::components::vaults::events;
+    use crate::core::components::vaults::types::VaultProtectionParams;
     use crate::core::types::vault::ConvertPositionToVault;
     use crate::core::utils::validate_signature;
-    use super::{CHECK_FREQUENCY, IVaults, STORAGE_VERSION, VaultProtectionParams, DEFAULT_LIMIT_PERCENT};
+    use super::{CHECK_FREQUENCY, IVaults, STORAGE_VERSION, DEFAULT_LIMIT_PERCENT};
 
     #[event]
     #[derive(Drop, PartialEq, starknet::Event)]
@@ -114,7 +113,7 @@ pub mod Vaults {
                 version: current_config.version,
                 asset_id: current_config.asset_id,
                 position_id: current_config.position_id,
-                last_tv_check: Time::now().into(),
+                last_tv_check_timestamp: Time::now().into(),
                 tv_at_check: tv_at_check,
                 max_tv_loss: max_tv_loss,
             };
@@ -201,7 +200,7 @@ pub mod Vaults {
 
             let current_config = self.registered_vaults_by_position.read(vault_position);
             let current_time: u64 = Time::now().into();
-            let last_check_time = current_config.last_tv_check;
+            let last_check_time = current_config.last_tv_check_timestamp;
             if (current_time - last_check_time >= CHECK_FREQUENCY) {    
                 let positions = get_dep_component!(@self, Positions);
                 let position_tv_tr = IPositions::get_position_tv_tr(positions, position_id: vault_position);
@@ -219,7 +218,7 @@ pub mod Vaults {
                     version: current_config.version,
                     asset_id: current_config.asset_id,
                     position_id: current_config.position_id,
-                    last_tv_check: current_time,
+                    last_tv_check_timestamp: current_time,
                     tv_at_check: tv_at_check,
                     max_tv_loss: max_tv_loss,
                 };
@@ -326,7 +325,7 @@ pub mod Vaults {
                         version: STORAGE_VERSION,
                         asset_id: vault_asset_id,
                         position_id: vault_position.value,
-                        last_tv_check: 0,
+                        last_tv_check_timestamp: 0,
                         tv_at_check: 0,
                         max_tv_loss: 0,
                     },
@@ -340,7 +339,7 @@ pub mod Vaults {
                         version: STORAGE_VERSION,
                         asset_id: vault_asset_id,
                         position_id: vault_position.value,
-                        last_tv_check: 0,
+                        last_tv_check_timestamp: 0,
                         tv_at_check: 0,
                         max_tv_loss: 0,
                     },

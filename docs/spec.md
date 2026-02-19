@@ -2171,6 +2171,109 @@ Only APP\_GOVERNOR can execute.
 - INVALID_ZERO_QUORUM
 - INVALID_SAME_QUORUM
 
+  ###### Force Reset Protection Limit                                                                                                                                                                                 
+                                                                                                                                                                                                                      
+  Force-resets the vault protection mechanism by snapshotting the current total value and recalculating the maximum allowed TV loss.                                                                                  
+                                                                                                                                                                                                                    
+  ```rust
+  fn force_reset_protection_limit(
+      ref self: ContractState,
+      vault_position: PositionId,
+      percentage: u32,
+  )
+  ```
+
+  **Access Control:**
+
+  Only APP\_GOVERNOR can execute.
+
+  **Validations:**
+
+  1. App Governor is the caller.
+  2. `vault_position` is a registered vault position.
+
+  **Logic:**
+
+  1. Run validations.
+  2. Get current `VaultConfig` for the vault position.
+  3. Calculate current total value via `get_position_tv_tr`.
+  4. Calculate `max_tv_loss` from `tv_at_check` and `percentage`.
+  5. Update `VaultConfig` with new `tv_at_check`, `max_tv_loss`, and `last_tv_check_timestamp = now`.
+  6. Write updated config to both `registered_vaults_by_position` and `registered_vaults_by_asset`.
+
+  **Emits:**
+
+  [VaultProtectionReset](#vaultprotectionreset)
+
+  **Errors:**
+
+  - ONLY\_APP\_GOVERNOR
+  - UNKNOWN\_VAULT
+
+  ###### Update Vault Protection Limit
+
+  Updates the per-vault protection limit percentage override. A value of 0 resets to the default (5%).
+
+  ```rust
+  fn update_vault_protection_limit(
+      ref self: ContractState,
+      vault_position: PositionId,
+      limit: u32,
+  )
+  ```
+
+  **Access Control:**
+
+  Only APP\_GOVERNOR can execute.
+
+  **Validations:**
+
+  1. App Governor is the caller.
+  2. `vault_position` is a registered vault position.
+
+  **Logic:**
+
+  1. Run validations.
+  2. Write `limit` to `vault_protection_limit_overrides[vault_position]`.
+
+  **Emits:**
+
+  [PerVaultProtectionLimitUpdated](#pervaultprotectionlimitupdated)
+
+  **Errors:**
+
+  - ONLY\_APP\_GOVERNOR
+  - UNKNOWN\_VAULT
+
+  And the events:
+
+  ###### VaultProtectionReset
+
+  ```rust
+  #[derive(Debug, Drop, PartialEq, starknet::Event)]
+  pub struct VaultProtectionReset {
+      #[key]
+      pub vault_position_id: PositionId,
+      pub old_tv_at_check: i128,
+      pub old_max_tv_loss: i128,
+      pub new_tv_at_check: i128,
+      pub new_max_tv_loss: i128,
+  }
+  ```
+
+  ###### PerVaultProtectionLimitUpdated
+
+  ```rust
+  #[derive(Debug, Drop, PartialEq, starknet::Event)]
+  pub struct PerVaultProtectionLimitUpdated {
+      #[key]
+      pub vault_position_id: PositionId,
+      pub old_limit: u32,
+      pub new_limit: u32,
+  }
+  ```
+
+
 ###### ActivateVault
 
 Activate vault is called by the operator to activate a vault position
