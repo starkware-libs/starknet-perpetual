@@ -418,6 +418,9 @@ pub(crate) mod VaultsManager {
                         collateral_requested_amount: order.quote_amount.abs(),
                         vault_asset_id: vault_config.asset_id,
                         invested_asset_id: self.assets.get_base_collateral_id(),
+                        interest_amount_vault_position: interest_amount_vault_position,
+                        interest_amount_redeeming_position: interest_amount_sender,
+                        interest_amount_receiver: interest_amount_receiver,
                     },
                 );
         }
@@ -477,6 +480,8 @@ pub(crate) mod VaultsManager {
                         vault_asset_id: liquidated_asset_id,
                         shares_liquidated_amount: actual_shares_user.abs(),
                         collateral_received_amount: actual_collateral_user.abs(),
+                        interest_amount_vault_position: interest_amount_vault_position,
+                        interest_amount_liquidated_position: interest_amount_liquidated,
                     },
                 );
         }

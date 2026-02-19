@@ -99,6 +99,8 @@ pub struct LiquidateVaultShares {
     pub vault_asset_id: AssetId,
     pub shares_liquidated_amount: u64,
     pub collateral_received_amount: u64,
+    pub interest_amount_vault_position: i64,
+    pub interest_amount_liquidated_position: i64,
 }
 
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
@@ -116,4 +118,7 @@ pub struct RedeemVaultShares {
     pub shares_redeemed_amount: u64,
     pub collateral_received_amount: u64,
     pub collateral_requested_amount: u64,
+    pub interest_amount_vault_position: i64,
+    pub interest_amount_redeeming_position: i64,
+    pub interest_amount_receiver: i64,
 }
