@@ -58,6 +58,7 @@ pub mod Vaults {
     use crate::core::utils::validate_signature;
     use super::{CHECK_FREQUENCY, DEFAULT_LIMIT_PERCENT, IVaults, STORAGE_VERSION};
 
+
     #[event]
     #[derive(Drop, PartialEq, starknet::Event)]
     pub enum Event {
