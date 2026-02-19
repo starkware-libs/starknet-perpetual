@@ -57,7 +57,7 @@ pub mod Positions {
     use crate::core::components::snip::SNIP12MetadataImpl;
     use crate::core::errors::{
         AMOUNT_OVERFLOW, INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE, INVALID_SAME_POSITIONS,
-        INVALID_ZERO_AMOUNT, NO_DELEVERAGE_VAULT_SHARES,
+        INVALID_SHRINK_TO_NEGATIVE, INVALID_ZERO_AMOUNT, NO_DELEVERAGE_VAULT_SHARES,
     };
     use crate::core::types::asset::synthetic::{AssetBalanceDiffEnriched, AssetType};
     use crate::core::types::balance::BalanceDiff;
@@ -769,7 +769,7 @@ pub mod Positions {
             asset_id: AssetId,
         ) {
             let assets = get_dep_component!(self, Assets);
-            let balance = if (asset_id == assets.get_collateral_id()) {
+            let balance = if (asset_id == assets.get_base_collateral_id()) {
                 self.get_collateral_provisional_balance(position, None)
             } else {
                 self.get_synthetic_balance(:position, synthetic_id: asset_id)
@@ -822,6 +822,8 @@ pub mod Positions {
             assert(amount.abs() <= position_base_balance.abs(), INVALID_BASE_CHANGE);
         }
 
+        // Validates asset shrink by ensuring amount is negative (indicating a decrease)
+        // and position balance remains positive to prevent overdraw.
         fn _validate_asset_shrink_non_negative(
             self: @ComponentState<TContractState>,
             position: StoragePath<Position>,
@@ -831,9 +833,8 @@ pub mod Positions {
             let position_spot_balance: i64 = self
                 .get_synthetic_balance(:position, synthetic_id: asset_id)
                 .into();
-            assert(position_spot_balance >= 0, POSITION_SPOT_BALANCE_NEGATIVE);
             assert(amount < 0, INVALID_AMOUNT_SIGN);
-            assert(amount.abs() <= position_spot_balance.abs(), INVALID_BASE_CHANGE);
+            assert(position_spot_balance + amount >= 0, INVALID_SHRINK_TO_NEGATIVE);
         }
 
         fn _validate_imposed_reduction_trade(

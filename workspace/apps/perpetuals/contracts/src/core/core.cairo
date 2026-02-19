@@ -744,7 +744,7 @@ pub mod Core {
                         position_id_b,
                         base_asset_id,
                         base_amount_a,
-                        quote_asset_id: self.assets.get_collateral_id(),
+                        quote_asset_id: self.assets.get_base_collateral_id(),
                         quote_amount_a,
                     },
                 )
@@ -1033,12 +1033,12 @@ pub mod Core {
                 );
 
             // Only operator can process the force trade during timelock.
-            if !self.roles.is_operator(get_caller_address()) {
+            if self.roles.is_operator(get_caller_address()) {
+                self.operator_nonce.use_checked_nonce(:operator_nonce);
+            } else {
                 let now = Time::now();
                 let forced_action_timelock = self.forced_action_timelock.read();
                 assert(request_time.add(forced_action_timelock) <= now, FORCED_WAIT_REQUIRED);
-            } else {
-                self.operator_nonce.use_checked_nonce(:operator_nonce);
             }
 
             // Execute trade.
@@ -1218,12 +1218,12 @@ pub mod Core {
                 );
 
             // Only operator can process the force redeem during timelock.
-            if !self.roles.is_operator(get_caller_address()) {
+            if self.roles.is_operator(get_caller_address()) {
+                self.operator_nonce.use_checked_nonce(:operator_nonce);
+            } else {
                 let now = Time::now();
                 let forced_action_timelock = self.forced_action_timelock.read();
                 assert(request_time.add(forced_action_timelock) <= now, FORCED_WAIT_REQUIRED);
-            } else {
-                self.operator_nonce.use_checked_nonce(:operator_nonce);
             }
 
             // Execute redeem.
@@ -1387,7 +1387,7 @@ pub mod Core {
                 :actual_fee_a,
                 :actual_fee_b,
                 asset: Some(synthetic_asset),
-                collateral_id: self.assets.get_collateral_id(),
+                collateral_id: self.assets.get_base_collateral_id(),
             );
             let position_id_a = order_a.position_id;
             let position_id_b = order_b.position_id;

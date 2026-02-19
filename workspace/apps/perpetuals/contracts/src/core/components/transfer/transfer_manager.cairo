@@ -337,7 +337,7 @@ pub(crate) mod TransferManager {
             let recipient_position = self.positions.get_position_snapshot(position_id: recipient);
             let (position_diff_sender, position_diff_recipient) = if (collateral_id == self
                 .assets
-                .get_collateral_id()) {
+                .get_base_collateral_id()) {
                 let position_diff_sender = PositionDiff {
                     collateral_diff: -amount.into() + interest_amount_sender.into(),
                     asset_diff: Option::None,

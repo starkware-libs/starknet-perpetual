@@ -485,18 +485,18 @@ pub(crate) mod WithdrawalManager {
             /// Validations - Fundamentals:
             let (position_diff, quantum, token_contract) = if collateral_id != self
                 .assets
-                .get_collateral_id() {
+                .get_base_collateral_id() {
                 let entry = (@self).assets.asset_config.entry(collateral_id).as_ptr();
                 assert(SyntheticTrait::is_some_config(entry), ASSET_NOT_EXISTS);
                 assert(
                     SyntheticTrait::at_asset_type(entry) != AssetType::SYNTHETIC,
                     CANNOT_WITHDRAW_SYNTHETIC,
                 );
-                let signed_amount: i64 = -amount.try_into().expect(AMOUNT_OVERFLOW);
+                let negative_amount: i64 = -amount.try_into().expect(AMOUNT_OVERFLOW);
                 self
                     .positions
                     ._validate_asset_shrink_non_negative(
-                        :position, asset_id: collateral_id, amount: signed_amount,
+                        :position, asset_id: collateral_id, amount: negative_amount,
                     );
                 (
                     PositionDiff {

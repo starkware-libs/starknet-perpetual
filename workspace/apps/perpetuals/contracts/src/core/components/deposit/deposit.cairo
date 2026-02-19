@@ -62,7 +62,7 @@ pub(crate) mod Deposit {
             salt: felt252,
         ) {
             let assets = get_dep_component!(@self, Assets);
-            let pnl_collateral_id = assets.get_collateral_id();
+            let pnl_collateral_id = assets.get_base_collateral_id();
             self.deposit_asset(asset_id: pnl_collateral_id, :position_id, :quantized_amount, :salt)
         }
 

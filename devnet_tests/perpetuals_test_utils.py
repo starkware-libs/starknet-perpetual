@@ -294,7 +294,7 @@ class PerpetualsTestUtils:
         return nonce
 
     async def get_collateral_asset_id(self) -> int:
-        (asset_id,) = await self.known_contracts["operator"].functions["get_collateral_id"].call()
+        (asset_id,) = await self.known_contracts["operator"].functions["get_base_collateral_id"].call()
         return asset_id["value"]
 
     async def get_base_collateral_token_contract(self) -> int:

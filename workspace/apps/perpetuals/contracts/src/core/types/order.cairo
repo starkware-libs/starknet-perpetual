@@ -76,11 +76,11 @@ pub(crate) struct LimitOrder {
     pub base_asset_id: AssetId,
     // The amount of the asset to be bought or sold.
     pub base_amount: i64,
-    // The collateral asset.
+    // The base collateral asset.
     pub quote_asset_id: AssetId,
     // The amount of the collateral asset to be paid or received.
     pub quote_amount: i64,
-    // The collateral asset.
+    // The base collateral asset.
     pub fee_asset_id: AssetId,
     // The amount of the collateral asset to be paid.
     pub fee_amount: u64,
@@ -164,11 +164,11 @@ pub struct Order {
     pub base_asset_id: AssetId,
     // The amount of the synthetic asset to be bought or sold.
     pub base_amount: i64,
-    // The collateral asset.
+    // The base collateral asset.
     pub quote_asset_id: AssetId,
     // The amount of the collateral asset to be paid or received.
     pub quote_amount: i64,
-    // The collateral asset.
+    // The base collateral asset.
     pub fee_asset_id: AssetId,
     // The amount of the collateral asset to be paid.
     pub fee_amount: u64,
