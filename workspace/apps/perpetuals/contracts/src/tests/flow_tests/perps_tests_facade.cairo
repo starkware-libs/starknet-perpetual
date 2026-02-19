@@ -2243,6 +2243,38 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         actual_shares_user: u64,
         actual_collateral_user: u64,
     ) {
+        self
+            .redeem_from_vault_with_interest(
+                :vault,
+                :withdrawing_user,
+                :receiving_user,
+                :shares_to_burn_user,
+                :value_of_shares_user,
+                :shares_to_burn_vault,
+                :value_of_shares_vault,
+                :actual_shares_user,
+                :actual_collateral_user,
+                interest_amount_vault_position: 0,
+                interest_amount_sender: 0,
+                interest_amount_receiver: 0,
+            )
+    }
+
+    fn redeem_from_vault_with_interest(
+        ref self: PerpsTestsFacade,
+        vault: VaultState,
+        withdrawing_user: User,
+        receiving_user: User,
+        shares_to_burn_user: u64,
+        value_of_shares_user: u64,
+        shares_to_burn_vault: u64,
+        value_of_shares_vault: u64,
+        actual_shares_user: u64,
+        actual_collateral_user: u64,
+        interest_amount_vault_position: i64,
+        interest_amount_sender: i64,
+        interest_amount_receiver: i64,
+    ) {
         let operator_nonce = self.get_nonce();
         self.operator.set_as_caller(self.perpetuals_contract);
 
@@ -2292,9 +2324,9 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 vault_signature: vault_order_signature,
                 actual_shares_user: -actual_shares_user.try_into().unwrap(),
                 actual_collateral_user: actual_collateral_user.try_into().unwrap(),
-                interest_amount_vault_position: 0,
-                interest_amount_sender: 0,
-                interest_amount_receiver: 0,
+                :interest_amount_vault_position,
+                :interest_amount_sender,
+                :interest_amount_receiver,
             );
     }
 
