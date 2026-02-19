@@ -3,7 +3,6 @@ use starkware_utils::time::time::TimeDelta;
 use crate::core::types::asset::AssetId;
 use crate::core::types::position::PositionId;
 
-
 const STORAGE_VERSION: u8 = 1;
 const CHECK_FREQUENCY: TimeDelta = TimeDelta { seconds: DAY };
 const DEFAULT_LIMIT_PERCENT: u32 = 5;
@@ -27,6 +26,7 @@ pub mod Vaults {
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::interfaces::erc4626::{IERC4626Dispatcher, IERC4626DispatcherTrait};
     use openzeppelin::introspection::src5::SRC5Component;
+    
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::interface::IAssets;
     use perpetuals::core::components::deposit::Deposit::InternalImpl as DepositInternal;
@@ -57,7 +57,6 @@ pub mod Vaults {
     use crate::core::types::vault::ConvertPositionToVault;
     use crate::core::utils::validate_signature;
     use super::{CHECK_FREQUENCY, DEFAULT_LIMIT_PERCENT, IVaults, STORAGE_VERSION};
-
 
     #[event]
     #[derive(Drop, PartialEq, starknet::Event)]
