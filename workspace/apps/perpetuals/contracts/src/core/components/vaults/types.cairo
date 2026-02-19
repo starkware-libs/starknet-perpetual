@@ -1,13 +1,11 @@
 use perpetuals::core::types::asset::AssetId;
 use starknet::SyscallResultTrait;
+use starkware_utils::math::utils::mul_wide_and_floor_div;
+use starkware_utils::math::abs::Abs;
 use starknet::storage::StoragePointer0Offset;
 use starknet::storage_access::storage_address_from_base_and_offset;
 use starknet::syscalls::storage_read_syscall;
-use starkware_utils::math::abs::Abs;
-use starkware_utils::math::utils::mul_wide_and_floor_div;
 use starkware_utils::time::time::Timestamp;
-
-
 
 #[derive(Copy, Debug, Drop, Hash, PartialEq, Serde, starknet::Store)]
 pub struct VaultConfig {
