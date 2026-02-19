@@ -6595,3 +6595,413 @@ fn test_liquidate_spot_with_interest_different_receiver() {
 
     assert(state.facade.is_healthy(position_id: liquidated_user.position_id), 'should be healthy');
 }
+
+#[test]
+fn test_transfer_with_interest() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+
+    let user_1 = state.new_user_with_position();
+    let user_2 = state.new_user_with_position();
+
+    let deposit_info = state
+        .facade
+        .deposit(
+            depositor: user_1.account, position_id: user_1.position_id, quantized_amount: 100_000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_info);
+
+    let deposit_info_2 = state
+        .facade
+        .deposit(
+            depositor: user_2.account, position_id: user_2.position_id, quantized_amount: 50_000,
+        );
+    state.facade.process_deposit(deposit_info: deposit_info_2);
+
+    state.facade.advance_time(seconds: HOUR);
+
+    let transfer_info = state
+        .facade
+        .transfer_request(sender: user_1, recipient: user_2, amount: 40_000);
+    state
+        .facade
+        .transfer_with_interest(
+            :transfer_info, interest_amount_sender: 50, interest_amount_recipient: -30,
+        );
+}
+
+#[test]
+fn test_liquidate_with_interest() {
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let synthetic_info = AssetInfoTrait::new(
+        asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
+    );
+    let asset_id = synthetic_info.asset_id;
+
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    state.facade.add_active_synthetic(synthetic_info: @synthetic_info, initial_price: 100);
+
+    let liquidated_user = state.new_user_with_position();
+    let liquidator_user = state.new_user_with_position();
+
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit(
+                    depositor: liquidated_user.account,
+                    position_id: liquidated_user.position_id,
+                    quantized_amount: 100_000,
+                ),
+        );
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit(
+                    depositor: liquidator_user.account,
+                    position_id: liquidator_user.position_id,
+                    quantized_amount: 100_000,
+                ),
+        );
+
+    // Buy 30,000 BTC at 100. collateral = -2,900,000, synth_value = 3,000,000.
+    // PnL = 100,000. TR = 30,000.
+    let order_liquidated = state
+        .facade
+        .create_order(
+            user: liquidated_user,
+            base_amount: 30_000,
+            base_asset_id: asset_id,
+            quote_amount: -3_000_000,
+            fee_amount: 0,
+        );
+    let order_liquidator = state
+        .facade
+        .create_order(
+            user: liquidator_user,
+            base_amount: -30_000,
+            base_asset_id: asset_id,
+            quote_amount: 3_000_000,
+            fee_amount: 0,
+        );
+    state
+        .facade
+        .trade(
+            order_info_a: order_liquidated,
+            order_info_b: order_liquidator,
+            base: 30_000,
+            quote: -3_000_000,
+            fee_a: 0,
+            fee_b: 0,
+        );
+
+    // New Funding index is 3, delta = (old - new) * balance = (0 -3) * 30,000 = -90,000.
+    // TV = 100,000 - 90,000 = 10,000 < TR = 30,000 → liquidatable.
+    // PnL ≈ 10,000.
+    state.facade.advance_time(10000);
+    let new_funding_index = FundingIndex { value: 3 * FUNDING_SCALE };
+    state
+        .facade
+        .funding_tick(
+            funding_ticks: array![
+                FundingTick { asset_id: asset_id, funding_index: new_funding_index },
+            ]
+                .span(),
+        );
+
+    assert(
+        state.facade.is_liquidatable(position_id: liquidated_user.position_id),
+        'user is not liquidatable',
+    );
+
+    // max_allowed ≈ 10,000 * 36,000 * 1,200 / 2^32 ≈ 100.
+    state.facade.advance_time(seconds: 10 * HOUR);
+
+    let liquidator_order = state
+        .facade
+        .create_order(
+            user: liquidator_user,
+            base_amount: 30_000,
+            base_asset_id: asset_id,
+            quote_amount: -3_000_000,
+            fee_amount: 1,
+        );
+
+    state
+        .facade
+        .liquidate_with_interest(
+            :liquidated_user,
+            :liquidator_order,
+            liquidated_base: -30_000,
+            liquidated_quote: 3_000_000,
+            liquidated_insurance_fee: 3,
+            liquidator_fee: 1,
+            interest_amount_liquidated: -20,
+            interest_amount_liquidator: 50,
+        );
+}
+
+#[test]
+fn test_deleverage_with_interest() {
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let synthetic_info = AssetInfoTrait::new(
+        asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
+    );
+    let asset_id = synthetic_info.asset_id;
+
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    state.facade.add_active_synthetic(synthetic_info: @synthetic_info, initial_price: 100);
+
+    let deleveraged_user = state.new_user_with_position();
+    let deleverager_user = state.new_user_with_position();
+
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit(
+                    depositor: deleveraged_user.account,
+                    position_id: deleveraged_user.position_id,
+                    quantized_amount: 100_000,
+                ),
+        );
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit(
+                    depositor: deleverager_user.account,
+                    position_id: deleverager_user.position_id,
+                    quantized_amount: 100_000,
+                ),
+        );
+
+    // Buy 30,000 BTC at 100. collateral = -2,900,000, synth_value = 3,000,000.
+    // PnL = 100,000.
+    let order_deleveraged = state
+        .facade
+        .create_order(
+            user: deleveraged_user,
+            base_amount: 30_000,
+            base_asset_id: asset_id,
+            quote_amount: -3_000_000,
+            fee_amount: 0,
+        );
+    let order_deleverager = state
+        .facade
+        .create_order(
+            user: deleverager_user,
+            base_amount: -30_000,
+            base_asset_id: asset_id,
+            quote_amount: 3_000_000,
+            fee_amount: 0,
+        );
+    state
+        .facade
+        .trade(
+            order_info_a: order_deleveraged,
+            order_info_b: order_deleverager,
+            base: 30_000,
+            quote: -3_000_000,
+            fee_a: 0,
+            fee_b: 0,
+        );
+
+    // New Funding index is 4, delta = (old - new) * balance = (0 - 4) * 30,000 = -120,000.
+    // TV = 100,000 - 120,000 = -20,000 < 0 → deleveragable.
+    // |PnL| ≈ 20,000.
+    state.facade.advance_time(10000);
+    let new_funding_index = FundingIndex { value: 4 * FUNDING_SCALE };
+    state
+        .facade
+        .funding_tick(
+            funding_ticks: array![
+                FundingTick { asset_id: asset_id, funding_index: new_funding_index },
+            ]
+                .span(),
+        );
+
+    assert(
+        state.facade.is_deleveragable(position_id: deleveraged_user.position_id),
+        'user is not deleveragable',
+    );
+
+    // max_allowed ≈ 20,000 * 36,000 * 1,200 / 2^32 ≈ 200.
+    state.facade.advance_time(seconds: 10 * HOUR);
+
+    // Full close. Collateral balance: -2,900,000 - 120,000 = -3,020,000.
+    // For fair deleverage (TR=0 requires TV=0): quote_amount = 3,020,000 - interest = 3,019,990.
+    state
+        .facade
+        .deleverage_with_interest(
+            :deleveraged_user,
+            :deleverager_user,
+            base_asset_id: asset_id,
+            deleveraged_base: -30_000,
+            deleveraged_quote: 3_019_990,
+            interest_amount_deleveraged: 10,
+            interest_amount_deleverager: -50,
+        );
+}
+
+#[test]
+fn test_invest_in_vault_with_interest() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let vault_user = state.new_user_with_position();
+    let investing_user = state.new_user_with_position();
+
+    let vault_init_deposit = state
+        .facade
+        .deposit(vault_user.account, vault_user.position_id, 100_000_u64);
+    state.facade.process_deposit(vault_init_deposit);
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user, asset_name: 'VS_1');
+    state.facade.price_tick(@vault_config.asset_info, 1);
+
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(investing_user.account, investing_user.position_id, 100_000_u64),
+        );
+
+    state.facade.advance_time(seconds: HOUR);
+
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit_into_vault_with_interest(
+                    vault: vault_config,
+                    amount_to_invest: 1000,
+                    min_shares_to_receive: 500,
+                    depositing_user: investing_user,
+                    receiving_user: investing_user,
+                    interest_amount_vault_position: 50,
+                    interest_amount_sender: -30,
+                ),
+        );
+}
+
+#[test]
+fn test_liquidate_vault_shares_with_interest() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let vault_user = state.new_user_with_position_id(333_u32.into());
+    let trade_user = state.new_user_with_position();
+    let liquidated_user = state.new_user_with_position_id(555_u32.into());
+
+    // Large vault deposit so vault position PnL supports interest amount.
+    let vault_init_deposit = state
+        .facade
+        .deposit(vault_user.account, vault_user.position_id, 100_000_u64);
+    state.facade.process_deposit(vault_init_deposit);
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user, asset_name: 'VS_1');
+    state.facade.price_tick(@vault_config.asset_info, 1);
+
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(liquidated_user.account, liquidated_user.position_id, 1000_u64),
+        );
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(trade_user.account, trade_user.position_id, 1000_u64),
+        );
+
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit_into_vault(
+                    vault: vault_config,
+                    amount_to_invest: 1000,
+                    min_shares_to_receive: 500,
+                    depositing_user: liquidated_user,
+                    receiving_user: liquidated_user,
+                ),
+        );
+
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![300].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let synthetic_info = AssetInfoTrait::new(
+        asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
+    );
+    let asset_id = synthetic_info.asset_id;
+    state.facade.add_active_synthetic(synthetic_info: @synthetic_info, initial_price: 1000);
+
+    let user_order = state
+        .facade
+        .create_order(
+            user: liquidated_user,
+            base_amount: 2,
+            base_asset_id: asset_id,
+            quote_amount: -2000,
+            fee_amount: 0,
+        );
+    let other_side_order = state
+        .facade
+        .create_order(
+            user: trade_user,
+            base_amount: -2,
+            base_asset_id: asset_id,
+            quote_amount: 2000,
+            fee_amount: 0,
+        );
+    state
+        .facade
+        .trade(
+            order_info_a: user_order,
+            order_info_b: other_side_order,
+            base: 2,
+            quote: -2000,
+            fee_a: 0,
+            fee_b: 0,
+        );
+
+    state.facade.price_tick(@synthetic_info, 600);
+
+    assert(
+        state.facade.is_liquidatable(position_id: liquidated_user.position_id),
+        'user is not liquidatable',
+    );
+
+    // Advance time then refresh prices + funding for validity.
+    // Liquidated PnL (synth only) ≈ -800. Vault PnL ≈ 100,000.
+    // max_allowed (100 hours): liquidated ≈ 80, vault ≈ 10,000.
+    state.facade.advance_time(seconds: 100 * HOUR);
+    state.facade.price_tick(@synthetic_info, 600);
+    state.facade.price_tick(@vault_config.asset_info, 1);
+    state
+        .facade
+        .funding_tick(
+            funding_ticks: array![
+                FundingTick {
+                    asset_id: synthetic_info.asset_id, funding_index: FundingIndex { value: 0 },
+                },
+            ]
+                .span(),
+        );
+
+    state
+        .facade
+        .liquidate_shares_with_interest(
+            vault: vault_config,
+            :liquidated_user,
+            shares_to_burn_vault: 400,
+            value_of_shares_vault: 400,
+            actual_shares_user: 400,
+            actual_collateral_user: 400,
+            interest_amount_vault_position: 50,
+            interest_amount_liquidated: -20,
+        );
+}

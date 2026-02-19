@@ -46,8 +46,9 @@ use perpetuals::tests::event_test_utils::{
     assert_add_spot_event_with_expected, assert_add_synthetic_event_with_expected,
     assert_deactivate_synthetic_asset_event_with_expected, assert_deleverage_event_with_expected,
     assert_deposit_canceled_event_with_expected, assert_deposit_event_with_expected,
-    assert_deposit_processed_event_with_expected, assert_liquidate_event_with_expected,
-    assert_liquidate_event_with_expected_and_interest, assert_trade_event_with_expected,
+    assert_deposit_processed_event_with_expected, assert_invest_in_vault_event_with_expected,
+    assert_liquidate_event_with_expected, assert_liquidate_vault_shares_event_with_expected,
+    assert_redeem_vault_shares_event_with_expected, assert_trade_event_with_expected,
     assert_transfer_event_with_expected, assert_transfer_request_event_with_expected,
     assert_withdraw_event_with_expected, assert_withdraw_request_event_with_expected,
 };
@@ -1258,6 +1259,18 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
     }
 
     fn transfer(ref self: PerpsTestsFacade, transfer_info: RequestInfo) {
+        self
+            .transfer_with_interest(
+                :transfer_info, interest_amount_sender: 0, interest_amount_recipient: 0,
+            )
+    }
+
+    fn transfer_with_interest(
+        ref self: PerpsTestsFacade,
+        transfer_info: RequestInfo,
+        interest_amount_sender: i64,
+        interest_amount_recipient: i64,
+    ) {
         let RequestInfo {
             asset_id, recipient, position_id, amount, expiration, salt, request_hash,
         } = transfer_info;
@@ -1268,11 +1281,16 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             self.get_position_asset_balance(position_id, asset_id)
         };
 
+        let sender_collateral_before = self.get_position_collateral_balance(position_id);
+
         let recipient_balance_before = if (asset_id == self.collateral_id) {
             self.get_position_collateral_balance(recipient.position_id)
         } else {
             self.get_position_asset_balance(recipient.position_id, asset_id)
         };
+
+        let recipient_collateral_before = self
+            .get_position_collateral_balance(recipient.position_id);
 
         let operator_nonce = self.get_nonce();
         self.operator.set_as_caller(self.perpetuals_contract);
@@ -1285,8 +1303,8 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 amount: amount,
                 expiration: expiration,
                 salt: salt,
-                interest_amount_sender: 0,
-                interest_amount_recipient: 0,
+                :interest_amount_sender,
+                :interest_amount_recipient,
             );
 
         self
@@ -1297,13 +1315,18 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         if (asset_id == self.collateral_id) {
             self
                 .validate_collateral_balance(
-                    :position_id, expected_balance: sender_balance_before - amount.into(),
+                    :position_id,
+                    expected_balance: sender_balance_before
+                        - amount.into()
+                        + interest_amount_sender.into(),
                 );
 
             self
                 .validate_collateral_balance(
                     position_id: recipient.position_id,
-                    expected_balance: recipient_balance_before + amount.into(),
+                    expected_balance: recipient_balance_before
+                        + amount.into()
+                        + interest_amount_recipient.into(),
                 );
         } else {
             self
@@ -1314,10 +1337,23 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 );
 
             self
+                .validate_collateral_balance(
+                    :position_id,
+                    expected_balance: sender_collateral_before + interest_amount_sender.into(),
+                );
+
+            self
                 .validate_asset_balance(
                     position_id: recipient.position_id,
                     :asset_id,
                     expected_balance: recipient_balance_before + amount.into(),
+                );
+
+            self
+                .validate_collateral_balance(
+                    position_id: recipient.position_id,
+                    expected_balance: recipient_collateral_before
+                        + interest_amount_recipient.into(),
                 );
         }
 
@@ -1330,8 +1366,8 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             expiration: expiration,
             transfer_request_hash: request_hash,
             :salt,
-            interest_amount_sender: 0,
-            interest_amount_recipient: 0,
+            :interest_amount_sender,
+            :interest_amount_recipient,
         );
     }
 
@@ -1665,6 +1701,30 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         liquidated_insurance_fee: u64,
         liquidator_fee: u64,
     ) {
+        self
+            .liquidate_with_interest(
+                :liquidated_user,
+                :liquidator_order,
+                :liquidated_base,
+                :liquidated_quote,
+                :liquidated_insurance_fee,
+                :liquidator_fee,
+                interest_amount_liquidated: 0,
+                interest_amount_liquidator: 0,
+            )
+    }
+
+    fn liquidate_with_interest(
+        ref self: PerpsTestsFacade,
+        liquidated_user: User,
+        liquidator_order: OrderInfo,
+        liquidated_base: i64,
+        liquidated_quote: i64,
+        liquidated_insurance_fee: u64,
+        liquidator_fee: u64,
+        interest_amount_liquidated: i64,
+        interest_amount_liquidator: i64,
+    ) {
         let OrderInfo {
             order: liquidator_order, signature: liquidator_signature, hash: liquidator_hash,
         } = liquidator_order;
@@ -1702,8 +1762,8 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 actual_amount_quote_liquidated: liquidated_quote,
                 actual_liquidator_fee: liquidator_fee,
                 liquidated_fee_amount: liquidated_insurance_fee,
-                interest_amount_liquidated: 0,
-                interest_amount_liquidator: 0,
+                :interest_amount_liquidated,
+                :interest_amount_liquidator,
             );
 
         self
@@ -1711,7 +1771,8 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 position_id: liquidated_user.position_id,
                 expected_balance: liquidated_collateral_balance_before
                     - liquidated_insurance_fee.into()
-                    + liquidated_quote.into(),
+                    + liquidated_quote.into()
+                    + interest_amount_liquidated.into(),
             );
 
         self
@@ -1726,7 +1787,8 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 position_id: liquidator_order.position_id,
                 expected_balance: liquidator_collateral_balance_before
                     - liquidator_fee.into()
-                    - liquidated_quote.into(),
+                    - liquidated_quote.into()
+                    + interest_amount_liquidator.into(),
             );
 
         self
@@ -1763,6 +1825,9 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             actual_liquidator_fee: liquidator_fee,
             insurance_fund_fee_amount: liquidated_insurance_fee,
             liquidator_order_hash: liquidator_hash,
+            :interest_amount_liquidated,
+            :interest_amount_liquidator,
+            interest_amount_liquidator_receiver: 0,
         );
     }
 
@@ -1820,7 +1885,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 interest_amount_liquidated: 0,
                 interest_amount_liquidator: 0,
                 interest_amount_liquidator_receiver: 0,
-            )
+            );
     }
 
     fn liquidate_spot_asset_with_interest(
@@ -1972,7 +2037,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             );
 
         // Verify liquidation event was emitted
-        assert_liquidate_event_with_expected_and_interest(
+        assert_liquidate_event_with_expected(
             spied_event: self.get_last_event(contract_address: self.perpetuals_contract),
             liquidated_position_id: liquidated_user.position_id,
             liquidator_order_position_id: liquidator_order_info.order.source_position,
@@ -2000,6 +2065,28 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         deleveraged_base: i64,
         deleveraged_quote: i64,
     ) {
+        self
+            .deleverage_with_interest(
+                :deleveraged_user,
+                :deleverager_user,
+                :base_asset_id,
+                :deleveraged_base,
+                :deleveraged_quote,
+                interest_amount_deleveraged: 0,
+                interest_amount_deleverager: 0,
+            )
+    }
+
+    fn deleverage_with_interest(
+        ref self: PerpsTestsFacade,
+        deleveraged_user: User,
+        deleverager_user: User,
+        base_asset_id: AssetId,
+        deleveraged_base: i64,
+        deleveraged_quote: i64,
+        interest_amount_deleveraged: i64,
+        interest_amount_deleverager: i64,
+    ) {
         let dispatcher = IPositionsDispatcher { contract_address: self.perpetuals_contract };
         let deleveraged_balance_before = dispatcher
             .get_position_assets(position_id: deleveraged_user.position_id);
@@ -2024,14 +2111,16 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 base_asset_id: base_asset_id,
                 deleveraged_base_amount: deleveraged_base,
                 deleveraged_quote_amount: deleveraged_quote,
-                interest_amount_deleveraged: 0,
-                interest_amount_deleverager: 0,
+                :interest_amount_deleveraged,
+                :interest_amount_deleverager,
             );
 
         self
             .validate_collateral_balance(
                 position_id: deleveraged_user.position_id,
-                expected_balance: deleveraged_collateral_balance_before + deleveraged_quote.into(),
+                expected_balance: deleveraged_collateral_balance_before
+                    + deleveraged_quote.into()
+                    + interest_amount_deleveraged.into(),
             );
 
         self
@@ -2044,7 +2133,9 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         self
             .validate_collateral_balance(
                 position_id: deleverager_user.position_id,
-                expected_balance: deleverager_collateral_balance_before - deleveraged_quote.into(),
+                expected_balance: deleverager_collateral_balance_before
+                    - deleveraged_quote.into()
+                    + interest_amount_deleverager.into(),
             );
 
         self
@@ -2062,6 +2153,8 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             collateral_id: self.collateral_id,
             deleveraged_base_amount: deleveraged_base,
             deleveraged_quote_amount: deleveraged_quote,
+            :interest_amount_deleveraged,
+            :interest_amount_deleverager,
         );
     }
 
@@ -2315,6 +2408,23 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         interest_amount_sender: i64,
         interest_amount_receiver: i64,
     ) {
+        let dispatcher = IPositionsDispatcher { contract_address: self.perpetuals_contract };
+
+        let vault_collateral_before = self.get_position_collateral_balance(vault.position_id);
+        let sender_balance_before = dispatcher
+            .get_position_assets(position_id: withdrawing_user.position_id);
+        let sender_collateral_before = sender_balance_before.collateral_balance;
+        let sender_shares_before = get_synthetic_balance(
+            assets: sender_balance_before.assets, asset_id: vault.asset_id,
+        );
+
+        let is_different_receiver = withdrawing_user.position_id != receiving_user.position_id;
+        let receiver_collateral_before = if is_different_receiver {
+            self.get_position_collateral_balance(receiving_user.position_id)
+        } else {
+            sender_collateral_before
+        };
+
         let operator_nonce = self.get_nonce();
         self.operator.set_as_caller(self.perpetuals_contract);
 
@@ -2368,6 +2478,61 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 :interest_amount_sender,
                 :interest_amount_receiver,
             );
+
+        // Validate vault collateral
+        self
+            .validate_collateral_balance(
+                position_id: vault.position_id,
+                expected_balance: vault_collateral_before
+                    - actual_collateral_user.into()
+                    + interest_amount_vault_position.into(),
+            );
+
+        // Validate sender shares burned
+        self
+            .validate_asset_balance(
+                position_id: withdrawing_user.position_id,
+                asset_id: vault.asset_id,
+                expected_balance: sender_shares_before - actual_shares_user.into(),
+            );
+
+        if !is_different_receiver {
+            self
+                .validate_collateral_balance(
+                    position_id: withdrawing_user.position_id,
+                    expected_balance: sender_collateral_before
+                        + actual_collateral_user.into()
+                        + interest_amount_sender.into(),
+                );
+        } else {
+            self
+                .validate_collateral_balance(
+                    position_id: withdrawing_user.position_id,
+                    expected_balance: sender_collateral_before + interest_amount_sender.into(),
+                );
+            self
+                .validate_collateral_balance(
+                    position_id: receiving_user.position_id,
+                    expected_balance: receiver_collateral_before
+                        + actual_collateral_user.into()
+                        + interest_amount_receiver.into(),
+                );
+        }
+
+        assert_redeem_vault_shares_event_with_expected(
+            spied_event: self.get_last_event(contract_address: self.perpetuals_contract),
+            vault_position_id: vault.position_id,
+            redeeming_position_id: withdrawing_user.position_id,
+            receiving_position_id: receiving_user.position_id,
+            vault_asset_id: vault.asset_id,
+            invested_asset_id: self.collateral_id,
+            shares_redeemed_amount: actual_shares_user,
+            collateral_received_amount: actual_collateral_user,
+            collateral_requested_amount: value_of_shares_user,
+            :interest_amount_vault_position,
+            interest_amount_redeeming_position: interest_amount_sender,
+            :interest_amount_receiver,
+        );
     }
 
     fn liquidate_shares(
@@ -2379,6 +2544,41 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         actual_shares_user: u64,
         actual_collateral_user: u64,
     ) {
+        self
+            .liquidate_shares_with_interest(
+                :vault,
+                :liquidated_user,
+                :shares_to_burn_vault,
+                :value_of_shares_vault,
+                :actual_shares_user,
+                :actual_collateral_user,
+                interest_amount_vault_position: 0,
+                interest_amount_liquidated: 0,
+            )
+    }
+
+    fn liquidate_shares_with_interest(
+        ref self: PerpsTestsFacade,
+        vault: VaultState,
+        liquidated_user: User,
+        shares_to_burn_vault: u64,
+        value_of_shares_vault: u64,
+        actual_shares_user: u64,
+        actual_collateral_user: u64,
+        interest_amount_vault_position: i64,
+        interest_amount_liquidated: i64,
+    ) {
+        let dispatcher = IPositionsDispatcher { contract_address: self.perpetuals_contract };
+        let vault_collateral_before = dispatcher
+            .get_position_assets(position_id: vault.position_id)
+            .collateral_balance;
+        let liquidated_balance_before = dispatcher
+            .get_position_assets(position_id: liquidated_user.position_id);
+        let liquidated_collateral_before = liquidated_balance_before.collateral_balance;
+        let liquidated_shares_before = get_synthetic_balance(
+            assets: liquidated_balance_before.assets, asset_id: vault.asset_id,
+        );
+
         let operator_nonce = self.get_nonce();
         self.operator.set_as_caller(self.perpetuals_contract);
 
@@ -2409,9 +2609,43 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 liquidated_asset_id: vault.asset_id,
                 actual_shares_user: -actual_shares_user.try_into().unwrap(),
                 actual_collateral_user: actual_collateral_user.try_into().unwrap(),
-                interest_amount_vault_position: 0,
-                interest_amount_liquidated: 0,
+                :interest_amount_vault_position,
+                :interest_amount_liquidated,
             );
+
+        self
+            .validate_collateral_balance(
+                position_id: vault.position_id,
+                expected_balance: vault_collateral_before
+                    - actual_collateral_user.into()
+                    + interest_amount_vault_position.into(),
+            );
+
+        self
+            .validate_collateral_balance(
+                position_id: liquidated_user.position_id,
+                expected_balance: liquidated_collateral_before
+                    + actual_collateral_user.into()
+                    + interest_amount_liquidated.into(),
+            );
+
+        self
+            .validate_synthetic_balance(
+                position_id: liquidated_user.position_id,
+                asset_id: vault.asset_id,
+                expected_balance: liquidated_shares_before - actual_shares_user.into(),
+            );
+
+        assert_liquidate_vault_shares_event_with_expected(
+            spied_event: self.get_last_event(contract_address: self.perpetuals_contract),
+            vault_position_id: vault.position_id,
+            liquidated_position_id: liquidated_user.position_id,
+            vault_asset_id: vault.asset_id,
+            shares_liquidated_amount: actual_shares_user,
+            collateral_received_amount: actual_collateral_user,
+            :interest_amount_vault_position,
+            interest_amount_liquidated_position: interest_amount_liquidated,
+        );
     }
 
     fn deposit_into_vault(
@@ -2422,6 +2656,32 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         depositing_user: User,
         receiving_user: User,
     ) -> DepositInfo {
+        self
+            .deposit_into_vault_with_interest(
+                :vault,
+                :amount_to_invest,
+                :min_shares_to_receive,
+                :depositing_user,
+                :receiving_user,
+                interest_amount_vault_position: 0,
+                interest_amount_sender: 0,
+            )
+    }
+
+    fn deposit_into_vault_with_interest(
+        ref self: PerpsTestsFacade,
+        vault: VaultState,
+        amount_to_invest: u64,
+        min_shares_to_receive: u64,
+        depositing_user: User,
+        receiving_user: User,
+        interest_amount_vault_position: i64,
+        interest_amount_sender: i64,
+    ) -> DepositInfo {
+        let sender_collateral_before = self
+            .get_position_collateral_balance(depositing_user.position_id);
+        let vault_collateral_before = self.get_position_collateral_balance(vault.position_id);
+
         let operator_nonce = self.get_nonce();
         self.operator.set_as_caller(self.perpetuals_contract);
         let salt = self.generate_salt();
@@ -2448,8 +2708,24 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 signature: signature,
                 order: order,
                 correlation_id: 1,
-                interest_amount_vault_position: 0,
-                interest_amount_sender: 0,
+                :interest_amount_vault_position,
+                :interest_amount_sender,
+            );
+
+        self
+            .validate_collateral_balance(
+                position_id: depositing_user.position_id,
+                expected_balance: sender_collateral_before
+                    - amount_to_invest.into()
+                    + interest_amount_sender.into(),
+            );
+
+        self
+            .validate_collateral_balance(
+                position_id: vault.position_id,
+                expected_balance: vault_collateral_before
+                    + amount_to_invest.into()
+                    + interest_amount_vault_position.into(),
             );
 
         let last_event = self.get_last_event(contract_address: self.perpetuals_contract);
@@ -2459,6 +2735,22 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             spied_event: last_event,
             expected_event_selector: @selector!("Deposit"),
             expected_event_name: "Deposit",
+        );
+
+        let events = self.event_info.get_events().emitted_by(self.perpetuals_contract).events;
+        let invest_event = events[events.len() - 2];
+        assert_invest_in_vault_event_with_expected(
+            spied_event: invest_event,
+            vault_position_id: vault.position_id,
+            investing_position_id: depositing_user.position_id,
+            receiving_position_id: receiving_user.position_id,
+            vault_asset_id: vault.asset_id,
+            invested_asset_id: self.collateral_id,
+            shares_received: deposit_event.quantized_amount,
+            user_investment: amount_to_invest,
+            correlation_id: 1,
+            :interest_amount_vault_position,
+            :interest_amount_sender,
         );
 
         DepositInfo {

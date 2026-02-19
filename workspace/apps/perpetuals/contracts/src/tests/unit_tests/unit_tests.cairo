@@ -3825,6 +3825,8 @@ fn test_successful_deleverage() {
         collateral_id: cfg.collateral_cfg.collateral_id,
         deleveraged_base_amount: BASE,
         deleveraged_quote_amount: QUOTE,
+        interest_amount_deleveraged: 0,
+        interest_amount_deleverager: 0,
     );
 
     // Check:
@@ -3936,6 +3938,9 @@ fn test_successful_liquidate() {
         actual_liquidator_fee: FEE,
         insurance_fund_fee_amount: INSURANCE_FEE,
         liquidator_order_hash: liquidator_hash,
+        interest_amount_liquidated: 0,
+        interest_amount_liquidator: 0,
+        interest_amount_liquidator_receiver: 0,
     );
 
     // Check:
