@@ -32,10 +32,15 @@ scarb --release build
 
 Always run `scarb fmt -w` after finishing code changes and before running tests. This ensures all code is properly formatted before review.
 
-## Task Timing
+## Task Timing (MANDATORY)
 
-When executing a plan with to-dos, track and report:
-- Time taken to complete each individual to-do
-- Total elapsed time for the entire task
+**Before starting execution**, record the current time. For EVERY to-do item:
+1. Note the start time when marking it `in_progress`
+2. Note the end time when marking it `completed`
+3. Include the duration in the todo update message
 
-Report these timings when summarizing completed work.
+**After completing all to-dos**, include a timing summary table in the final message with:
+- Each task name and its duration
+- Total elapsed time from first task start to last task completion
+
+This is NOT optional -- every summary of completed work MUST include timing data.
