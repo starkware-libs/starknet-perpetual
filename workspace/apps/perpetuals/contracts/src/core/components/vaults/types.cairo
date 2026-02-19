@@ -1,9 +1,12 @@
 use perpetuals::core::types::asset::AssetId;
 use starkware_utils::time::time::Seconds;
+use starkware_utils::math::utils::mul_wide_and_floor_div;
+use starkware_utils::math::abs::Abs;
 use starknet::storage::StoragePointer0Offset;
 use starknet::storage_access::storage_address_from_base_and_offset;
 use starknet::syscalls::storage_read_syscall;
 use starknet::SyscallResultTrait;
+
 
 #[derive(Copy, Debug, Default, Drop, Hash, PartialEq, Serde, starknet::Store)]
 pub struct VaultConfig {
@@ -54,5 +57,10 @@ pub impl VaultConfigImpl of VaultConfigTrait {
     fn is_none(entry: StoragePointer0Offset<VaultConfig>) -> bool {
         let version = Self::read_version(entry);
         version == 0
+    }
+
+    #[inline]
+    fn get_max_tv_loss(tv_at_check: i128, limit: u32) -> u128 {
+        return mul_wide_and_floor_div(tv_at_check.abs(), limit.into() * 10, 1000).unwrap();
     }
 }
