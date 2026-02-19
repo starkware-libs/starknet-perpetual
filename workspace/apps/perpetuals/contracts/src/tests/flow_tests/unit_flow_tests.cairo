@@ -5045,3 +5045,693 @@ fn test_multi_trade_multiple_settlements_with_interest() {
     //   Fee: 0
     state.facade.multi_trade(trades: array![settlement_1, settlement_2, settlement_3].span());
 }
+
+#[test]
+fn test_redeem_from_vault_with_mixed_interest_same_position() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let vault_user = state.new_user_with_position();
+    let redeeming_user = state.new_user_with_position();
+
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(vault_user.account, vault_user.position_id, 5000_u64),
+        );
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user, asset_name: 'VS_1');
+    state.facade.price_tick(@vault_config.asset_info, 1);
+
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(redeeming_user.account, redeeming_user.position_id, 10_000_u64),
+        );
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit_into_vault(
+                    vault: vault_config,
+                    amount_to_invest: 1000,
+                    min_shares_to_receive: 500,
+                    depositing_user: redeeming_user,
+                    receiving_user: redeeming_user,
+                ),
+        );
+
+    state.facade.advance_time(seconds: HOUR);
+
+    let redeeming_collateral_before = state
+        .facade
+        .get_position_collateral_balance(redeeming_user.position_id);
+    let vault_collateral_before = state
+        .facade
+        .get_position_collateral_balance(vault_config.position_id);
+
+    // Vault PnL = 5000 (collateral only). max_allowed ~ 5.
+    // Redeeming user PnL = 9000 (collateral only). max_allowed ~ 9.
+    // Arbitrary amounts within bounds: sender = -3, vault = +2.
+    let interest_sender: i64 = -3;
+    let interest_vault: i64 = 2;
+    let value_of_shares: u64 = 399;
+
+    state
+        .facade
+        .redeem_from_vault_with_interest(
+            vault: vault_config,
+            withdrawing_user: redeeming_user,
+            receiving_user: redeeming_user,
+            shares_to_burn_user: 400,
+            value_of_shares_user: value_of_shares,
+            shares_to_burn_vault: 400,
+            value_of_shares_vault: value_of_shares,
+            actual_shares_user: 400,
+            actual_collateral_user: value_of_shares,
+            interest_amount_vault_position: interest_vault,
+            interest_amount_sender: interest_sender,
+            interest_amount_receiver: 0,
+        );
+
+    state
+        .facade
+        .validate_collateral_balance(
+            position_id: redeeming_user.position_id,
+            expected_balance: redeeming_collateral_before
+                + value_of_shares.into()
+                + interest_sender.into(),
+        );
+    state
+        .facade
+        .validate_collateral_balance(
+            position_id: vault_config.position_id,
+            expected_balance: vault_collateral_before
+                - value_of_shares.into()
+                + interest_vault.into(),
+        );
+}
+
+#[test]
+fn test_redeem_from_vault_with_positive_interest_enables_otherwise_unhealthy_redeem() {
+    // Deposit 10000, invest 1000 => collateral = 9000. Buy 190 BTC@100 => collateral = -10000.
+    // PnL = -10000 + 190*100 = 9000. max_allowed = floor(9000*3600*1200/2^32) = 9.
+    // TV = -10000 + 900(shares) + 19000(BTC) = 9900, TR = 9500. Healthy.
+    //
+    // Redeem all 1000 shares for $499, interest = 0:
+    //   TV = -10000 + 499 + 0 + 19000 = 9499, TR = 9500. Unhealthy by 1!
+    // Redeem all 1000 shares for $499, interest = +1:
+    //   TV = -10000 + 499 + 1 + 19000 = 9500 = TR. Just healthy!
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![500].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let synthetic_info = AssetInfoTrait::new(
+        asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
+    );
+    let asset_id = synthetic_info.asset_id;
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    state.facade.add_active_synthetic(synthetic_info: @synthetic_info, initial_price: 100);
+
+    let vault_user = state.new_user_with_position();
+    let trade_user = state.new_user_with_position();
+    let redeeming_user = state.new_user_with_position();
+
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(vault_user.account, vault_user.position_id, 50_000_u64),
+        );
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user, asset_name: 'VS_1');
+    state.facade.price_tick(@vault_config.asset_info, 1);
+
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(redeeming_user.account, redeeming_user.position_id, 10_000_u64),
+        );
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(trade_user.account, trade_user.position_id, 100_000_u64),
+        );
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit_into_vault(
+                    vault: vault_config,
+                    amount_to_invest: 1000,
+                    min_shares_to_receive: 500,
+                    depositing_user: redeeming_user,
+                    receiving_user: redeeming_user,
+                ),
+        );
+
+    let user_order = state
+        .facade
+        .create_order(
+            user: redeeming_user,
+            base_amount: 190,
+            base_asset_id: asset_id,
+            quote_amount: -19000,
+            fee_amount: 0,
+        );
+    let other_side_order = state
+        .facade
+        .create_order(
+            user: trade_user,
+            base_amount: -190,
+            base_asset_id: asset_id,
+            quote_amount: 19000,
+            fee_amount: 0,
+        );
+    state
+        .facade
+        .trade(
+            order_info_a: user_order,
+            order_info_b: other_side_order,
+            base: 190,
+            quote: -19000,
+            fee_a: 0,
+            fee_b: 0,
+        );
+
+    state.facade.advance_time(seconds: HOUR);
+
+    state
+        .facade
+        .redeem_from_vault_with_interest(
+            vault: vault_config,
+            withdrawing_user: redeeming_user,
+            receiving_user: redeeming_user,
+            shares_to_burn_user: 1000,
+            value_of_shares_user: 499,
+            shares_to_burn_vault: 1000,
+            value_of_shares_vault: 499,
+            actual_shares_user: 1000,
+            actual_collateral_user: 499,
+            interest_amount_vault_position: 0,
+            interest_amount_sender: 1,
+            interest_amount_receiver: 0,
+        );
+}
+
+#[test]
+#[should_panic(expected: "POSITION_NOT_HEALTHY_NOR_HEALTHIER")]
+fn test_redeem_from_vault_with_negative_interest_makes_redeem_unhealthy() {
+    // Same setup as the enables-unhealthy test.
+    // Redeem all 1000 shares for $500, interest = 0:
+    //   TV = -10000 + 500 + 0 + 19000 = 9500 = TR. Just healthy.
+    // Redeem all 1000 shares for $500, interest = -1:
+    //   TV = -10000 + 500 - 1 + 19000 = 9499 < TR = 9500. Unhealthy!
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![500].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let synthetic_info = AssetInfoTrait::new(
+        asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
+    );
+    let asset_id = synthetic_info.asset_id;
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    state.facade.add_active_synthetic(synthetic_info: @synthetic_info, initial_price: 100);
+
+    let vault_user = state.new_user_with_position();
+    let trade_user = state.new_user_with_position();
+    let redeeming_user = state.new_user_with_position();
+
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(vault_user.account, vault_user.position_id, 50_000_u64),
+        );
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user, asset_name: 'VS_1');
+    state.facade.price_tick(@vault_config.asset_info, 1);
+
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(redeeming_user.account, redeeming_user.position_id, 10_000_u64),
+        );
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(trade_user.account, trade_user.position_id, 100_000_u64),
+        );
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit_into_vault(
+                    vault: vault_config,
+                    amount_to_invest: 1000,
+                    min_shares_to_receive: 500,
+                    depositing_user: redeeming_user,
+                    receiving_user: redeeming_user,
+                ),
+        );
+
+    let user_order = state
+        .facade
+        .create_order(
+            user: redeeming_user,
+            base_amount: 190,
+            base_asset_id: asset_id,
+            quote_amount: -19000,
+            fee_amount: 0,
+        );
+    let other_side_order = state
+        .facade
+        .create_order(
+            user: trade_user,
+            base_amount: -190,
+            base_asset_id: asset_id,
+            quote_amount: 19000,
+            fee_amount: 0,
+        );
+    state
+        .facade
+        .trade(
+            order_info_a: user_order,
+            order_info_b: other_side_order,
+            base: 190,
+            quote: -19000,
+            fee_a: 0,
+            fee_b: 0,
+        );
+
+    state.facade.advance_time(seconds: HOUR);
+
+    state
+        .facade
+        .redeem_from_vault_with_interest(
+            vault: vault_config,
+            withdrawing_user: redeeming_user,
+            receiving_user: redeeming_user,
+            shares_to_burn_user: 1000,
+            value_of_shares_user: 500,
+            shares_to_burn_vault: 1000,
+            value_of_shares_vault: 500,
+            actual_shares_user: 1000,
+            actual_collateral_user: 500,
+            interest_amount_vault_position: 0,
+            interest_amount_sender: -1,
+            interest_amount_receiver: 0,
+        );
+}
+
+#[test]
+#[should_panic(expected: "INVALID_INTEREST_RATE")]
+fn test_redeem_from_vault_non_zero_interest_without_time_advance() {
+    // No advance_time => last_interest_applied_time is zero (first interest calc).
+    // Any non-zero interest must fail with INVALID_INTEREST_RATE.
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let vault_user = state.new_user_with_position();
+    let redeeming_user = state.new_user_with_position();
+
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(vault_user.account, vault_user.position_id, 5000_u64),
+        );
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user, asset_name: 'VS_1');
+    state.facade.price_tick(@vault_config.asset_info, 1);
+
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(redeeming_user.account, redeeming_user.position_id, 10_000_u64),
+        );
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit_into_vault(
+                    vault: vault_config,
+                    amount_to_invest: 1000,
+                    min_shares_to_receive: 500,
+                    depositing_user: redeeming_user,
+                    receiving_user: redeeming_user,
+                ),
+        );
+
+    state
+        .facade
+        .redeem_from_vault_with_interest(
+            vault: vault_config,
+            withdrawing_user: redeeming_user,
+            receiving_user: redeeming_user,
+            shares_to_burn_user: 400,
+            value_of_shares_user: 399,
+            shares_to_burn_vault: 400,
+            value_of_shares_vault: 399,
+            actual_shares_user: 400,
+            actual_collateral_user: 399,
+            interest_amount_vault_position: 0,
+            interest_amount_sender: 1,
+            interest_amount_receiver: 0,
+        );
+}
+
+#[test]
+fn test_redeem_from_vault_with_interest_different_receiver() {
+    // 3-position scenario: sender != receiver.
+    // When sender != receiver:
+    //   sender collateral_diff = interest_amount_sender (no redeem collateral)
+    //   receiver collateral_diff = value_to_receive + interest_amount_receiver
+    //   vault collateral_diff = -value_to_receive + interest_amount_vault_position
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let vault_user = state.new_user_with_position();
+    let withdrawing_user = state.new_user_with_position();
+    let receiving_user = state.new_user_with_position();
+
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(vault_user.account, vault_user.position_id, 5000_u64),
+        );
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user, asset_name: 'VS_1');
+    state.facade.price_tick(@vault_config.asset_info, 1);
+
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit(withdrawing_user.account, withdrawing_user.position_id, 10_000_u64),
+        );
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(receiving_user.account, receiving_user.position_id, 10_000_u64),
+        );
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit_into_vault(
+                    vault: vault_config,
+                    amount_to_invest: 1000,
+                    min_shares_to_receive: 500,
+                    depositing_user: withdrawing_user,
+                    receiving_user: withdrawing_user,
+                ),
+        );
+
+    state.facade.advance_time(seconds: HOUR);
+
+    let sender_collateral_before = state
+        .facade
+        .get_position_collateral_balance(withdrawing_user.position_id);
+    let receiver_collateral_before = state
+        .facade
+        .get_position_collateral_balance(receiving_user.position_id);
+    let vault_collateral_before = state
+        .facade
+        .get_position_collateral_balance(vault_config.position_id);
+
+    // Vault PnL = 5000, max_allowed ~ 5. Sender PnL = 9000, max ~ 9.
+    // Receiver PnL = 10000, max ~ 10.
+    let interest_vault: i64 = 3;
+    let interest_sender: i64 = -2;
+    let interest_receiver: i64 = 4;
+    let value_of_shares: u64 = 399;
+
+    state
+        .facade
+        .redeem_from_vault_with_interest(
+            vault: vault_config,
+            withdrawing_user: withdrawing_user,
+            receiving_user: receiving_user,
+            shares_to_burn_user: 400,
+            value_of_shares_user: value_of_shares,
+            shares_to_burn_vault: 400,
+            value_of_shares_vault: value_of_shares,
+            actual_shares_user: 400,
+            actual_collateral_user: value_of_shares,
+            interest_amount_vault_position: interest_vault,
+            interest_amount_sender: interest_sender,
+            interest_amount_receiver: interest_receiver,
+        );
+
+    // Sender gets only interest (shares burned, no collateral from redeem)
+    state
+        .facade
+        .validate_collateral_balance(
+            position_id: withdrawing_user.position_id,
+            expected_balance: sender_collateral_before + interest_sender.into(),
+        );
+    // Receiver gets collateral from redeem + interest
+    state
+        .facade
+        .validate_collateral_balance(
+            position_id: receiving_user.position_id,
+            expected_balance: receiver_collateral_before
+                + value_of_shares.into()
+                + interest_receiver.into(),
+        );
+    // Vault loses collateral, gains interest
+    state
+        .facade
+        .validate_collateral_balance(
+            position_id: vault_config.position_id,
+            expected_balance: vault_collateral_before
+                - value_of_shares.into()
+                + interest_vault.into(),
+        );
+}
+
+#[test]
+#[should_panic(expected: "POSITION_NOT_HEALTHY_NOR_HEALTHIER")]
+fn test_redeem_from_vault_negative_interest_on_vault_makes_vault_unhealthy() {
+    // Vault deposits 100, user invests 1000 => vault position collateral = 1100.
+    // Redeem all 1000 shares for $1100 (10% premium over fair value ~$1000).
+    // Vault collateral_diff = -1100 + interest_vault.
+    // With interest_vault = -1: vault collateral = 1100 - 1100 - 1 = -1. Negative!
+    // TV_before = 1100, TR = 0. TV_after = -1 < 0. Unhealthy.
+    // Vault PnL = 1100. max_allowed = floor(1100 * 3600 * 1200 / 2^32) = 1.
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let vault_user = state.new_user_with_position();
+    let redeeming_user = state.new_user_with_position();
+
+    state
+        .facade
+        .process_deposit(state.facade.deposit(vault_user.account, vault_user.position_id, 100_u64));
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user, asset_name: 'VS_1');
+    state.facade.price_tick(@vault_config.asset_info, 1);
+
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(redeeming_user.account, redeeming_user.position_id, 10_000_u64),
+        );
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit_into_vault(
+                    vault: vault_config,
+                    amount_to_invest: 1000,
+                    min_shares_to_receive: 500,
+                    depositing_user: redeeming_user,
+                    receiving_user: redeeming_user,
+                ),
+        );
+
+    state.facade.advance_time(seconds: HOUR);
+
+    state
+        .facade
+        .redeem_from_vault_with_interest(
+            vault: vault_config,
+            withdrawing_user: redeeming_user,
+            receiving_user: redeeming_user,
+            shares_to_burn_user: 1000,
+            value_of_shares_user: 1100,
+            shares_to_burn_vault: 1000,
+            value_of_shares_vault: 1100,
+            actual_shares_user: 1000,
+            actual_collateral_user: 1100,
+            interest_amount_vault_position: -1,
+            interest_amount_sender: 0,
+            interest_amount_receiver: 0,
+        );
+}
+
+#[test]
+#[should_panic(expected: "POSITION_NOT_HEALTHY_NOR_HEALTHIER")]
+fn test_redeem_from_vault_negative_interest_makes_receiver_unhealthy() {
+    // Receiver buys 200 BTC@100 => collateral = -10000, TV = 10000, TR = 10000. Borderline.
+    // Redeem 400 shares for $9 to receiver: collateral_diff = 9 + interest_receiver.
+    // interest_receiver = -10: TV = 10000 + 9 - 10 = 9999 < TR = 10000. Unhealthy!
+    // Receiver PnL = 10000. max_allowed = floor(10000*3600*1200/2^32) = 10. Within bounds.
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![500].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let synthetic_info = AssetInfoTrait::new(
+        asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
+    );
+    let asset_id = synthetic_info.asset_id;
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    state.facade.add_active_synthetic(synthetic_info: @synthetic_info, initial_price: 100);
+
+    let vault_user = state.new_user_with_position();
+    let withdrawing_user = state.new_user_with_position();
+    let receiving_user = state.new_user_with_position();
+    let trade_user = state.new_user_with_position();
+
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(vault_user.account, vault_user.position_id, 5000_u64),
+        );
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user, asset_name: 'VS_1');
+    state.facade.price_tick(@vault_config.asset_info, 1);
+
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit(withdrawing_user.account, withdrawing_user.position_id, 10_000_u64),
+        );
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(receiving_user.account, receiving_user.position_id, 10_000_u64),
+        );
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(trade_user.account, trade_user.position_id, 100_000_u64),
+        );
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit_into_vault(
+                    vault: vault_config,
+                    amount_to_invest: 1000,
+                    min_shares_to_receive: 500,
+                    depositing_user: withdrawing_user,
+                    receiving_user: withdrawing_user,
+                ),
+        );
+
+    // Receiver buys 200 BTC@100 => collateral = -10000, TV = 10000, TR = 10000.
+    let recv_order = state
+        .facade
+        .create_order(
+            user: receiving_user,
+            base_amount: 200,
+            base_asset_id: asset_id,
+            quote_amount: -20000,
+            fee_amount: 0,
+        );
+    let counter_order = state
+        .facade
+        .create_order(
+            user: trade_user,
+            base_amount: -200,
+            base_asset_id: asset_id,
+            quote_amount: 20000,
+            fee_amount: 0,
+        );
+    state
+        .facade
+        .trade(
+            order_info_a: recv_order,
+            order_info_b: counter_order,
+            base: 200,
+            quote: -20000,
+            fee_a: 0,
+            fee_b: 0,
+        );
+
+    state.facade.advance_time(seconds: HOUR);
+
+    state
+        .facade
+        .redeem_from_vault_with_interest(
+            vault: vault_config,
+            withdrawing_user: withdrawing_user,
+            receiving_user: receiving_user,
+            shares_to_burn_user: 400,
+            value_of_shares_user: 9,
+            shares_to_burn_vault: 400,
+            value_of_shares_vault: 9,
+            actual_shares_user: 400,
+            actual_collateral_user: 9,
+            interest_amount_vault_position: 0,
+            interest_amount_sender: 0,
+            interest_amount_receiver: -10,
+        );
+}
+
+#[test]
+#[should_panic(expected: "INVALID_INTEREST_RATE")]
+fn test_redeem_from_vault_receiver_interest_exceeds_max_allowed() {
+    // Receiver deposits 10000, no synthetics. PnL = 10000.
+    // max_allowed = floor(10000*3600*1200/2^32) = 10.
+    // interest_amount_receiver = 11 exceeds max_allowed => INVALID_INTEREST_RATE.
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+    let vault_user = state.new_user_with_position();
+    let withdrawing_user = state.new_user_with_position();
+    let receiving_user = state.new_user_with_position();
+
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(vault_user.account, vault_user.position_id, 5000_u64),
+        );
+    let vault_config = state.facade.register_vault_share_spot_asset(vault_user, asset_name: 'VS_1');
+    state.facade.price_tick(@vault_config.asset_info, 1);
+
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit(withdrawing_user.account, withdrawing_user.position_id, 10_000_u64),
+        );
+    state
+        .facade
+        .process_deposit(
+            state.facade.deposit(receiving_user.account, receiving_user.position_id, 10_000_u64),
+        );
+    state
+        .facade
+        .process_deposit(
+            state
+                .facade
+                .deposit_into_vault(
+                    vault: vault_config,
+                    amount_to_invest: 1000,
+                    min_shares_to_receive: 500,
+                    depositing_user: withdrawing_user,
+                    receiving_user: withdrawing_user,
+                ),
+        );
+
+    state.facade.advance_time(seconds: HOUR);
+
+    state
+        .facade
+        .redeem_from_vault_with_interest(
+            vault: vault_config,
+            withdrawing_user: withdrawing_user,
+            receiving_user: receiving_user,
+            shares_to_burn_user: 400,
+            value_of_shares_user: 399,
+            shares_to_burn_vault: 400,
+            value_of_shares_vault: 399,
+            actual_shares_user: 400,
+            actual_collateral_user: 399,
+            interest_amount_vault_position: 0,
+            interest_amount_sender: 0,
+            interest_amount_receiver: 11,
+        );
+}
+
