@@ -209,7 +209,7 @@ pub mod Vaults {
 
                 let limit_from_storage = self.vault_protection_limit_overrides.read(vault_position);
                 let limit = if limit_from_storage == 0 {
-                    5
+                    DEFAULT_LIMIT_PERCENT
                 } else {
                     limit_from_storage
                 };
