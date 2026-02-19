@@ -47,9 +47,9 @@ use perpetuals::tests::event_test_utils::{
     assert_deactivate_synthetic_asset_event_with_expected, assert_deleverage_event_with_expected,
     assert_deposit_canceled_event_with_expected, assert_deposit_event_with_expected,
     assert_deposit_processed_event_with_expected, assert_liquidate_event_with_expected,
-    assert_trade_event_with_expected, assert_transfer_event_with_expected,
-    assert_transfer_request_event_with_expected, assert_withdraw_event_with_expected,
-    assert_withdraw_request_event_with_expected,
+    assert_liquidate_event_with_expected_and_interest, assert_trade_event_with_expected,
+    assert_transfer_event_with_expected, assert_transfer_request_event_with_expected,
+    assert_withdraw_event_with_expected, assert_withdraw_request_event_with_expected,
 };
 use perpetuals::tests::test_utils::{deploy_account, validate_balance};
 use snforge_std::cheatcodes::events::{Event, EventSpy, EventSpyTrait, EventsFilterTrait};
@@ -1809,6 +1809,32 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         actual_liquidator_fee: u64,
         liquidated_fee_amount: u64,
     ) {
+        self
+            .liquidate_spot_asset_with_interest(
+                :liquidated_user,
+                :liquidator_order_info,
+                :actual_amount_spot_collateral,
+                :actual_amount_base_collateral,
+                :actual_liquidator_fee,
+                :liquidated_fee_amount,
+                interest_amount_liquidated: 0,
+                interest_amount_liquidator: 0,
+                interest_amount_liquidator_receiver: 0,
+            )
+    }
+
+    fn liquidate_spot_asset_with_interest(
+        ref self: PerpsTestsFacade,
+        liquidated_user: User,
+        liquidator_order_info: LimitOrderInfo,
+        actual_amount_spot_collateral: i64,
+        actual_amount_base_collateral: i64,
+        actual_liquidator_fee: u64,
+        liquidated_fee_amount: u64,
+        interest_amount_liquidated: i64,
+        interest_amount_liquidator: i64,
+        interest_amount_liquidator_receiver: i64,
+    ) {
         let liquidated_asset_id = liquidator_order_info.order.base_asset_id;
         let dispatcher = IPositionsDispatcher { contract_address: self.perpetuals_contract };
 
@@ -1842,6 +1868,8 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         let liquidator_receive_spot_balance_before = get_synthetic_balance(
             assets: liquidator_receive_balance_before.assets, asset_id: liquidated_asset_id,
         );
+        let liquidator_receive_collateral_balance_before = liquidator_receive_balance_before
+            .collateral_balance;
 
         let fee_position_balance_before = dispatcher
             .get_position_assets(position_id: FEE_POSITION)
@@ -1863,9 +1891,9 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 :actual_amount_base_collateral,
                 :actual_liquidator_fee,
                 :liquidated_fee_amount,
-                interest_amount_liquidated: 0,
-                interest_amount_liquidator: 0,
-                interest_amount_liquidator_receiver: 0,
+                :interest_amount_liquidated,
+                :interest_amount_liquidator,
+                :interest_amount_liquidator_receiver,
             );
 
         // Validate balances after liquidation
@@ -1874,7 +1902,8 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 position_id: liquidated_user.position_id,
                 expected_balance: liquidated_collateral_balance_before
                     - liquidated_fee_amount.into()
-                    + actual_amount_base_collateral.into(),
+                    + actual_amount_base_collateral.into()
+                    + interest_amount_liquidated.into(),
             );
 
         self
@@ -1890,7 +1919,8 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 position_id: liquidator_order_info.order.source_position,
                 expected_balance: liquidator_collateral_balance_before
                     - actual_liquidator_fee.into()
-                    - actual_amount_base_collateral.into(),
+                    - actual_amount_base_collateral.into()
+                    + interest_amount_liquidator.into(),
             );
 
         // Validate asset balance based on whether source and receive positions are different
@@ -1919,6 +1949,13 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                     expected_balance: liquidator_receive_spot_balance_before
                         - actual_amount_spot_collateral.into(),
                 );
+            // Receive position collateral balance includes interest
+            self
+                .validate_collateral_balance(
+                    position_id: liquidator_order_info.order.receive_position,
+                    expected_balance: liquidator_receive_collateral_balance_before
+                        + interest_amount_liquidator_receiver.into(),
+                );
         }
 
         self
@@ -1935,7 +1972,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             );
 
         // Verify liquidation event was emitted
-        assert_liquidate_event_with_expected(
+        assert_liquidate_event_with_expected_and_interest(
             spied_event: self.get_last_event(contract_address: self.perpetuals_contract),
             liquidated_position_id: liquidated_user.position_id,
             liquidator_order_position_id: liquidator_order_info.order.source_position,
@@ -1949,6 +1986,9 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             actual_liquidator_fee: actual_liquidator_fee,
             insurance_fund_fee_amount: liquidated_fee_amount,
             liquidator_order_hash: liquidator_order_info.hash,
+            :interest_amount_liquidated,
+            :interest_amount_liquidator,
+            :interest_amount_liquidator_receiver,
         );
     }
 
