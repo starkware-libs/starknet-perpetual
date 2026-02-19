@@ -109,7 +109,7 @@ fn test_successful_transfer_of_vault_share() {
 
 
 #[test]
-#[should_panic(expected: 'INVALID_BASE_CHANGE')]
+#[should_panic(expected: 'INVALID_SHRINK_TO_NEGATIVE')]
 fn test_unsuccessful_transfer_of_vault_share_not_enough_balance() {
     let cfg: PerpetualsInitConfig = Default::default();
     let mut state = setup_state_with_pending_vault_share(

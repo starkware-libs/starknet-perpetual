@@ -70,8 +70,8 @@ async def test_view_functions(test_utils: PerpetualsTestUtils):
     nonce = await test_utils.get_operator_nonce()
     assert nonce >= 0
 
-    # Test get_collateral_asset_id
-    collateral_asset_id = await test_utils.get_collateral_asset_id()
+    # Test get_base_collateral_asset_id
+    collateral_asset_id = await test_utils.get_base_collateral_asset_id()
     assert collateral_asset_id == 1
 
     # Test get_base_collateral_token_contract

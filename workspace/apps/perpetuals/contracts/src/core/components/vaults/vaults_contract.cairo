@@ -216,7 +216,9 @@ pub(crate) mod VaultsManager {
                 let err = order_expired_err(from_position_id);
                 panic_with_byte_array(err: @err);
             }
-            assert(order.quote_asset_id == self.assets.get_collateral_id(), 'INVALID_QUOTE_ASSET');
+            assert(
+                order.quote_asset_id == self.assets.get_base_collateral_id(), 'INVALID_QUOTE_ASSET',
+            );
 
             let receiving_position_id = order.receive_position;
             let salt = order.salt;
@@ -358,7 +360,7 @@ pub(crate) mod VaultsManager {
                         shares_received: quantised_minted_shares,
                         user_investment: order.quote_amount.abs(),
                         vault_asset_id: vault_config.asset_id,
-                        invested_asset_id: self.assets.get_collateral_id(),
+                        invested_asset_id: self.assets.get_base_collateral_id(),
                         correlation_id: correlation_id,
                         interest_amount_vault_position,
                         interest_amount_sender,
@@ -415,7 +417,7 @@ pub(crate) mod VaultsManager {
                         collateral_received_amount: actual_collateral_user.abs(),
                         collateral_requested_amount: order.quote_amount.abs(),
                         vault_asset_id: vault_config.asset_id,
-                        invested_asset_id: self.assets.get_collateral_id(),
+                        invested_asset_id: self.assets.get_base_collateral_id(),
                     },
                 );
         }
@@ -440,9 +442,9 @@ pub(crate) mod VaultsManager {
                 receive_position: liquidated_position_id,
                 base_asset_id: liquidated_asset_id,
                 base_amount: actual_shares_user,
-                quote_asset_id: self.assets.get_collateral_id(),
+                quote_asset_id: self.assets.get_base_collateral_id(),
                 quote_amount: actual_collateral_user,
-                fee_asset_id: self.assets.get_collateral_id(),
+                fee_asset_id: self.assets.get_base_collateral_id(),
                 fee_amount: 0_u64,
                 salt: Zero::zero(),
                 expiration: Time::now(),
@@ -541,7 +543,7 @@ pub(crate) mod VaultsManager {
                 actual_fee_a: 0_u64,
                 actual_fee_b: 0_u64,
                 asset: Some(vault_asset),
-                collateral_id: self.assets.get_collateral_id(),
+                collateral_id: self.assets.get_base_collateral_id(),
             );
 
             let vault_position = self.positions.get_position_mut(vault_position_id);
@@ -727,7 +729,7 @@ pub(crate) mod VaultsManager {
             self
                 .positions
                 .validate_asset_balance_is_not_negative(
-                    position: vault_position.into(), asset_id: self.assets.get_collateral_id(),
+                    position: vault_position.into(), asset_id: self.assets.get_base_collateral_id(),
                 );
 
             // user health checks
