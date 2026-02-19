@@ -302,6 +302,44 @@ pub fn assert_liquidate_event_with_expected(
     insurance_fund_fee_amount: u64,
     liquidator_order_hash: felt252,
 ) {
+    assert_liquidate_event_with_expected_and_interest(
+        :spied_event,
+        :liquidated_position_id,
+        :liquidator_order_position_id,
+        :liquidator_order_base_asset_id,
+        :liquidator_order_base_amount,
+        :collateral_id,
+        :liquidator_order_quote_amount,
+        :liquidator_order_fee_amount,
+        :actual_amount_base_liquidated,
+        :actual_amount_quote_liquidated,
+        :actual_liquidator_fee,
+        :insurance_fund_fee_amount,
+        :liquidator_order_hash,
+        interest_amount_liquidated: 0,
+        interest_amount_liquidator: 0,
+        interest_amount_liquidator_receiver: 0,
+    );
+}
+
+pub fn assert_liquidate_event_with_expected_and_interest(
+    spied_event: @(ContractAddress, Event),
+    liquidated_position_id: PositionId,
+    liquidator_order_position_id: PositionId,
+    liquidator_order_base_asset_id: AssetId,
+    liquidator_order_base_amount: i64,
+    collateral_id: AssetId,
+    liquidator_order_quote_amount: i64,
+    liquidator_order_fee_amount: u64,
+    actual_amount_base_liquidated: i64,
+    actual_amount_quote_liquidated: i64,
+    actual_liquidator_fee: u64,
+    insurance_fund_fee_amount: u64,
+    liquidator_order_hash: felt252,
+    interest_amount_liquidated: i64,
+    interest_amount_liquidator: i64,
+    interest_amount_liquidator_receiver: i64,
+) {
     let expected_event = events::Liquidate {
         liquidated_position_id,
         liquidator_order_position_id,
@@ -317,9 +355,9 @@ pub fn assert_liquidate_event_with_expected(
         insurance_fund_fee_asset_id: collateral_id,
         insurance_fund_fee_amount,
         liquidator_order_hash,
-        interest_amount_liquidated: 0,
-        interest_amount_liquidator: 0,
-        interest_amount_liquidator_receiver: 0,
+        interest_amount_liquidated,
+        interest_amount_liquidator,
+        interest_amount_liquidator_receiver,
     };
     assert_expected_event_emitted(
         :spied_event,
