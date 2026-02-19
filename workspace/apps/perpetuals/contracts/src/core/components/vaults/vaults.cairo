@@ -5,13 +5,14 @@ use starkware_utils::constants::DAY;
 
 const STORAGE_VERSION: u8 = 1;
 const CHECK_FREQUENCY: u64 = DAY;
+const DEFAULT_LIMIT_PERCENT: u32 = 5;
 
 
 #[starknet::interface]
 pub trait IVaults<TContractState> {
     fn is_vault_position(ref self: TContractState, vault_position: PositionId) -> bool;
     fn is_vault_asset(ref self: TContractState, asset_id: AssetId) -> bool;
-    fn force_reset_protection_limit(ref self: TContractState, vault_position: PositionId, percentage_basis_points: u32);
+    fn force_reset_protection_limit(ref self: TContractState, vault_position: PositionId, percentage: u32);
     fn update_vault_protection_limit(ref self: TContractState, vault_position: PositionId, limit: u32);
 }
 
@@ -50,11 +51,10 @@ pub mod Vaults {
     use crate::core::components::positions::interface::IPositions;
     use perpetuals::core::components::system_time::SystemTimeComponent;
     use crate::core::components::snip::SNIP12MetadataImpl;
-    use crate::core::components::system_time::SystemTimeComponent;
     use crate::core::components::vaults::events;
     use crate::core::types::vault::ConvertPositionToVault;
     use crate::core::utils::validate_signature;
-    use super::{CHECK_FREQUENCY, IVaults, STORAGE_VERSION, VaultProtectionParams};
+    use super::{CHECK_FREQUENCY, IVaults, STORAGE_VERSION, VaultProtectionParams, DEFAULT_LIMIT_PERCENT};
 
     #[event]
     #[derive(Drop, PartialEq, starknet::Event)]
@@ -100,7 +100,7 @@ pub mod Vaults {
         fn force_reset_protection_limit(
             ref self: ComponentState<TContractState>,
             vault_position: PositionId,
-            percentage_basis_points: u32,
+            percentage: u32,
         ) {
             get_dep_component!(@self, Roles).only_app_governor();
 
@@ -108,10 +108,7 @@ pub mod Vaults {
             let positions = get_dep_component!(@self, Positions);
             let position_tv_tr = positions.get_position_tv_tr(vault_position);
             let tv_at_check = position_tv_tr.total_value;
-            let max_tv_loss = mul_wide_and_floor_div(
-                tv_at_check.abs(), percentage_basis_points.into() * 10, 1000,
-            )
-                .unwrap();
+            let max_tv_loss = VaultConfigTrait::get_max_tv_loss(tv_at_check, percentage);
 
             let updated_config = VaultConfig {
                 version: current_config.version,
@@ -149,12 +146,12 @@ pub mod Vaults {
                     events::PerVaultProtectionLimitUpdated {
                         vault_position_id: vault_position,
                         old_limit: if old_limit == 0 {
-                            5
+                            DEFAULT_LIMIT_PERCENT
                         } else {
                             old_limit
                         },
                         new_limit: if limit == 0 {
-                            5
+                            DEFAULT_LIMIT_PERCENT
                         } else {
                             limit 
                         },
@@ -171,7 +168,6 @@ pub mod Vaults {
         +Drop<TContractState>,
         +AccessControlComponent::HasComponent<TContractState>,
         +SRC5Component::HasComponent<TContractState>,
-        +SystemTimeComponent::HasComponent<TContractState>,
         impl Assets: AssetsComponent::HasComponent<TContractState>,
         impl OperatorNonce: OperatorNonceComponent::HasComponent<TContractState>,
         impl Pausable: PausableComponent::HasComponent<TContractState>,
@@ -218,8 +214,7 @@ pub mod Vaults {
                     limit_from_storage
                 };
 
-                let max_tv_loss = mul_wide_and_floor_div(tv_at_check.abs(), limit.into() * 10, 1000)
-                    .unwrap();
+                let max_tv_loss = VaultConfigTrait::get_max_tv_loss(tv_at_check, limit);
                 let updated_config = VaultConfig {
                     version: current_config.version,
                     asset_id: current_config.asset_id,
