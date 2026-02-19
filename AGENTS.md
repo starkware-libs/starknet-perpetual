@@ -85,13 +85,18 @@ Position diffs get enriched with prices and risk factors for TV/TR validation:
 
 Before committing or considering work complete:
 
-1. Run `scarb build` to ensure code compiles
-2. Run `scarb test` to verify all tests pass
-3. For position logic changes, run specific test suites:
+1. Run `scarb build` and `scarb --release build` to ensure code compiles in both modes
+2. Run `scarb fmt -w` to format the code before testing and reviewing
+3. Run `scarb test` to verify all tests pass
+4. For position logic changes, run specific test suites:
    - `scarb test unit_tests` - Quick feedback
    - `scarb test flow_tests` - Full integration validation
    - `scarb test test_name` - Target specific functionality
-4. update the relevant sections in the [docs/spec.md](docs/spec.md)
+5. Update the relevant sections in the [docs/spec.md](docs/spec.md)
+
+**Running specific tests:** Use `snforge test <test_prefix>` instead of `scarb test` when targeting specific tests. It matches tests whose name starts with the given prefix and is significantly faster (skips recompilation of unrelated packages).
+
+**Task timing:** When executing a plan with to-dos, track and report the time taken for each to-do and the total elapsed time. This helps evaluate task complexity.
 
 ## Testing
 
@@ -106,9 +111,11 @@ src/tests/
 **Run tests:**
 
 ```bash
-scarb build                 # Compile
-scarb test                  # All tests
-scarb test flow_tests       # Integration only
+scarb build                        # Compile (dev)
+scarb --release build              # Compile (release)
+scarb fmt -w                       # Format code
+scarb test                         # All tests
+snforge test test_my_function      # Fast, targeted test run
 ```
 
 **When changing position logic:** Test TV/TR edge cases, funding application, and add regression tests.
@@ -132,8 +139,9 @@ workspace/vault/src/
 ### Commands
 
 ```bash
-scarb build    # Compile
-scarb test     # Run tests
+scarb build              # Compile (dev)
+scarb --release build    # Compile (release)
+scarb test               # Run tests
 ```
 
 ### Key Constants

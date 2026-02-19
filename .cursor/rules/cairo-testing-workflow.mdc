@@ -1,0 +1,41 @@
+---
+description: Cairo testing and formatting workflow rules for the starknet-perpetual repo
+alwaysApply: true
+---
+
+# Cairo Testing & Formatting Workflow
+
+## Running Tests
+
+Use `snforge test <test_prefix>` instead of `scarb test <test_prefix>` when running specific tests. `snforge test` matches tests whose name starts with the given prefix and is significantly faster.
+
+```bash
+# Good - fast, targeted
+snforge test test_redeem_from_vault_with_mixed
+
+# Avoid for specific tests - slower, compiles everything
+scarb test test_redeem_from_vault_with_mixed
+```
+
+Use `scarb test` only when running the full test suite.
+
+## Building
+
+Run both dev and release builds to ensure compilation succeeds in both modes:
+
+```bash
+scarb build
+scarb --release build
+```
+
+## Code Formatting
+
+Always run `scarb fmt -w` after finishing code changes and before running tests. This ensures all code is properly formatted before review.
+
+## Task Timing
+
+When executing a plan with to-dos, track and report:
+- Time taken to complete each individual to-do
+- Total elapsed time for the entire task
+
+Report these timings when summarizing completed work.
