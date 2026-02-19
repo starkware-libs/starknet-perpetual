@@ -301,6 +301,9 @@ pub fn assert_liquidate_event_with_expected(
     actual_liquidator_fee: u64,
     insurance_fund_fee_amount: u64,
     liquidator_order_hash: felt252,
+    interest_amount_liquidated: i64,
+    interest_amount_liquidator: i64,
+    interest_amount_liquidator_receiver: i64,
 ) {
     let expected_event = events::Liquidate {
         liquidated_position_id,
@@ -317,9 +320,9 @@ pub fn assert_liquidate_event_with_expected(
         insurance_fund_fee_asset_id: collateral_id,
         insurance_fund_fee_amount,
         liquidator_order_hash,
-        interest_amount_liquidated: 0,
-        interest_amount_liquidator: 0,
-        interest_amount_liquidator_receiver: 0,
+        interest_amount_liquidated,
+        interest_amount_liquidator,
+        interest_amount_liquidator_receiver,
     };
     assert_expected_event_emitted(
         :spied_event,
@@ -337,6 +340,8 @@ pub fn assert_deleverage_event_with_expected(
     collateral_id: AssetId,
     deleveraged_base_amount: i64,
     deleveraged_quote_amount: i64,
+    interest_amount_deleveraged: i64,
+    interest_amount_deleverager: i64,
 ) {
     let expected_event = events::Deleverage {
         deleveraged_position_id,
@@ -345,8 +350,8 @@ pub fn assert_deleverage_event_with_expected(
         deleveraged_base_amount,
         quote_asset_id: collateral_id,
         deleveraged_quote_amount,
-        interest_amount_deleveraged: 0,
-        interest_amount_deleverager: 0,
+        interest_amount_deleveraged,
+        interest_amount_deleverager,
     };
     assert_expected_event_emitted(
         :spied_event,
@@ -851,5 +856,100 @@ pub fn assert_forced_redeem_from_vault_event_with_expected(
         :expected_event,
         expected_event_selector: @selector!("ForcedRedeemFromVault"),
         expected_event_name: "ForcedRedeemFromVault",
+    );
+}
+
+pub fn assert_invest_in_vault_event_with_expected(
+    spied_event: @(ContractAddress, Event),
+    vault_position_id: PositionId,
+    investing_position_id: PositionId,
+    receiving_position_id: PositionId,
+    vault_asset_id: AssetId,
+    invested_asset_id: AssetId,
+    shares_received: u64,
+    user_investment: u64,
+    correlation_id: felt252,
+    interest_amount_vault_position: i64,
+    interest_amount_sender: i64,
+) {
+    let expected_event = vault_events::InvestInVault {
+        vault_position_id,
+        investing_position_id,
+        receiving_position_id,
+        vault_asset_id,
+        invested_asset_id,
+        shares_received,
+        user_investment,
+        correlation_id,
+        interest_amount_vault_position,
+        interest_amount_sender,
+    };
+    assert_expected_event_emitted(
+        :spied_event,
+        :expected_event,
+        expected_event_selector: @selector!("InvestInVault"),
+        expected_event_name: "InvestInVault",
+    );
+}
+
+pub fn assert_liquidate_vault_shares_event_with_expected(
+    spied_event: @(ContractAddress, Event),
+    vault_position_id: PositionId,
+    liquidated_position_id: PositionId,
+    vault_asset_id: AssetId,
+    shares_liquidated_amount: u64,
+    collateral_received_amount: u64,
+    interest_amount_vault_position: i64,
+    interest_amount_liquidated_position: i64,
+) {
+    let expected_event = vault_events::LiquidateVaultShares {
+        vault_position_id,
+        liquidated_position_id,
+        vault_asset_id,
+        shares_liquidated_amount,
+        collateral_received_amount,
+        interest_amount_vault_position,
+        interest_amount_liquidated_position,
+    };
+    assert_expected_event_emitted(
+        :spied_event,
+        :expected_event,
+        expected_event_selector: @selector!("LiquidateVaultShares"),
+        expected_event_name: "LiquidateVaultShares",
+    );
+}
+
+pub fn assert_redeem_vault_shares_event_with_expected(
+    spied_event: @(ContractAddress, Event),
+    vault_position_id: PositionId,
+    redeeming_position_id: PositionId,
+    receiving_position_id: PositionId,
+    vault_asset_id: AssetId,
+    invested_asset_id: AssetId,
+    shares_redeemed_amount: u64,
+    collateral_received_amount: u64,
+    collateral_requested_amount: u64,
+    interest_amount_vault_position: i64,
+    interest_amount_redeeming_position: i64,
+    interest_amount_receiver: i64,
+) {
+    let expected_event = vault_events::RedeemVaultShares {
+        vault_position_id,
+        redeeming_position_id,
+        receiving_position_id,
+        vault_asset_id,
+        invested_asset_id,
+        shares_redeemed_amount,
+        collateral_received_amount,
+        collateral_requested_amount,
+        interest_amount_vault_position,
+        interest_amount_redeeming_position,
+        interest_amount_receiver,
+    };
+    assert_expected_event_emitted(
+        :spied_event,
+        :expected_event,
+        expected_event_selector: @selector!("RedeemVaultShares"),
+        expected_event_name: "RedeemVaultShares",
     );
 }
