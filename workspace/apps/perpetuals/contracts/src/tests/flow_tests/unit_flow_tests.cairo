@@ -6,7 +6,7 @@ use perpetuals::tests::flow_tests::infra::*;
 use perpetuals::tests::flow_tests::perps_tests_facade::*;
 use snforge_std::TokenTrait;
 use starknet::storage::{StoragePathEntry, StoragePointerReadAccess, StoragePointerWriteAccess};
-use starkware_utils::constants::{HOUR, MAX_U128};
+use starkware_utils::constants::{HOUR, MAX_U128, WEEK};
 use starkware_utils::time::time::Timestamp;
 use starkware_utils_testing::test_utils::TokenTrait as StarknetTokenTrait;
 use super::perps_tests_facade::PerpsTestsFacadeTrait;
@@ -3905,6 +3905,134 @@ fn test_apply_zero_interest_does_not_update_last_time() {
             assert_eq!(prev_time, new_time);
         },
     );
+}
+
+#[test]
+fn test_apply_interest_unhealthy_becomes_healthier_but_still_unhealthy() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+
+    // Setup synthetic asset with risk factor
+    let risk_factor_data = RiskFactorTiers {
+        tiers: array![10].span(), first_tier_boundary: MAX_U128, tier_size: 1,
+    };
+    let synthetic_info = AssetInfoTrait::new(
+        asset_name: 'BTC_1', :risk_factor_data, oracles_len: 1,
+    );
+    let asset_id = synthetic_info.asset_id;
+    state.facade.add_active_synthetic(synthetic_info: @synthetic_info, initial_price: 100);
+
+    let user_a = state.new_user_with_position();
+    let user_b = state.new_user_with_position();
+
+    // Deposit collateral to both users
+    state
+        .facade
+        .process_deposit(
+            deposit_info: state
+                .facade
+                .deposit(
+                    depositor: user_a.account,
+                    position_id: user_a.position_id,
+                    quantized_amount: 10_000,
+                ),
+        );
+
+    state
+        .facade
+        .process_deposit(
+            deposit_info: state
+                .facade
+                .deposit(
+                    depositor: user_b.account,
+                    position_id: user_b.position_id,
+                    quantized_amount: 100_000,
+                ),
+        );
+
+    // Trade: user_a buys 200 BTC at price 100
+    // After trade: user_a collateral = 10000 - 20000 = -10000, BTC = 200
+    // At price 100: TV = -10000 + 200*100 = 10000, TR = 200*100*0.1 = 2000, ratio = 5.0 (healthy)
+    let order_a = state
+        .facade
+        .create_order(
+            user: user_a,
+            base_amount: 300,
+            base_asset_id: asset_id,
+            quote_amount: -30000,
+            fee_amount: 23,
+        );
+    let order_b = state
+        .facade
+        .create_order(
+            user: user_b,
+            base_amount: -200,
+            base_asset_id: asset_id,
+            quote_amount: 10000,
+            fee_amount: 15,
+        );
+    state
+        .facade
+        .trade(
+            order_info_a: order_a,
+            order_info_b: order_b,
+            base: 200,
+            quote: -20000,
+            fee_a: 0,
+            fee_b: 0,
+        );
+
+    // Price drop makes position unhealthy (liquidatable)
+    state.facade.price_tick(asset_info: @synthetic_info, price: 40);
+
+    // Now: TV = -10000 + 200*40 = -2000, TR = 200*40*0.1 = 800, ratio = -2.5 (Deleveragable, TV <
+    // TR)
+    assert(
+        state.facade.is_deleveragable(position_id: user_a.position_id),
+        'user should be deleveragable',
+    );
+
+    // Advance time by 23 hours to allow larger interest amounts
+    state.facade.advance_time(seconds: 23 * HOUR);
+
+    // Use a small positive interest that improves TV/TR ratio but keeps it unhealthy
+    let position_interest_amounts = array![(user_a.position_id, 23)].span();
+    state.facade.apply_interests(:position_interest_amounts);
+
+    // Verify position is still liquidatable but healthier
+    assert(
+        state.facade.is_deleveragable(position_id: user_a.position_id), 'should be liquidatable',
+    );
+
+    // Verify collateral balance increased by interest amount
+    let expected_balance: i64 = -10000 + 23;
+    state.facade.validate_collateral_balance(user_a.position_id, expected_balance.into());
+}
+
+#[test]
+#[should_panic(expected: "POSITION_NOT_HEALTHY_NOR_HEALTHIER")]
+fn test_apply_interest_healthy_becomes_unhealthy_should_fail() {
+    let mut state: FlowTestBase = FlowTestBaseTrait::new();
+
+    let user_a = state.new_user_with_position();
+    state
+        .facade
+        .process_deposit(
+            deposit_info: state
+                .facade
+                .deposit(
+                    depositor: user_a.account,
+                    position_id: user_a.position_id,
+                    quantized_amount: 1000,
+                ),
+        );
+
+    state.facade.advance_time(seconds: 8 * WEEK);
+    // Dummy funding, needed since funding limit was passed.
+    state.facade.funding_tick(funding_ticks: array![].span());
+
+    // This should fail: healthy position cannot become unhealthy
+    let position_interest_amounts = array![(user_a.position_id, -1200)].span();
+    state.facade.apply_interests(:position_interest_amounts);
 }
 
 #[test]
