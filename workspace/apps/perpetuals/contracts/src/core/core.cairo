@@ -823,6 +823,9 @@ pub mod Core {
                 ._get_vault_manager_dispatcher()
                 .activate_vault(:order, :signature)
         }
+        // TODO: Add cancel invest in vault. Currently, this flow depend on a non-atomic
+        // `process_deposit` step. A malicious operator could refuse to process the deposit,
+        // effectively locking user funds.
         fn invest_in_vault(
             ref self: ContractState,
             operator_nonce: u64,
