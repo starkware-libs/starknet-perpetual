@@ -36,7 +36,9 @@ use starkware_utils::components::roles::interface::{
 use starkware_utils::constants::{MAX_U128, TWO_POW_32, TWO_POW_40};
 use starkware_utils::signature::stark::Signature;
 use starkware_utils::storage::iterable_map::*;
-use starkware_utils::storage::linked_iterable_map_felt::LinkedIterableMapFeltReadAccess;
+use starkware_utils::storage::linked_iterable_map_felt::{
+    LinkedIterableMapFeltExistsTrait, LinkedIterableMapFeltReadAccess,
+};
 use starkware_utils::time::time::{Time, TimeDelta, Timestamp};
 use starkware_utils_testing::signing::StarkKeyPair;
 use starkware_utils_testing::test_utils::{
@@ -778,7 +780,13 @@ pub fn validate_asset_balance(
     let snapshot = state.positions.get_position_snapshot(:position_id);
     let asset_type = state.assets.get_asset_type_unsafe(asset_id);
     let balance = match asset_type {
-        AssetType::SPOT_COLLATERAL => { snapshot.spot_balances.read(key: asset_id).balance },
+        AssetType::SPOT_COLLATERAL => {
+            if snapshot.spot_balances.exists(asset_id) {
+                snapshot.spot_balances.read(key: asset_id).balance
+            } else {
+                0_i64.into()
+            }
+        },
         _ => { snapshot.asset_balances.read(asset_id).map_or(0_i64.into(), |b| b.balance) },
     };
     assert!(balance == expected_balance);

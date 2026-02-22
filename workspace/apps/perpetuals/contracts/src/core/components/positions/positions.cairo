@@ -51,8 +51,8 @@ pub mod Positions {
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
     use starkware_utils::storage::linked_iterable_map_felt::{
-        LinkedIterableMapFeltReadAccess, LinkedIterableMapFeltWriteAccess,
-        LinkedIterableMapIntoIterImpl,
+        LinkedIterableMapFeltExistsTrait, LinkedIterableMapFeltReadAccess,
+        LinkedIterableMapFeltWriteAccess, LinkedIterableMapIntoIterImpl,
     };
     use starkware_utils::storage::utils::AddToStorage;
     use starkware_utils::time::time::{Time, Timestamp, validate_expiration};
@@ -623,7 +623,11 @@ pub mod Positions {
             let asset_type = assets.get_asset_type_unsafe(asset_id: synthetic_id);
             match asset_type {
                 AssetType::SPOT_COLLATERAL => {
-                    position.spot_balances.read(key: synthetic_id).balance
+                    if position.spot_balances.exists(synthetic_id) {
+                        position.spot_balances.read(key: synthetic_id).balance
+                    } else {
+                        0_i64.into()
+                    }
                 },
                 _ => {
                     if let Option::Some(synthetic) = position.asset_balances.read(synthetic_id) {
@@ -632,12 +636,6 @@ pub mod Positions {
                         0_i64.into()
                     }
                 },
-            }
-
-            if let Option::Some(synthetic) = position.asset_balances.read(synthetic_id) {
-                synthetic.balance
-            } else {
-                0_i64.into()
             }
         }
 
@@ -906,7 +904,11 @@ pub mod Positions {
                         );
                 },
                 AssetType::SPOT_COLLATERAL => {
-                    let current_balance = position.spot_balances.read(key: asset_id);
+                    let current_balance = if position.spot_balances.exists(asset_id) {
+                        position.spot_balances.read(key: asset_id)
+                    } else {
+                        Zero::zero()
+                    };
                     let spot_balance = SpotBalance {
                         version: current_balance.version,
                         balance: current_balance.balance + asset_diff,

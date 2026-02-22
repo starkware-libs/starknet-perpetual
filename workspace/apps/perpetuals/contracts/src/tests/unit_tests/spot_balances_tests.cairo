@@ -14,7 +14,7 @@ use perpetuals::tests::test_utils::{
 };
 use snforge_std::test_address;
 use starkware_utils::constants::MAX_U128;
-use starkware_utils::storage::linked_iterable_map_felt::LinkedIterableMapFeltReadAccess;
+use starkware_utils::storage::linked_iterable_map_felt::LinkedIterableMapFeltExistsTrait;
 use starkware_utils_testing::test_utils::{Deployable, cheat_caller_address_once};
 use crate::core::components::assets::interface::IAssetsManager;
 use crate::core::components::operator_nonce::interface::IOperatorNonce;
@@ -73,9 +73,20 @@ fn test_spot_balances_read_missing_key_returns_zero() {
             quorum: 1,
         );
 
-    let snapshot = state.positions.get_position_snapshot(position_id: user.position_id);
-    let read_balance_b = snapshot.spot_balances.read(key: spot_asset_id_b).balance;
-    assert!(read_balance_b == Zero::zero());
+    // Missing key: key does not exist and balance via API is zero.
+    assert!(
+        !state
+            .positions
+            .get_position_snapshot(position_id: user.position_id)
+            .spot_balances
+            .exists(spot_asset_id_b),
+    );
+    validate_asset_balance(
+        ref :state,
+        position_id: user.position_id,
+        asset_id: spot_asset_id_b,
+        expected_balance: Zero::zero(),
+    );
 }
 
 // --- Write test ----------------------------------------------------------------------------------
