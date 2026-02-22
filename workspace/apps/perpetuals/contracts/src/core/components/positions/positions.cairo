@@ -675,7 +675,7 @@ pub mod Positions {
             let assets = get_dep_component!(self, Assets);
             let mut unchanged_assets = array![];
 
-            let synthetic_diff_id = if let Option::Some((id, _)) = position_diff.asset_diff {
+            let asset_diff_id = if let Option::Some((id, _)) = position_diff.asset_diff {
                 id
             } else {
                 Default::default()
@@ -696,7 +696,7 @@ pub mod Positions {
                         new_funding_index: funding_index,
                         balance: synthetic.balance,
                     );
-                if synthetic_diff_id == synthetic_id {
+                if asset_diff_id == synthetic_id {
                     continue;
                 }
 
@@ -717,7 +717,7 @@ pub mod Positions {
 
             for (spot_id, spot) in position.spot_balances {
                 let balance: Balance = spot.balance;
-                if balance.is_zero() || synthetic_diff_id == spot_id {
+                if balance.is_zero() || asset_diff_id == spot_id {
                     continue;
                 }
 
