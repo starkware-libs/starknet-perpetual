@@ -1,4 +1,4 @@
-use core::num::traits::{One, Zero};
+use core::num::traits::{One, Pow, Zero};
 use core::panics::panic_with_byte_array;
 use perpetuals::core::errors::{
     AMOUNT_OVERFLOW, position_not_deleveragable, position_not_fair_deleverage,
@@ -13,9 +13,14 @@ use perpetuals::core::types::price::{Price, PriceMulTrait};
 use perpetuals::core::types::risk_factor::{RiskFactor, RiskFactorMulTrait};
 use starkware_utils::math::abs::Abs;
 use starkware_utils::math::fraction::FractionTrait;
+use starkware_utils::math::utils::mul_wide_and_floor_div;
 
 /// This is equivalent to 1e-6 USD as the everything is in units of the smallest collateral asset.
 const EPSILON: i128 = 1_i128;
+
+// Required scaling factor for interest rates in fixed-point arithmetic, as the
+// `max_interest_rate_per_sec` is in percentage.
+pub const INTEREST_RATE_SCALE: u64 = 2_u64.pow(32);
 
 
 /// Represents the state of a position based on its total value and total risk.
@@ -223,6 +228,18 @@ pub fn calculate_pnl(synthetic_assets: Span<AssetBalanceInfo>, collateral_balanc
     }
 
     pnl.try_into().expect(AMOUNT_OVERFLOW)
+}
+
+pub fn calculate_max_allowed_change(
+    pnl: i64, time_diff: u64, max_interest_rate_per_sec: u32,
+) -> u128 {
+    // Calculate maximum allowed change: |pnl| * time_diff *
+    // max_interest_rate_per_sec / 2^32.
+    let balance_time_product: u128 = pnl.abs().into() * time_diff.into();
+    mul_wide_and_floor_div(
+        balance_time_product, max_interest_rate_per_sec.into(), INTEREST_RATE_SCALE.into(),
+    )
+        .expect(AMOUNT_OVERFLOW)
 }
 
 /// Calculates the total value and total risk change for a position, taking into account both
@@ -882,5 +899,168 @@ mod tests {
         //= abs(-50) * 900 * 0.5 = 22_500
         assert!(tvtr_before.total_value == -45_000);
         assert!(tvtr_before.total_risk == 22_500);
+    }
+
+    #[test]
+    fn test_calculate_max_allowed_change_positive_pnl() {
+        // Test with positive PnL: |1000| * 60 * 1000000 / 2^32
+        // = 1000 * 60 * 1000000 / 4294967296
+        // = 60000000000 / 4294967296
+        // ≈ 13.97 (floor division)
+        let pnl: i64 = 1000;
+        let time_diff: u64 = 60;
+        let max_interest_rate_per_sec: u32 = 1_000_000;
+        let result = calculate_max_allowed_change(pnl, time_diff, max_interest_rate_per_sec);
+        // Expected: (1000 * 60 * 1000000) / 2^32 = 60000000000 / 4294967296 = 13
+        assert_eq!(result, 13);
+    }
+
+    #[test]
+    fn test_calculate_max_allowed_change_negative_pnl() {
+        // Test with negative PnL: should use abs, so |-1000| * 60 * 1000000 / 2^32
+        // Should produce the same result as positive pnl
+        let pnl: i64 = -1000;
+        let time_diff: u64 = 60;
+        let max_interest_rate_per_sec: u32 = 1_000_000;
+        let result = calculate_max_allowed_change(pnl, time_diff, max_interest_rate_per_sec);
+        // Expected: (1000 * 60 * 1000000) / 2^32 = 60000000000 / 4294967296 = 13
+        assert_eq!(result, 13);
+    }
+
+    #[test]
+    fn test_calculate_max_allowed_change_zero_pnl() {
+        // Test with zero PnL: should return 0
+        let pnl: i64 = 0;
+        let time_diff: u64 = 60;
+        let max_interest_rate_per_sec: u32 = 1_000_000;
+        let result = calculate_max_allowed_change(pnl, time_diff, max_interest_rate_per_sec);
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn test_calculate_max_allowed_change_zero_time_diff() {
+        // Test with zero time_diff: should return 0
+        let pnl: i64 = 1000;
+        let time_diff: u64 = 0;
+        let max_interest_rate_per_sec: u32 = 1_000_000;
+        let result = calculate_max_allowed_change(pnl, time_diff, max_interest_rate_per_sec);
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn test_calculate_max_allowed_change_zero_interest_rate() {
+        // Test with zero interest rate: should return 0
+        let pnl: i64 = 1000;
+        let time_diff: u64 = 60;
+        let max_interest_rate_per_sec: u32 = 0;
+        let result = calculate_max_allowed_change(pnl, time_diff, max_interest_rate_per_sec);
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn test_calculate_max_allowed_change_all_zeros() {
+        // Test with all zeros: should return 0
+        let pnl: i64 = 0;
+        let time_diff: u64 = 0;
+        let max_interest_rate_per_sec: u32 = 0;
+        let result = calculate_max_allowed_change(pnl, time_diff, max_interest_rate_per_sec);
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn test_calculate_max_allowed_change_large_values() {
+        // Test with large values: |1000000| * 86400 * u32::MAX / 2^32
+        // = 1000000 * 86400 * 4294967295 / 4294967296
+        // = 371085174288000000000 / 4294967296
+        // ≈ 86399999979.88 (floor division = 86399999979)
+        let pnl: i64 = 1_000_000;
+        let time_diff: u64 = 86_400; // 1 day in seconds
+        let max_interest_rate_per_sec: u32 = 4294967295; // u32::MAX;
+        let result = calculate_max_allowed_change(pnl, time_diff, max_interest_rate_per_sec);
+        // Expected: (1000000 * 86400 * 4294967295) / 2^32 = 86399999979
+        assert_eq!(result, 86_399_999_979);
+    }
+
+    #[test]
+    fn test_calculate_max_allowed_change_small_interest_rate() {
+        // Test with small interest rate: |1000| * 1 * 1 / 2^32
+        // = 1000 * 1 * 1 / 4294967296
+        // ≈ 0.0000002328 (floor division = 0)
+        let pnl: i64 = 1000;
+        let time_diff: u64 = 1;
+        let max_interest_rate_per_sec: u32 = 1;
+        let result = calculate_max_allowed_change(pnl, time_diff, max_interest_rate_per_sec);
+        // Expected: (1000 * 1 * 1) / 2^32 = 1000 / 4294967296 = 0 (floor division)
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn test_calculate_max_allowed_change_one_second() {
+        // Test with 1 second: |5000| * 1 * 100000 / 2^32
+        // = 5000 * 1 * 100000 / 4294967296
+        // = 500000000 / 4294967296
+        // ≈ 0.116 (floor division = 0)
+        let pnl: i64 = 5_000;
+        let time_diff: u64 = 1;
+        let max_interest_rate_per_sec: u32 = 100_000;
+        let result = calculate_max_allowed_change(pnl, time_diff, max_interest_rate_per_sec);
+        // Expected: (5000 * 1 * 100000) / 2^32 = 500000000 / 4294967296 = 0 (floor division)
+        assert_eq!(result, 0);
+    }
+
+    #[test]
+    fn test_calculate_max_allowed_change_one_hour() {
+        // Test with 1 hour (3600 seconds): |10000| * 3600 * 500000 / 2^32
+        // = 10000 * 3600 * 500000 / 4294967296
+        // = 18000000000000 / 4294967296
+        // ≈ 4190.95 (floor division = 4190)
+        let pnl: i64 = 10_000;
+        let time_diff: u64 = 3_600; // 1 hour
+        let max_interest_rate_per_sec: u32 = 500_000;
+        let result = calculate_max_allowed_change(pnl, time_diff, max_interest_rate_per_sec);
+        // Expected: (10000 * 3600 * 500000) / 2^32 = 18000000000000 / 4294967296 = 4190
+        assert_eq!(result, 4190);
+    }
+
+    #[test]
+    fn test_calculate_max_allowed_change_max_i64_pnl() {
+        // Test with maximum i64 PnL (using abs): |9223372036854775807| * 1 * 1 / 2^32
+        // This tests handling of large PnL values
+        let pnl: i64 = 9_223_372_036_854_775_807_i64; // i64::MAX
+        let time_diff: u64 = 1;
+        let max_interest_rate_per_sec: u32 = 1;
+        let result = calculate_max_allowed_change(pnl, time_diff, max_interest_rate_per_sec);
+        // Expected: (9223372036854775807 * 1 * 1) / 2^32 = 9223372036854775807 / 4294967296
+        // = 2147483647 (floor division)
+        assert_eq!(result, 2_147_483_647);
+    }
+
+    #[test]
+    fn test_calculate_max_allowed_change_min_i64_pnl() {
+        // Test with minimum i64 PnL (should use abs): |-9223372036854775807| * 1 * 1 / 2^32
+        // This tests edge case of negative minimum value
+        let pnl: i64 = -9_223_372_036_854_775_807_i64; // i64::MIN + 1
+        let time_diff: u64 = 1;
+        let max_interest_rate_per_sec: u32 = 1;
+        // This should not panic and should calculate correctly
+        let result = calculate_max_allowed_change(pnl, time_diff, max_interest_rate_per_sec);
+        // The result should be the same as i64::MAX case since we use abs
+        // Expected: (9223372036854775807 * 1 * 1) / 2^32 = 9223372036854775807 / 4294967296
+        // = 2147483647 (floor division)
+        assert_eq!(result, 2_147_483_647);
+    }
+
+    #[test]
+    fn test_calculate_max_allowed_change_precise_calculation() {
+        // Test with values that produce a precise result: |1000000| * 4294967 * 1 / 2^32
+        // = 1000000 * 4294967 * 1 / 4294967296
+        // = 4294967000000 / 4294967296
+        // ≈ 999.9993 (floor division = 999)
+        let pnl: i64 = 1_000_000;
+        let time_diff: u64 = 4_294_967;
+        let max_interest_rate_per_sec: u32 = 1;
+        let result = calculate_max_allowed_change(pnl, time_diff, max_interest_rate_per_sec);
+        // Expected: (1000000 * 4294967 * 1) / 2^32 = 4294967000000 / 4294967296 = 999
+        assert_eq!(result, 999);
     }
 }

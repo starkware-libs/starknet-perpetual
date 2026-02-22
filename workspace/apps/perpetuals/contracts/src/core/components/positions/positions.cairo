@@ -1,7 +1,7 @@
 #[starknet::component]
 pub mod Positions {
     use core::nullable::{FromNullableResult, match_nullable};
-    use core::num::traits::{Pow, Zero};
+    use core::num::traits::Zero;
     use core::panic_with_felt252;
     use core::panics::panic_with_byte_array;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
@@ -32,7 +32,8 @@ pub mod Positions {
     use perpetuals::core::types::set_owner_account::SetOwnerAccountArgs;
     use perpetuals::core::types::set_public_key::SetPublicKeyArgs;
     use perpetuals::core::value_risk_calculator::{
-        PositionState, PositionTVTR, calculate_pnl, calculate_position_tvtr, evaluate_position,
+        PositionState, PositionTVTR, calculate_max_allowed_change, calculate_pnl,
+        calculate_position_tvtr, evaluate_position,
     };
     use starknet::storage::{
         Map, Mutable, StorageAsPointer, StoragePath, StoragePathEntry, StoragePointerReadAccess,
@@ -45,7 +46,7 @@ pub mod Positions {
     use starkware_utils::components::request_approvals::RequestApprovalsComponent::InternalTrait as RequestApprovalsInternal;
     use starkware_utils::components::roles::RolesComponent;
     use starkware_utils::math::abs::Abs;
-    use starkware_utils::math::utils::{have_same_sign, mul_wide_and_floor_div};
+    use starkware_utils::math::utils::have_same_sign;
     use starkware_utils::signature::stark::{PublicKey, Signature};
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
@@ -55,7 +56,7 @@ pub mod Positions {
     use crate::core::components::assets::errors::NO_SUCH_ASSET;
     use crate::core::components::snip::SNIP12MetadataImpl;
     use crate::core::errors::{
-        AMOUNT_OVERFLOW, INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE, INVALID_SAME_POSITIONS,
+        INVALID_AMOUNT_SIGN, INVALID_BASE_CHANGE, INVALID_SAME_POSITIONS,
         INVALID_SHRINK_TO_NEGATIVE, INVALID_ZERO_AMOUNT, NO_DELEVERAGE_VAULT_SHARES,
     };
     use crate::core::types::asset::synthetic::{AssetBalanceDiffEnriched, AssetType};
@@ -66,7 +67,6 @@ pub mod Positions {
     };
     pub const FEE_POSITION: PositionId = PositionId { value: 0 };
     pub const INSURANCE_FUND_POSITION: PositionId = PositionId { value: 1 };
-    pub const INTEREST_RATE_SCALE: u64 = 2_u64.pow(32);
 
     impl SnipImpl = SNIP12MetadataImpl;
 
@@ -941,13 +941,9 @@ pub mod Positions {
             // Calculate time difference
             let time_diff: u64 = current_time.sub(previous_timestamp).into();
 
-            // Calculate maximum allowed change: |pnl| * time_diff *
-            // max_interest_rate_per_sec / 2^32.
-            let balance_time_product: u128 = pnl.abs().into() * time_diff.into();
-            let max_allowed_change = mul_wide_and_floor_div(
-                balance_time_product, max_interest_rate_per_sec.into(), INTEREST_RATE_SCALE.into(),
-            )
-                .expect(AMOUNT_OVERFLOW);
+            let max_allowed_change = calculate_max_allowed_change(
+                :pnl, :time_diff, :max_interest_rate_per_sec,
+            );
 
             // Check: |interest_amount| <= max_allowed_change
             if interest_amount.abs().into() > max_allowed_change {
