@@ -152,7 +152,7 @@ pub struct VaultProtectionReset {
 }
 
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
-pub struct PerVaultProtectionLimitUpdated {
+pub struct VaultProtectionLimitUpdated {
     #[key]
     pub vault_position_id: PositionId,
     pub old_limit: u32,
