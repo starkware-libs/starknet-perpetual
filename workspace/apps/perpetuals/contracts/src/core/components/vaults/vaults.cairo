@@ -12,7 +12,9 @@ pub trait IVaults<TContractState> {
     fn is_vault_position(ref self: TContractState, vault_position: PositionId) -> bool;
     fn is_vault_asset(ref self: TContractState, asset_id: AssetId) -> bool;
     fn force_reset_daily_protection_limit(ref self: TContractState, vault_position: PositionId);
-    fn update_vault_protection_limit(ref self: TContractState, vault_position: PositionId, percentage: u32);
+    fn update_vault_protection_limit(
+        ref self: TContractState, vault_position: PositionId, percentage: u32,
+    );
 }
 
 #[starknet::component]
@@ -23,7 +25,6 @@ pub mod Vaults {
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::interfaces::erc4626::{IERC4626Dispatcher, IERC4626DispatcherTrait};
     use openzeppelin::introspection::src5::SRC5Component;
-    
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::interface::IAssets;
     use perpetuals::core::components::deposit::Deposit::InternalImpl as DepositInternal;
@@ -218,7 +219,6 @@ pub mod Vaults {
                 let limit_from_storage = self.vault_protection_limit_overrides.read(vault_position);
                 let limit = if limit_from_storage.is_zero() {
                     DEFAULT_LIMIT_PERCENT
-
                 } else {
                     limit_from_storage
                 };
@@ -228,7 +228,7 @@ pub mod Vaults {
                     version: current_config.version,
                     asset_id: current_config.asset_id,
                     position_id: current_config.position_id,
-                    last_tv_check_timestamp: current_time.into(),
+                    last_tv_check_timestamp: current_time,
                     tv_at_check: tv_at_check,
                     max_tv_loss: max_tv_loss,
                 };

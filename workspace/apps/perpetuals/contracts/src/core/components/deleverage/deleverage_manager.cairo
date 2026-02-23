@@ -314,7 +314,9 @@ pub(crate) mod DeleverageManager {
                 .positions
                 .validate_against_vault_limits(
                     position_id: deleverager_position_id,
-                    vault_protection_config: self.vaults.get_vault_protection_config(deleverager_position_id),
+                    vault_protection_config: self
+                        .vaults
+                        .get_vault_protection_config(deleverager_position_id),
                     :tvtr,
                 );
 

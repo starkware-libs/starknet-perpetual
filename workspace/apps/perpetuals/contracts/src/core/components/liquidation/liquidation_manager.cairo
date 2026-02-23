@@ -91,6 +91,8 @@ pub(crate) mod LiquidationManager {
     use crate::core::components::assets::errors::{NO_SUCH_ASSET, SYNTHETIC_NOT_EXISTS};
     use crate::core::components::external_components::interface::EXTERNAL_COMPONENT_LIQUIDATIONS;
     use crate::core::components::external_components::named_component::ITypedComponent;
+    use crate::core::components::vaults::vaults::Vaults as VaultsComponent;
+    use crate::core::components::vaults::vaults::Vaults::InternalTrait as VaultsInternal;
     use crate::core::errors::{
         CANT_LIQUIDATE_IF_POSITION, CANT_LIQUIDATE_WITH_FP, INVALID_SAME_POSITIONS,
     };
@@ -100,8 +102,6 @@ pub(crate) mod LiquidationManager {
     use crate::core::utils::{validate_signature, validate_trade};
     use crate::core::value_risk_calculator::liquidated_position_validations;
     use super::{ILiquidationManager, LimitOrder, Liquidate, Order, Signature};
-    use crate::core::components::vaults::vaults::Vaults::InternalTrait as VaultsInternal;
-    use crate::core::components::vaults::vaults::{Vaults as VaultsComponent};
 
 
     #[event]
@@ -129,7 +129,7 @@ pub(crate) mod LiquidationManager {
         #[flat]
         RolesEvent: RolesComponent::Event,
         #[flat]
-        VaultsEvent: VaultsComponent::Event, 
+        VaultsEvent: VaultsComponent::Event,
     }
 
     #[storage]
@@ -625,8 +625,10 @@ pub(crate) mod LiquidationManager {
                 .positions
                 .validate_against_vault_limits(
                     position_id: liquidator_position_id,
-                    vault_protection_config: self.vaults.get_vault_protection_config(liquidator_position_id),
-                    :tvtr
+                    vault_protection_config: self
+                        .vaults
+                        .get_vault_protection_config(liquidator_position_id),
+                    :tvtr,
                 );
 
             if let Option::Some(liquidator_receive_position_diff) =
