@@ -2176,7 +2176,7 @@ Only APP\_GOVERNOR can execute.
   Force-resets the vault protection mechanism by snapshotting the current total value and recalculating the maximum allowed TV loss so that the limit for a day can be extended.                                                                                  
                                                                                                                                                                                                                     
   ```rust
-  fn force_reset_nightly_protection_limit(
+  fn force_reset_daily_protection_limit(
       ref self: ContractState,
       vault_position: PositionId,
   )

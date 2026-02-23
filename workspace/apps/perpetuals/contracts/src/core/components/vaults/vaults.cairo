@@ -13,7 +13,7 @@ const DEFAULT_LIMIT_PERCENT: u32 = 5;
 pub trait IVaults<TContractState> {
     fn is_vault_position(ref self: TContractState, vault_position: PositionId) -> bool;
     fn is_vault_asset(ref self: TContractState, asset_id: AssetId) -> bool;
-    fn force_reset_nightly_protection_limit(ref self: TContractState, vault_position: PositionId);
+    fn force_reset_daily_protection_limit(ref self: TContractState, vault_position: PositionId);
     fn update_vault_protection_limit(ref self: TContractState, vault_position: PositionId, percentage: u32);
 }
 
@@ -98,7 +98,7 @@ pub mod Vaults {
             return self.registered_vaults_by_asset.read(asset_id).version != 0;
         }
 
-        fn force_reset_nightly_protection_limit(
+        fn force_reset_daily_protection_limit(
             ref self: ComponentState<TContractState>,
             vault_position: PositionId,
         ) {
