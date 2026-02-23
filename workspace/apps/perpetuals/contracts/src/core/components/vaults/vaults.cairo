@@ -13,9 +13,7 @@ pub trait IVaults<TContractState> {
     fn is_vault_position(ref self: TContractState, vault_position: PositionId) -> bool;
     fn is_vault_asset(ref self: TContractState, asset_id: AssetId) -> bool;
     fn force_reset_daily_protection_limit(ref self: TContractState, vault_position: PositionId);
-    fn update_vault_protection_limit(
-        ref self: TContractState, vault_position: PositionId, percentage: u32,
-    );
+    fn update_vault_protection_limit(ref self: TContractState, vault_position: PositionId, percentage: u32);
 }
 
 #[starknet::component]
@@ -115,6 +113,7 @@ pub mod Vaults {
             } else {
                 percentage_from_storage
             };
+
             let tv_at_check = position_tv_tr.total_value;
             let max_tv_loss = VaultConfigTrait::get_max_tv_loss(tv_at_check, percentage);
 
