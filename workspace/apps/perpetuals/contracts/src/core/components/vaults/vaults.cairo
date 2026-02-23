@@ -230,7 +230,7 @@ pub mod Vaults {
                     version: current_config.version,
                     asset_id: current_config.asset_id,
                     position_id: current_config.position_id,
-                    last_tv_check_timestamp: current_time,
+                    last_tv_check_timestamp: current_time.into(),
                     tv_at_check: tv_at_check,
                     max_tv_loss: max_tv_loss,
                 };
