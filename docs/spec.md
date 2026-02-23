@@ -2211,7 +2211,7 @@ Only APP\_GOVERNOR can execute.
 
   ###### Update Vault Protection Limit
 
-  Updates the per-vault protection limit percentage override. A value of 0 resets to the default (5%).
+  Updates the per-vault protection limit percentage override. Default is 5%, 0 is not allowed as it prevents any withdraws.
 
   ```rust
   fn update_vault_protection_limit(
