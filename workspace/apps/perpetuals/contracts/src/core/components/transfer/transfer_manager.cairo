@@ -332,7 +332,7 @@ pub(crate) mod TransferManager {
             interest_amount_recipient: i64,
         ) {
             // Parameters
-
+            assert!(!self.vaults.is_vault_position(position_id), "VAULT_CANNOT_TRANSFER");
             let sender_position = self.positions.get_position_snapshot(:position_id);
             let recipient_position = self.positions.get_position_snapshot(position_id: recipient);
             let (position_diff_sender, position_diff_recipient) = if (collateral_id == self
