@@ -113,7 +113,6 @@ pub mod Vaults {
             } else {
                 percentage_from_storage
             };
-
             let tv_at_check = position_tv_tr.total_value;
             let max_tv_loss = VaultConfigTrait::get_max_tv_loss(tv_at_check, percentage);
 
