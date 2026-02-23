@@ -107,7 +107,12 @@ pub mod Vaults {
             let current_config = self.get_vault_config_for_position(:vault_position);
             let positions = get_dep_component!(@self, Positions);
             let position_tv_tr = positions.get_position_tv_tr(vault_position);
-            let percentage = self.vault_protection_limit_overrides.read(vault_position);
+            let percentage_from_storage = self.vault_protection_limit_overrides.read(vault_position);
+            let percentage = if percentage_from_storage == 0 {
+                DEFAULT_LIMIT_PERCENT
+            } else {
+                percentage_from_storage
+            };
             let tv_at_check = position_tv_tr.total_value;
             let max_tv_loss = VaultConfigTrait::get_max_tv_loss(tv_at_check, percentage);
 
