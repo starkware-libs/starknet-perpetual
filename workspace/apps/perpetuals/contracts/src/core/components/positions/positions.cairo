@@ -515,8 +515,6 @@ pub mod Positions {
         fn calculate_position_pnl(
             self: @ComponentState<TContractState>, position: StoragePath<Position>,
         ) -> i64 {
-            let assets_component = get_dep_component!(self, Assets);
-
             // Use existing function to derive funding delta and unchanged assets
             // This already calculates funding and builds AssetBalanceInfo array
             let (funding_delta, assets) = self
@@ -524,20 +522,9 @@ pub mod Positions {
                     :position, position_diff: Default::default(),
                 );
 
-            // Filter to only include synthetic assets (exclude vault and spot)
-            let mut synthetic_assets = array![];
-            for asset in assets {
-                let asset_config = assets_component.get_asset_config(*asset.id);
-                if asset_config.asset_type == AssetType::SYNTHETIC {
-                    synthetic_assets.append(*asset);
-                }
-            }
             let collateral_balance = position.collateral_balance.read();
             let collateral_balance_with_funding = collateral_balance + funding_delta;
-            calculate_pnl(
-                synthetic_assets: synthetic_assets.span(),
-                collateral_balance: collateral_balance_with_funding,
-            )
+            calculate_pnl(:assets, collateral_balance: collateral_balance_with_funding)
         }
 
         fn verify_and_update_interest_range(
