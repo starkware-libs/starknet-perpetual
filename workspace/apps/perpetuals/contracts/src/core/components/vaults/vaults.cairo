@@ -1,9 +1,11 @@
 use crate::core::types::asset::AssetId;
 use crate::core::types::position::PositionId;
 use starkware_utils::constants::DAY;
+use starkware_utils::time::time::TimeDelta;
+
 
 const STORAGE_VERSION: u8 = 1;
-const CHECK_FREQUENCY: u64 = DAY;
+const CHECK_FREQUENCY: TimeDelta = TimeDelta{ seconds: DAY};
 const DEFAULT_LIMIT_PERCENT: u32 = 5;
 
 
@@ -12,7 +14,7 @@ pub trait IVaults<TContractState> {
     fn is_vault_position(ref self: TContractState, vault_position: PositionId) -> bool;
     fn is_vault_asset(ref self: TContractState, asset_id: AssetId) -> bool;
     fn force_reset_protection_limit(ref self: TContractState, vault_position: PositionId, percentage: u32);
-    fn update_vault_protection_limit(ref self: TContractState, vault_position: PositionId, limit: u32);
+    fn update_vault_protection_limit(ref self: TContractState, vault_position: PositionId, percentage: u32);
 }
 
 #[starknet::component]
@@ -44,7 +46,7 @@ pub mod Vaults {
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
-    use starkware_utils::time::time::{validate_expiration, Time};
+    use starkware_utils::time::time::{validate_expiration, Time, Timestamp};
     use vault::interface::{IProtocolVaultDispatcher, IProtocolVaultDispatcherTrait};
     use crate::core::components::positions::interface::IPositions;
     use perpetuals::core::components::system_time::SystemTimeComponent;
@@ -60,7 +62,7 @@ pub mod Vaults {
     pub enum Event {
         VaultOpened: events::VaultOpened,
         VaultProtectionReset: events::VaultProtectionReset,
-        PerVaultProtectionLimitUpdated: events::PerVaultProtectionLimitUpdated,
+        VaultProtectionLimitUpdated: events::VaultProtectionLimitUpdated,
     }
 
     #[storage]
@@ -134,26 +136,23 @@ pub mod Vaults {
         }
 
         fn update_vault_protection_limit(
-            ref self: ComponentState<TContractState>, vault_position: PositionId, limit: u32,
+            ref self: ComponentState<TContractState>, vault_position: PositionId, percentage: u32,
         ) {
             get_dep_component!(@self, Roles).only_app_governor();
             assert(self.is_vault_position(vault_position), 'UNKNOWN_VAULT');
-            let old_limit = self.vault_protection_limit_overrides.read(vault_position);
-            self.vault_protection_limit_overrides.write(vault_position, limit);
+            assert(percentage != 0, 'ZERO-LIMIT');
+            let old_percentage = self.vault_protection_limit_overrides.read(vault_position);
+            self.vault_protection_limit_overrides.write(vault_position, percentage);
             self
                 .emit(
-                    events::PerVaultProtectionLimitUpdated {
+                    events::VaultProtectionLimitUpdated {
                         vault_position_id: vault_position,
-                        old_limit: if old_limit == 0 {
+                        old_limit: if old_percentage == 0 {
                             DEFAULT_LIMIT_PERCENT
                         } else {
-                            old_limit
+                            old_percentage
                         },
-                        new_limit: if limit == 0 {
-                            DEFAULT_LIMIT_PERCENT
-                        } else {
-                            limit 
-                        },
+                        new_limit: percentage,
                     },
                 );
         }
@@ -199,11 +198,11 @@ pub mod Vaults {
             }
 
             let current_config = self.registered_vaults_by_position.read(vault_position);
-            let current_time: u64 = Time::now().into();
-            let last_check_time = current_config.last_tv_check_timestamp;
-            if (current_time - last_check_time >= CHECK_FREQUENCY) {    
+            let current_time = Time::now();
+            let last_check_time = Timestamp{ seconds: current_config.last_tv_check_timestamp };
+            if (current_time.sub(last_check_time) >= CHECK_FREQUENCY) {    
                 let positions = get_dep_component!(@self, Positions);
-                let position_tv_tr = IPositions::get_position_tv_tr(positions, position_id: vault_position);
+                let position_tv_tr = positions.get_position_tv_tr(position_id: vault_position);
                 let tv_at_check = position_tv_tr.total_value;
 
                 let limit_from_storage = self.vault_protection_limit_overrides.read(vault_position);
@@ -218,7 +217,7 @@ pub mod Vaults {
                     version: current_config.version,
                     asset_id: current_config.asset_id,
                     position_id: current_config.position_id,
-                    last_tv_check_timestamp: current_time,
+                    last_tv_check_timestamp: current_time.into(),
                     tv_at_check: tv_at_check,
                     max_tv_loss: max_tv_loss,
                 };

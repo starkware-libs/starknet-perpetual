@@ -2238,7 +2238,7 @@ Only APP\_GOVERNOR can execute.
 
   **Emits:**
 
-  [PerVaultProtectionLimitUpdated](#pervaultprotectionlimitupdated)
+  [VaultProtectionLimitUpdated](#VaultProtectionLimitUpdated)
 
   **Errors:**
 
@@ -2261,11 +2261,11 @@ Only APP\_GOVERNOR can execute.
   }
   ```
 
-  ###### PerVaultProtectionLimitUpdated
+  ###### VaultProtectionLimitUpdated
 
   ```rust
   #[derive(Debug, Drop, PartialEq, starknet::Event)]
-  pub struct PerVaultProtectionLimitUpdated {
+  pub struct VaultProtectionLimitUpdated {
       #[key]
       pub vault_position_id: PositionId,
       pub old_limit: u32,
