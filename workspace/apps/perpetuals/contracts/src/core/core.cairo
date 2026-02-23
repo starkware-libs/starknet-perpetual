@@ -133,8 +133,7 @@ pub mod Core {
         ExternalComponentsComponent::ExternalComponentsImpl<ContractState>;
 
     #[abi(embed_v0)]
-    impl VaultImpl = 
-            VaultsComponent::VaultsImpl<ContractState>;
+    impl VaultImpl = VaultsComponent::VaultsImpl<ContractState>;
 
 
     #[storage]
@@ -1501,7 +1500,9 @@ pub mod Core {
                 .positions
                 .validate_against_vault_limits(
                     position_id: order_a.position_id,
-                    vault_protection_config: self.vaults.get_vault_protection_config(order_a.position_id),
+                    vault_protection_config: self
+                        .vaults
+                        .get_vault_protection_config(order_a.position_id),
                     tvtr: tvtr_a_after,
                 );
             let tvtr_b_after = self
@@ -1516,7 +1517,9 @@ pub mod Core {
                 .positions
                 .validate_against_vault_limits(
                     position_id: order_b.position_id,
-                    vault_protection_config: self.vaults.get_vault_protection_config(order_b.position_id),
+                    vault_protection_config: self
+                        .vaults
+                        .get_vault_protection_config(order_b.position_id),
                     tvtr: tvtr_b_after,
                 );
 
