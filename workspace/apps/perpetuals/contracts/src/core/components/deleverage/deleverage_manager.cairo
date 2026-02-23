@@ -71,9 +71,9 @@ pub(crate) mod DeleverageManager {
     use crate::core::components::assets::errors::NO_SUCH_ASSET;
     use crate::core::components::external_components::interface::EXTERNAL_COMPONENT_DELEVERAGES;
     use crate::core::components::external_components::named_component::ITypedComponent;
-    use crate::core::components::vaults::vaults::Vaults::InternalTrait as VaultsInternal;
-    use crate::core::components::vaults::vaults::{Vaults as VaultsComponent};
     use crate::core::components::positions::interface::IPositions;
+    use crate::core::components::vaults::vaults::Vaults as VaultsComponent;
+    use crate::core::components::vaults::vaults::Vaults::InternalTrait as VaultsInternal;
     use crate::core::errors::{NO_DELEVERAGE_VAULT_SHARES, position_not_deleveragable};
     use crate::core::types::position::{Position, PositionDiff};
     use crate::core::value_risk_calculator::{
@@ -420,7 +420,9 @@ pub(crate) mod DeleverageManager {
                 .positions
                 .validate_against_vault_limits(
                     position_id: deleverager_position_id,
-                    vault_protection_config: self.vaults.get_vault_protection_config(deleverager_position_id),
+                    vault_protection_config: self
+                        .vaults
+                        .get_vault_protection_config(deleverager_position_id),
                     :tvtr,
                 );
 
