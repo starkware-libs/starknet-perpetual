@@ -13,7 +13,7 @@ const DEFAULT_LIMIT_PERCENT: u32 = 5;
 pub trait IVaults<TContractState> {
     fn is_vault_position(ref self: TContractState, vault_position: PositionId) -> bool;
     fn is_vault_asset(ref self: TContractState, asset_id: AssetId) -> bool;
-    fn force_reset_protection_limit(ref self: TContractState, vault_position: PositionId, percentage: u32);
+    fn force_reset_nightly_protection_limit(ref self: TContractState, vault_position: PositionId);
     fn update_vault_protection_limit(ref self: TContractState, vault_position: PositionId, percentage: u32);
 }
 
@@ -98,16 +98,16 @@ pub mod Vaults {
             return self.registered_vaults_by_asset.read(asset_id).version != 0;
         }
 
-        fn force_reset_protection_limit(
+        fn force_reset_nightly_protection_limit(
             ref self: ComponentState<TContractState>,
             vault_position: PositionId,
-            percentage: u32,
         ) {
             get_dep_component!(@self, Roles).only_app_governor();
 
             let current_config = self.get_vault_config_for_position(:vault_position);
             let positions = get_dep_component!(@self, Positions);
             let position_tv_tr = positions.get_position_tv_tr(vault_position);
+            let percentage = self.vault_protection_limit_overrides.read(vault_position);
             let tv_at_check = position_tv_tr.total_value;
             let max_tv_loss = VaultConfigTrait::get_max_tv_loss(tv_at_check, percentage);
 
