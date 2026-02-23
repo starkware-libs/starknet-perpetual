@@ -209,7 +209,7 @@ pub fn calculate_position_tvtr(
 /// # Returns
 ///
 /// The PnL in units of 10^-6 USD
-pub fn calculate_pnl(synthetic_assets: Span<AssetBalanceInfo>, collateral_balance: Balance) -> i64 {
+pub fn calculate_pnl(assets: Span<AssetBalanceInfo>, collateral_balance: Balance) -> i64 {
     let mut pnl: i128 = 0_i128;
 
     // Add base collateral value.
@@ -217,8 +217,11 @@ pub fn calculate_pnl(synthetic_assets: Span<AssetBalanceInfo>, collateral_balanc
     pnl += collateral_price.mul(rhs: collateral_balance);
 
     // Vault and spot assets should already be excluded.
-    for synthetic in synthetic_assets {
-        let asset_value: i128 = (*synthetic.price).mul(rhs: *synthetic.balance);
+    for asset in assets {
+        if *asset.asset_type != AssetType::SYNTHETIC {
+            continue;
+        }
+        let asset_value: i128 = (*asset.price).mul(rhs: *asset.balance);
         pnl += asset_value;
     }
 
