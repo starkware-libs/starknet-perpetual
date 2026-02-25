@@ -58,12 +58,12 @@ pub(crate) mod VaultsManager {
     use perpetuals::core::components::assets::interface::IAssets;
     use perpetuals::core::components::deposit::Deposit as DepositComponent;
     use perpetuals::core::components::deposit::Deposit::InternalImpl as DepositInternal;
+    use perpetuals::core::components::exchange_time::ExchangeTimeComponent;
     use perpetuals::core::components::fulfillment::fulfillment::Fulfillement as FulfillmentComponent;
     use perpetuals::core::components::fulfillment::interface::IFulfillment;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::positions::Positions as PositionsComponent;
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
-    use perpetuals::core::components::system_time::SystemTimeComponent;
     use perpetuals::core::types::asset::AssetId;
     use perpetuals::core::types::position::{PositionId, PositionTrait};
     use starkware_utils::components::pausable::PausableComponent;
@@ -109,7 +109,7 @@ pub(crate) mod VaultsManager {
         #[flat]
         PositionsEvent: PositionsComponent::Event,
         #[flat]
-        SystemTimeEvent: SystemTimeComponent::Event,
+        ExchangeTimeEvent: ExchangeTimeComponent::Event,
         #[flat]
         DepositEvent: DepositComponent::Event,
         #[flat]
@@ -144,7 +144,7 @@ pub(crate) mod VaultsManager {
         #[substorage(v0)]
         pub positions: PositionsComponent::Storage,
         #[substorage(v0)]
-        pub system_time: SystemTimeComponent::Storage,
+        pub exchange_time: ExchangeTimeComponent::Storage,
         #[substorage(v0)]
         pub fulfillment_tracking: FulfillmentComponent::Storage,
         #[substorage(v0)]
@@ -162,7 +162,7 @@ pub(crate) mod VaultsManager {
     component!(path: OperatorNonceComponent, storage: operator_nonce, event: OperatorNonceEvent);
     component!(path: AssetsComponent, storage: assets, event: AssetsEvent);
     component!(path: PositionsComponent, storage: positions, event: PositionsEvent);
-    component!(path: SystemTimeComponent, storage: system_time, event: SystemTimeEvent);
+    component!(path: ExchangeTimeComponent, storage: exchange_time, event: ExchangeTimeEvent);
     component!(path: DepositComponent, storage: deposits, event: DepositEvent);
     component!(path: RolesComponent, storage: roles, event: RolesEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);

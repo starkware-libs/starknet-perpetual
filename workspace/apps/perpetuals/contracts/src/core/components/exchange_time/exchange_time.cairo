@@ -10,7 +10,7 @@ pub mod ExchangeTimeComponent {
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::exchange_time::constants::MAX_TIME_DRIFT;
     use perpetuals::core::components::exchange_time::errors::{
-        ALREADY_INITIALIZED, NON_MONOTONIC_TIME, STALE_TIME,
+        ALREADY_INITIALIZED, NON_MONOTONIC_TIME, STALE_TIME, TIMESTAMP_TOO_OLD,
     };
     use perpetuals::core::components::exchange_time::interface::IExchangeTime;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
@@ -19,6 +19,7 @@ pub mod ExchangeTimeComponent {
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
     use starkware_utils::components::roles::RolesComponent;
+    use starkware_utils::constants::DAY;
     use starkware_utils::time::time::{Time, Timestamp};
 
     #[storage]
@@ -62,6 +63,8 @@ pub mod ExchangeTimeComponent {
         /// - The new exchange time must be strictly greater than the current exchange time.
         /// - The new exchange time must not drift more than MAX_TIME_DRIFT seconds from the current
         /// Starknet block timestamp.
+        /// - The new exchange time must be larger than now - DAY (cannot be more than a day in the
+        /// past).
         ///
         /// Execution:
         /// - Updates the exchange time.
@@ -77,6 +80,10 @@ pub mod ExchangeTimeComponent {
             assert(new_timestamp > current_exchange_time, NON_MONOTONIC_TIME);
 
             let now = Time::now();
+            // The new exchange time cannot be more than a day in the past.
+            let min_acceptable_time = now.sub_delta(Time::seconds(DAY));
+            assert(new_timestamp > min_acceptable_time, TIMESTAMP_TOO_OLD);
+
             let acceptable_time = now.add(Time::seconds(MAX_TIME_DRIFT));
             assert(new_timestamp <= acceptable_time, STALE_TIME);
 
