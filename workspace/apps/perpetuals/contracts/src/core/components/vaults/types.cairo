@@ -80,6 +80,6 @@ pub impl VaultConfigImpl of VaultConfigTrait {
 
     #[inline]
     fn get_max_tv_loss(tv_at_check: i128, limit: u32) -> u128 {
-        return mul_wide_and_floor_div(tv_at_check.abs(), limit.into() * 10, 1000).unwrap();
+        return mul_wide_and_floor_div(tv_at_check.abs(), limit.into(), 100).unwrap();
     }
 }
