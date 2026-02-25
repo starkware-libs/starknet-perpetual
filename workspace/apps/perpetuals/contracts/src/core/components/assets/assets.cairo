@@ -305,9 +305,7 @@ pub mod AssetsComponent {
             asset_id: AssetId,
             erc20_contract_address: ContractAddress,
             quantum: u64,
-            risk_factor_tiers: Span<u16>,
-            risk_factor_first_tier_boundary: u128,
-            risk_factor_tier_size: u128,
+            risk_factor: u16,
             quorum: u8,
         ) {
             get_dep_component!(@self, Roles).only_app_governor();
@@ -318,9 +316,7 @@ pub mod AssetsComponent {
                     asset_id: asset_id,
                     erc20_contract_address: erc20_contract_address,
                     quantum: quantum,
-                    risk_factor_tiers: risk_factor_tiers,
-                    risk_factor_first_tier_boundary: risk_factor_first_tier_boundary,
-                    risk_factor_tier_size: risk_factor_tier_size,
+                    :risk_factor,
                     quorum: quorum,
                 );
         }
@@ -331,9 +327,7 @@ pub mod AssetsComponent {
             erc20_contract_address: ContractAddress,
             quantum: u64,
             resolution_factor: u64,
-            risk_factor_tiers: Span<u16>,
-            risk_factor_first_tier_boundary: u128,
-            risk_factor_tier_size: u128,
+            risk_factor: u16,
             quorum: u8,
         ) {
             get_dep_component!(@self, Roles).only_app_governor();
@@ -345,9 +339,7 @@ pub mod AssetsComponent {
                     :erc20_contract_address,
                     :quantum,
                     :resolution_factor,
-                    :risk_factor_tiers,
-                    :risk_factor_first_tier_boundary,
-                    :risk_factor_tier_size,
+                    :risk_factor,
                     :quorum,
                 );
         }

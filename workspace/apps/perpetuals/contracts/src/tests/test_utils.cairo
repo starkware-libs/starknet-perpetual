@@ -213,9 +213,7 @@ impl PerpetualsInitConfigDefault of Default<PerpetualsInitConfig> {
 
         let vault_share_state = deploy_vault_share(@vault_share_cfg);
 
-        let vault_share_risk_factor_first_tier_boundary = MAX_U128;
-        let vault_share_risk_factor_tier_size = 1;
-        let vault_share_risk_factor_1 = array![10].span();
+        let vault_share_risk_factor = 10;
 
         PerpetualsInitConfig {
             governance_admin: GOVERNANCE_ADMIN(),
@@ -254,9 +252,7 @@ impl PerpetualsInitConfigDefault of Default<PerpetualsInitConfig> {
                 token_state: vault_share_state,
                 collateral_id: VAULT_SHARE_COLLATERAL_1_ID(),
                 quantum: 1,
-                risk_factor_tiers: vault_share_risk_factor_1,
-                risk_factor_first_tier_boundary: vault_share_risk_factor_first_tier_boundary,
-                risk_factor_tier_size: vault_share_risk_factor_tier_size,
+                risk_factor: vault_share_risk_factor,
                 quorum: 1,
                 contract_address: vault_share_state.address,
                 resolution_factor: 1000000,
@@ -266,9 +262,7 @@ impl PerpetualsInitConfigDefault of Default<PerpetualsInitConfig> {
                 token_state: spot_token_state,
                 collateral_id: SPOT_COLLATERAL_ASSET_ID(),
                 quantum: 1,
-                risk_factor_tiers: vault_share_risk_factor_1,
-                risk_factor_first_tier_boundary: vault_share_risk_factor_first_tier_boundary,
-                risk_factor_tier_size: vault_share_risk_factor_tier_size,
+                risk_factor: vault_share_risk_factor,
                 quorum: 1,
                 contract_address: spot_token_state.address,
                 resolution_factor: 1,
@@ -295,9 +289,7 @@ pub struct SpotCollateralCfg {
     pub token_state: TokenState,
     pub collateral_id: AssetId,
     pub quantum: u64,
-    pub risk_factor_tiers: Span<u16>,
-    pub risk_factor_first_tier_boundary: u128,
-    pub risk_factor_tier_size: u128,
+    pub risk_factor: u16,
     pub quorum: u8,
     pub contract_address: ContractAddress,
     pub resolution_factor: u64,
@@ -416,15 +408,10 @@ pub fn setup_state_with_pending_spot_asset(
             erc20_contract_address: *cfg.spot_cfg.contract_address,
             quantum: *cfg.spot_cfg.quantum,
             resolution_factor: *cfg.spot_cfg.resolution_factor,
-            risk_factor_tiers: array![RISK_FACTOR].span(),
-            risk_factor_first_tier_boundary: MAX_U128,
-            risk_factor_tier_size: MAX_U128,
+            risk_factor: RISK_FACTOR,
             quorum: *cfg.spot_cfg.quorum,
         );
-    cfg
-        .spot_cfg
-        .token_state
-        .fund(recipient: test_address(), amount: CONTRACT_INIT_BALANCE.try_into().unwrap());
+    cfg.spot_cfg.token_state.fund(recipient: test_address(), amount: CONTRACT_INIT_BALANCE);
     state
 }
 
@@ -450,9 +437,7 @@ pub fn setup_state_with_pending_vault_share(
             asset_id: *cfg.vault_share_cfg.collateral_id,
             erc20_contract_address: *cfg.vault_share_cfg.contract_address,
             quantum: *cfg.vault_share_cfg.quantum,
-            risk_factor_tiers: *cfg.vault_share_cfg.risk_factor_tiers,
-            risk_factor_first_tier_boundary: *cfg.vault_share_cfg.risk_factor_first_tier_boundary,
-            risk_factor_tier_size: *cfg.vault_share_cfg.risk_factor_tier_size,
+            risk_factor: *cfg.vault_share_cfg.risk_factor,
             quorum: 1_u8,
         );
     state

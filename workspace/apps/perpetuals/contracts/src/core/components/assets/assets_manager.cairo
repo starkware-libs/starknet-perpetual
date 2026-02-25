@@ -28,9 +28,7 @@ pub trait IAssetsExternal<TContractState> {
         asset_id: AssetId,
         erc20_contract_address: ContractAddress,
         quantum: u64,
-        risk_factor_tiers: Span<u16>,
-        risk_factor_first_tier_boundary: u128,
-        risk_factor_tier_size: u128,
+        risk_factor: u16,
         quorum: u8,
     );
     fn add_spot_asset(
@@ -39,9 +37,7 @@ pub trait IAssetsExternal<TContractState> {
         erc20_contract_address: ContractAddress,
         quantum: u64,
         resolution_factor: u64,
-        risk_factor_tiers: Span<u16>,
-        risk_factor_first_tier_boundary: u128,
-        risk_factor_tier_size: u128,
+        risk_factor: u16,
         quorum: u8,
     );
     fn update_asset_risk_factor(
@@ -87,11 +83,11 @@ pub(crate) mod AssetsManager {
     use perpetuals::core::types::asset::synthetic::{AssetType, SyntheticTrait};
     use perpetuals::core::types::asset::{AssetId, AssetStatus};
     use perpetuals::core::types::risk_factor::RiskFactorTrait;
-    use starknet::ContractAddress;
     use starknet::storage::{
         MutableVecTrait, StorageMapReadAccess, StorageMapWriteAccess, StoragePathEntry,
         StoragePointerReadAccess, StoragePointerWriteAccess,
     };
+    use starknet::{ContractAddress, SyscallResultTrait};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::roles::RolesComponent;
     use starkware_utils::constants::{TWO_POW_128, TWO_POW_40};
@@ -280,9 +276,7 @@ pub(crate) mod AssetsManager {
             asset_id: AssetId,
             erc20_contract_address: ContractAddress,
             quantum: u64,
-            risk_factor_tiers: Span<u16>,
-            risk_factor_first_tier_boundary: u128,
-            risk_factor_tier_size: u128,
+            risk_factor: u16,
             quorum: u8,
         ) {
             assert(quantum == 1, 'INVALID_SHARE_QUANTUM');
@@ -300,7 +294,6 @@ pub(crate) mod AssetsManager {
                 calculated_resolution == SN_PERPS_SCALE.try_into().unwrap(),
                 'INVALID_SHARE_RESOLUTION',
             );
-            assert(risk_factor_tiers.len() == 1, 'INVALID_VAULT_RF_TIERS');
 
             assert(self.assets.asset_config.read(asset_id).is_none(), 'SYNTHETIC_ALREADY_EXISTS');
             if let Option::Some(collateral_id) = self.assets.collateral_id.read() {
@@ -308,14 +301,10 @@ pub(crate) mod AssetsManager {
             }
 
             assert(asset_id.is_non_zero(), 'INVALID_ZERO_ASSET_ID');
-            assert(risk_factor_first_tier_boundary.is_non_zero(), 'INVALID_ZERO_RF_FIRST_BOUNDRY');
-            assert(risk_factor_tier_size.is_non_zero(), 'INVALID_ZERO_RF_TIER_SIZE');
             assert(quorum.is_non_zero(), 'INVALID_ZERO_QUORUM');
 
             let asset_config = SyntheticTrait::vault_share(
                 AssetStatus::PENDING,
-                risk_factor_first_tier_boundary,
-                risk_factor_tier_size,
                 quorum,
                 calculated_resolution,
                 quantum,
@@ -326,24 +315,13 @@ pub(crate) mod AssetsManager {
 
             self.assets.timely_data.write(asset_id, Default::default());
 
-            let mut prev_risk_factor = 0_u16;
-            for risk_factor in risk_factor_tiers {
-                assert(prev_risk_factor < *risk_factor, UNSORTED_RISK_FACTOR_TIERS);
-                self
-                    .assets
-                    .risk_factor_tiers
-                    .entry(asset_id)
-                    .push(RiskFactorTrait::new(*risk_factor));
-                prev_risk_factor = *risk_factor;
-            }
+            self.assets.risk_factor_tiers.entry(asset_id).push(RiskFactorTrait::new(risk_factor));
 
             self
                 .emit(
                     events::SpotAssetAdded {
                         asset_id,
-                        risk_factor_tiers,
-                        risk_factor_first_tier_boundary,
-                        risk_factor_tier_size,
+                        risk_factor,
                         resolution_factor: calculated_resolution,
                         quorum,
                         contract_address: erc20_contract_address,
@@ -358,18 +336,15 @@ pub(crate) mod AssetsManager {
             erc20_contract_address: ContractAddress,
             quantum: u64,
             resolution_factor: u64,
-            risk_factor_tiers: Span<u16>,
-            risk_factor_first_tier_boundary: u128,
-            risk_factor_tier_size: u128,
+            risk_factor: u16,
             quorum: u8,
         ) {
-            assert(erc20_contract_address.is_non_zero(), 'INVALID_ZERO_ADDRESS');
+            let class_hash = starknet::syscalls::get_class_hash_at_syscall(erc20_contract_address)
+                .unwrap_syscall();
+            assert(class_hash.is_non_zero(), 'UNDEPLOYED_ADDRESS');
             assert(quantum.is_non_zero(), 'INVALID_SPOT_QUANTUM');
-            assert(risk_factor_tiers.len() == 1, 'INVALID_VAULT_RF_TIERS');
             assert(resolution_factor.is_non_zero(), 'INVALID_ZERO_RESOLUTION_FACTOR');
             assert(asset_id.is_non_zero(), 'INVALID_ZERO_ASSET_ID');
-            assert(risk_factor_first_tier_boundary.is_non_zero(), 'INVALID_ZERO_RF_FIRST_BOUNDRY');
-            assert(risk_factor_tier_size.is_non_zero(), 'INVALID_ZERO_RF_TIER_SIZE');
             assert(quorum.is_non_zero(), 'INVALID_ZERO_QUORUM');
 
             assert(self.assets.asset_config.read(asset_id).is_none(), 'ASSET_ALREADY_EXISTS');
@@ -378,37 +353,20 @@ pub(crate) mod AssetsManager {
             }
 
             let asset_config = SyntheticTrait::spot(
-                AssetStatus::PENDING,
-                risk_factor_first_tier_boundary,
-                risk_factor_tier_size,
-                quorum,
-                resolution_factor,
-                quantum,
-                erc20_contract_address,
+                AssetStatus::PENDING, quorum, resolution_factor, quantum, erc20_contract_address,
             );
 
             self.assets.asset_config.write(asset_id, Option::Some(asset_config));
 
             self.assets.timely_data.write(asset_id, Default::default());
 
-            let mut prev_risk_factor = 0_u16;
-            for risk_factor in risk_factor_tiers {
-                assert(prev_risk_factor < *risk_factor, UNSORTED_RISK_FACTOR_TIERS);
-                self
-                    .assets
-                    .risk_factor_tiers
-                    .entry(asset_id)
-                    .push(RiskFactorTrait::new(*risk_factor));
-                prev_risk_factor = *risk_factor;
-            }
+            self.assets.risk_factor_tiers.entry(asset_id).push(RiskFactorTrait::new(risk_factor));
 
             self
                 .emit(
                     events::SpotAssetAdded {
                         asset_id,
-                        risk_factor_tiers,
-                        risk_factor_first_tier_boundary,
-                        risk_factor_tier_size,
+                        risk_factor,
                         resolution_factor,
                         quorum,
                         contract_address: erc20_contract_address,

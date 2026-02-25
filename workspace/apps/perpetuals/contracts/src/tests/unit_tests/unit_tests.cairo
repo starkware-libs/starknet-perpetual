@@ -1720,7 +1720,7 @@ fn test_rf_increase_with_request_spot() {
     let spot_asset_id = SYNTHETIC_ASSET_ID_2();
     let risk_factor_first_tier_boundary = MAX_U128;
     let risk_factor_tier_size = 1;
-    let risk_factor_tiers = array![10].span();
+    let risk_factor = 10;
     let risk_factor_tiers_increased = array![15].span();
     let quorum = 1_u8;
     let resolution_factor = SYNTHETIC_RESOLUTION_FACTOR;
@@ -1735,9 +1735,7 @@ fn test_rf_increase_with_request_spot() {
             :erc20_contract_address,
             :quantum,
             :resolution_factor,
-            :risk_factor_tiers,
-            :risk_factor_first_tier_boundary,
-            :risk_factor_tier_size,
+            :risk_factor,
             :quorum,
         );
 
@@ -1784,7 +1782,7 @@ fn test_rf_increase_with_request_vault() {
     let vault_asset_id = cfg.vault_share_cfg.collateral_id;
     let risk_factor_first_tier_boundary = MAX_U128;
     let risk_factor_tier_size = 1;
-    let risk_factor_tiers = array![10].span();
+    let risk_factor = 10;
     let risk_factor_tiers_increased = array![15].span();
     let quorum = 1_u8;
     let quantum = cfg.vault_share_cfg.quantum;
@@ -1794,13 +1792,7 @@ fn test_rf_increase_with_request_vault() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
     assets_manager_dispatcher
         .add_vault_collateral_asset(
-            asset_id: vault_asset_id,
-            :erc20_contract_address,
-            :quantum,
-            :risk_factor_tiers,
-            :risk_factor_first_tier_boundary,
-            :risk_factor_tier_size,
-            :quorum,
+            asset_id: vault_asset_id, :erc20_contract_address, :quantum, :risk_factor, :quorum,
         );
 
     // Request risk factor increase (app governor)
@@ -1984,7 +1976,7 @@ fn test_rf_update_spot_multiple_tiers_invalid() {
     let spot_asset_id = SYNTHETIC_ASSET_ID_2();
     let risk_factor_first_tier_boundary = MAX_U128;
     let risk_factor_tier_size = 1;
-    let risk_factor_tiers = array![10].span();
+    let risk_factor = 10;
     let risk_factor_tiers_invalid = array![10, 15].span();
     let quorum = 1_u8;
     let resolution_factor = SYNTHETIC_RESOLUTION_FACTOR;
@@ -1999,9 +1991,7 @@ fn test_rf_update_spot_multiple_tiers_invalid() {
             :erc20_contract_address,
             :quantum,
             :resolution_factor,
-            :risk_factor_tiers,
-            :risk_factor_first_tier_boundary,
-            :risk_factor_tier_size,
+            :risk_factor,
             :quorum,
         );
 
@@ -2030,7 +2020,7 @@ fn test_rf_update_vault_multiple_tiers_invalid() {
     let vault_asset_id = cfg.vault_share_cfg.collateral_id;
     let risk_factor_first_tier_boundary = MAX_U128;
     let risk_factor_tier_size = 1;
-    let risk_factor_tiers = array![10].span();
+    let risk_factor = 10;
     let risk_factor_tiers_invalid = array![10, 15].span();
     let quorum = 1_u8;
     let quantum = cfg.vault_share_cfg.quantum;
@@ -2040,13 +2030,7 @@ fn test_rf_update_vault_multiple_tiers_invalid() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
     assets_manager_dispatcher
         .add_vault_collateral_asset(
-            asset_id: vault_asset_id,
-            :erc20_contract_address,
-            :quantum,
-            :risk_factor_tiers,
-            :risk_factor_first_tier_boundary,
-            :risk_factor_tier_size,
-            :quorum,
+            asset_id: vault_asset_id, :erc20_contract_address, :quantum, :risk_factor, :quorum,
         );
 
     // Try to update with multiple tiers (should fail - vault assets can only have 1 tier)
@@ -4790,9 +4774,7 @@ fn test_funding_tick_vault_share_asset() {
             asset_id: cfg.vault_share_cfg.collateral_id,
             erc20_contract_address: cfg.vault_share_cfg.contract_address,
             quantum: cfg.vault_share_cfg.quantum,
-            risk_factor_tiers: cfg.vault_share_cfg.risk_factor_tiers,
-            risk_factor_first_tier_boundary: cfg.vault_share_cfg.risk_factor_first_tier_boundary,
-            risk_factor_tier_size: cfg.vault_share_cfg.risk_factor_tier_size,
+            risk_factor: cfg.vault_share_cfg.risk_factor,
             quorum: 1_u8,
         );
 
@@ -5383,9 +5365,7 @@ fn test_unsuccessful_add_vault_share_asset_zero_quantum() {
     let vault_share_state = cfg.vault_share_cfg.token_cfg.deploy();
 
     // Setup test parameters:
-    let risk_factor_first_tier_boundary = MAX_U128;
-    let risk_factor_tier_size = 1;
-    let risk_factor_1 = array![10].span();
+    let risk_factor = 10;
 
     // Test:
     cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.app_governor);
@@ -5394,9 +5374,7 @@ fn test_unsuccessful_add_vault_share_asset_zero_quantum() {
             asset_id: cfg.vault_share_cfg.collateral_id,
             erc20_contract_address: vault_share_state.address,
             quantum: 0,
-            risk_factor_tiers: risk_factor_1,
-            :risk_factor_first_tier_boundary,
-            :risk_factor_tier_size,
+            :risk_factor,
             quorum: 1_u8,
         );
 }
@@ -5410,9 +5388,7 @@ fn test_unsuccessful_add_vault_share_asset_not_erc20() {
     let mut state = setup_state_with_active_synthetic(cfg: @cfg, token_state: @token_state);
 
     // Setup test parameters:
-    let risk_factor_first_tier_boundary = MAX_U128;
-    let risk_factor_tier_size = 1;
-    let risk_factor_1 = array![10].span();
+    let risk_factor = 10;
 
     // Test:
     cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.app_governor);
@@ -5421,9 +5397,7 @@ fn test_unsuccessful_add_vault_share_asset_not_erc20() {
             asset_id: cfg.vault_share_cfg.collateral_id,
             erc20_contract_address: test_address(),
             quantum: 1,
-            risk_factor_tiers: risk_factor_1,
-            :risk_factor_first_tier_boundary,
-            :risk_factor_tier_size,
+            :risk_factor,
             quorum: 1_u8,
         );
 }
@@ -5447,9 +5421,7 @@ fn test_successful_add_vault_share_asset() {
             asset_id: cfg.vault_share_cfg.collateral_id,
             erc20_contract_address: cfg.vault_share_cfg.contract_address,
             quantum: cfg.vault_share_cfg.quantum,
-            risk_factor_tiers: cfg.vault_share_cfg.risk_factor_tiers,
-            risk_factor_first_tier_boundary: cfg.vault_share_cfg.risk_factor_first_tier_boundary,
-            risk_factor_tier_size: cfg.vault_share_cfg.risk_factor_tier_size,
+            risk_factor: cfg.vault_share_cfg.risk_factor,
             quorum: 1_u8,
         );
 
@@ -5458,9 +5430,7 @@ fn test_successful_add_vault_share_asset() {
     assert_add_spot_event_with_expected(
         spied_event: events[0],
         asset_id: cfg.vault_share_cfg.collateral_id,
-        risk_factor_tiers: cfg.vault_share_cfg.risk_factor_tiers,
-        risk_factor_first_tier_boundary: cfg.vault_share_cfg.risk_factor_first_tier_boundary,
-        risk_factor_tier_size: cfg.vault_share_cfg.risk_factor_tier_size,
+        risk_factor: cfg.vault_share_cfg.risk_factor,
         resolution_factor: cfg.vault_share_cfg.resolution_factor,
         quorum: 1_u8,
         contract_address: cfg.vault_share_cfg.contract_address,
@@ -5470,13 +5440,6 @@ fn test_successful_add_vault_share_asset() {
     let asset_config = state.assets.get_asset_config(cfg.vault_share_cfg.collateral_id);
 
     assert!(asset_config.resolution_factor == 1000000);
-    assert!(
-        asset_config
-            .risk_factor_first_tier_boundary == cfg
-            .vault_share_cfg
-            .risk_factor_first_tier_boundary,
-    );
-    assert!(asset_config.risk_factor_tier_size == cfg.vault_share_cfg.risk_factor_tier_size);
     assert!(asset_config.quorum == 1_u8);
     assert!(asset_config.status == AssetStatus::PENDING);
 }
@@ -5491,9 +5454,7 @@ fn test_successful_add_spot_asset() {
 
     // Setup test parameters:
     let spot_asset_id = SYNTHETIC_ASSET_ID_2();
-    let risk_factor_first_tier_boundary = MAX_U128;
-    let risk_factor_tier_size = 1;
-    let risk_factor_tiers = array![10].span();
+    let risk_factor = 10;
     let quorum = 1_u8;
     let resolution_factor = SYNTHETIC_RESOLUTION_FACTOR;
     let quantum = 12_u64;
@@ -5507,9 +5468,7 @@ fn test_successful_add_spot_asset() {
             :erc20_contract_address,
             :quantum,
             :resolution_factor,
-            :risk_factor_tiers,
-            :risk_factor_first_tier_boundary,
-            :risk_factor_tier_size,
+            :risk_factor,
             :quorum,
         );
 
@@ -5518,9 +5477,7 @@ fn test_successful_add_spot_asset() {
     assert_add_spot_event_with_expected(
         spied_event: events[0],
         asset_id: spot_asset_id,
-        risk_factor_tiers: risk_factor_tiers,
-        :risk_factor_first_tier_boundary,
-        :risk_factor_tier_size,
+        :risk_factor,
         :resolution_factor,
         :quorum,
         contract_address: erc20_contract_address,
@@ -5530,8 +5487,6 @@ fn test_successful_add_spot_asset() {
     // Check:
     let asset_config = state.assets.get_asset_config(spot_asset_id);
     assert!(asset_config.resolution_factor == resolution_factor);
-    assert!(asset_config.risk_factor_first_tier_boundary == risk_factor_first_tier_boundary);
-    assert!(asset_config.risk_factor_tier_size == risk_factor_tier_size);
     assert!(asset_config.quorum == quorum);
     assert!(asset_config.quantum == quantum);
     assert!(asset_config.status == AssetStatus::PENDING);
@@ -5547,9 +5502,7 @@ fn test_unsuccessful_add_spot_asset_zero_quantum() {
 
     // Setup test parameters:
     let spot_asset_id = SYNTHETIC_ASSET_ID_2();
-    let risk_factor_first_tier_boundary = MAX_U128;
-    let risk_factor_tier_size = 1;
-    let risk_factor_tiers = array![10].span();
+    let risk_factor = 10;
     let quorum = 1_u8;
     let resolution_factor = SYNTHETIC_RESOLUTION_FACTOR;
     let quantum = 0_u64;
@@ -5563,9 +5516,7 @@ fn test_unsuccessful_add_spot_asset_zero_quantum() {
             :erc20_contract_address,
             :quantum,
             :resolution_factor,
-            :risk_factor_tiers,
-            :risk_factor_first_tier_boundary,
-            :risk_factor_tier_size,
+            :risk_factor,
             :quorum,
         );
 }
@@ -5580,9 +5531,7 @@ fn test_unsuccessful_add_spot_asset_existing_asset() {
 
     // Use the existing synthetic asset id so that the asset is already registered.
     let spot_asset_id = cfg.synthetic_cfg.synthetic_id;
-    let risk_factor_first_tier_boundary = MAX_U128;
-    let risk_factor_tier_size = 1;
-    let risk_factor_tiers = array![10].span();
+    let risk_factor = 10;
     let quorum = 1_u8;
     let resolution_factor = SYNTHETIC_RESOLUTION_FACTOR;
     let quantum = 1_u64;
@@ -5596,9 +5545,7 @@ fn test_unsuccessful_add_spot_asset_existing_asset() {
             :erc20_contract_address,
             :quantum,
             :resolution_factor,
-            :risk_factor_tiers,
-            :risk_factor_first_tier_boundary,
-            :risk_factor_tier_size,
+            :risk_factor,
             :quorum,
         );
 }
@@ -5619,9 +5566,7 @@ fn test_successful_vault_token_deposit() {
             asset_id: cfg.vault_share_cfg.collateral_id,
             erc20_contract_address: cfg.vault_share_cfg.contract_address,
             quantum: cfg.vault_share_cfg.quantum,
-            risk_factor_tiers: cfg.vault_share_cfg.risk_factor_tiers,
-            risk_factor_first_tier_boundary: cfg.vault_share_cfg.risk_factor_first_tier_boundary,
-            risk_factor_tier_size: cfg.vault_share_cfg.risk_factor_tier_size,
+            risk_factor: cfg.vault_share_cfg.risk_factor,
             quorum: 1_u8,
         );
 
@@ -5762,9 +5707,7 @@ fn test_successful_vault_token_cancel_deposit() {
             asset_id: cfg.vault_share_cfg.collateral_id,
             erc20_contract_address: cfg.vault_share_cfg.contract_address,
             quantum: cfg.vault_share_cfg.quantum,
-            risk_factor_tiers: cfg.vault_share_cfg.risk_factor_tiers,
-            risk_factor_first_tier_boundary: cfg.vault_share_cfg.risk_factor_first_tier_boundary,
-            risk_factor_tier_size: cfg.vault_share_cfg.risk_factor_tier_size,
+            risk_factor: cfg.vault_share_cfg.risk_factor,
             quorum: 1_u8,
         );
 
@@ -5870,9 +5813,7 @@ fn test_successful_vault_share_process_deposit() {
             asset_id: cfg.vault_share_cfg.collateral_id,
             erc20_contract_address: cfg.vault_share_cfg.contract_address,
             quantum: cfg.vault_share_cfg.quantum,
-            risk_factor_tiers: cfg.vault_share_cfg.risk_factor_tiers,
-            risk_factor_first_tier_boundary: cfg.vault_share_cfg.risk_factor_first_tier_boundary,
-            risk_factor_tier_size: cfg.vault_share_cfg.risk_factor_tier_size,
+            risk_factor: cfg.vault_share_cfg.risk_factor,
             quorum: 1_u8,
         );
 

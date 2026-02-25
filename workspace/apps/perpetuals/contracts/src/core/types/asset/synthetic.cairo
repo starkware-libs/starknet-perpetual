@@ -112,8 +112,6 @@ pub impl SyntheticImpl of SyntheticTrait {
 
     fn spot(
         status: AssetStatus,
-        risk_factor_first_tier_boundary: u128,
-        risk_factor_tier_size: u128,
         quorum: u8,
         resolution_factor: u64,
         quantum: u64,
@@ -122,8 +120,10 @@ pub impl SyntheticImpl of SyntheticTrait {
         AssetConfig {
             version: VERSION,
             status,
-            risk_factor_first_tier_boundary,
-            risk_factor_tier_size,
+            // If `risk_factor_tier_size` is 1, then `get_synthetic_risk_factor_for_value` won't use
+            // boundray variable.
+            risk_factor_first_tier_boundary: 0,
+            risk_factor_tier_size: 1,
             quorum,
             resolution_factor,
             quantum: quantum,
@@ -134,8 +134,6 @@ pub impl SyntheticImpl of SyntheticTrait {
 
     fn vault_share(
         status: AssetStatus,
-        risk_factor_first_tier_boundary: u128,
-        risk_factor_tier_size: u128,
         quorum: u8,
         resolution_factor: u64,
         quantum: u64,
@@ -144,8 +142,10 @@ pub impl SyntheticImpl of SyntheticTrait {
         AssetConfig {
             version: VERSION,
             status,
-            risk_factor_first_tier_boundary,
-            risk_factor_tier_size,
+            // If `risk_factor_tier_size` is 1, then `get_synthetic_risk_factor_for_value` won't use
+            // boundray variable.
+            risk_factor_first_tier_boundary: 0,
+            risk_factor_tier_size: 1,
             quorum,
             resolution_factor,
             quantum: quantum,
