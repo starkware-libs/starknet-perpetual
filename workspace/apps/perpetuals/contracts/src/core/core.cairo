@@ -11,6 +11,8 @@ pub mod Core {
     use perpetuals::core::components::assets::errors::{NOT_SYNTHETIC, NO_SUCH_ASSET};
     use perpetuals::core::components::deposit::Deposit;
     use perpetuals::core::components::deposit::Deposit::InternalTrait as DepositInternal;
+    use perpetuals::core::components::exchange_time::ExchangeTimeComponent;
+    use perpetuals::core::components::exchange_time::ExchangeTimeComponent::InternalTrait as ExchangeInternal;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalTrait as OperatorNonceInternal;
     use perpetuals::core::components::positions::Positions;
@@ -18,8 +20,6 @@ pub mod Core {
         FEE_POSITION, InternalTrait as PositionsInternalTrait,
     };
     use perpetuals::core::components::positions::errors::ZERO_MAX_INTEREST_RATE;
-    use perpetuals::core::components::system_time::SystemTimeComponent;
-    use perpetuals::core::components::system_time::SystemTimeComponent::InternalTrait as SystemInternal;
     use perpetuals::core::errors::{
         AMOUNT_OVERFLOW, ESCAPE_HATCH_DISABLED, FORCED_WAIT_REQUIRED, INVALID_ZERO_TIMEOUT,
         LENGTH_MISMATCH, ORDER_IS_NOT_EXPIRED, TRADE_ASSET_NOT_SYNTHETIC, TRANSFER_FAILED,
@@ -75,7 +75,7 @@ pub mod Core {
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
     component!(path: OperatorNonceComponent, storage: operator_nonce, event: OperatorNonceEvent);
     component!(path: PausableComponent, storage: pausable, event: PausableEvent);
-    component!(path: SystemTimeComponent, storage: system_time, event: SystemTimeEvent);
+    component!(path: ExchangeTimeComponent, storage: exchange_time, event: ExchangeTimeEvent);
     component!(path: ReplaceabilityComponent, storage: replaceability, event: ReplaceabilityEvent);
     component!(path: RolesComponent, storage: roles, event: RolesEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
@@ -100,7 +100,7 @@ pub mod Core {
         OperatorNonceComponent::OperatorNonceImpl<ContractState>;
 
     #[abi(embed_v0)]
-    impl SystemTimeImpl = SystemTimeComponent::SystemTimeImpl<ContractState>;
+    impl ExchangeTimeImpl = ExchangeTimeComponent::ExchangeTimeImpl<ContractState>;
 
     #[abi(embed_v0)]
     impl DepositImpl = Deposit::DepositImpl<ContractState>;
@@ -146,7 +146,7 @@ pub mod Core {
         #[substorage(v0)]
         pausable: PausableComponent::Storage,
         #[substorage(v0)]
-        system_time: SystemTimeComponent::Storage,
+        exchange_time: ExchangeTimeComponent::Storage,
         #[substorage(v0)]
         pub replaceability: ReplaceabilityComponent::Storage,
         #[substorage(v0)]
@@ -189,7 +189,7 @@ pub mod Core {
         #[flat]
         PausableEvent: PausableComponent::Event,
         #[flat]
-        SystemTimeEvent: SystemTimeComponent::Event,
+        ExchangeTimeEvent: ExchangeTimeComponent::Event,
         #[flat]
         ReplaceabilityEvent: ReplaceabilityComponent::Event,
         #[flat]
@@ -276,7 +276,7 @@ pub mod Core {
         assert(forced_action_timelock.is_non_zero(), INVALID_ZERO_TIMEOUT);
         self.forced_action_timelock.write(TimeDelta { seconds: forced_action_timelock });
         self.premium_cost.write(premium_cost);
-        self.system_time.initialize();
+        self.exchange_time.initialize();
     }
 
     #[abi(embed_v0)]
@@ -424,7 +424,7 @@ pub mod Core {
             self.assets.validate_assets_integrity();
 
             // Read interest validation parameters once for all settlements
-            let current_time = self.get_system_time();
+            let current_time = self.get_exchange_time();
             let max_interest_rate_per_sec = self.get_max_interest_rate_per_sec();
 
             let mut tvtr_cache: Felt252Dict<Nullable<PositionTVTR>> = Default::default();
@@ -1226,7 +1226,7 @@ pub mod Core {
             self.operator_nonce.use_checked_nonce(:operator_nonce);
 
             // Read once and pass as arguments to avoid redundant storage reads
-            let current_time = self.get_system_time();
+            let current_time = self.get_exchange_time();
             let max_interest_rate_per_sec = self.positions.max_interest_rate_per_sec.read();
 
             for (position_id, interest_amount) in position_interest_amounts {

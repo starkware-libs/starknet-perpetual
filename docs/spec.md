@@ -2171,10 +2171,10 @@ Only APP\_GOVERNOR can execute.
 - INVALID_ZERO_QUORUM
 - INVALID_SAME_QUORUM
 
-  ###### Force Reset Protection Limit                                                                                                                                                                                 
-                                                                                                                                                                                                                      
-  Force-resets the vault protection mechanism by snapshotting the current total value and recalculating the maximum allowed TV loss so that the limit for a day can be extended.                                                                                  
-                                                                                                                                                                                                                    
+  ###### Force Reset Protection Limit
+
+  Force-resets the vault protection mechanism by snapshotting the current total value and recalculating the maximum allowed TV loss so that the limit for a day can be extended.
+
   ```rust
   fn force_reset_daily_protection_limit(
       ref self: ContractState,
@@ -3153,8 +3153,8 @@ struct Storage {
     forced_action_timelock: TimeDelta,
     // Cost for executing forced actions (in quantized units).
     premium_cost: u64,
-    // System time from the latest system_time call.
-    system_time: Timestamp,
+    // Exchange time from the latest exchange_time call.
+    exchange_time: Timestamp,
 }
 ```
 
@@ -3199,7 +3199,7 @@ pub enum Event {
     ForcedWithdraw: events::ForcedWithdraw,
     ForcedWithdrawRequest: events::ForcedWithdrawRequest,
     InterestApplied: events::InterestApplied,
-    TimeTick: events::TimeTick,
+    ExchangeTimeUpdated: events::ExchangeTimeUpdated,
     #[flat]
     FulfillmentEvent: Fulfillement::Event,
     #[flat]
@@ -3543,12 +3543,12 @@ pub struct InterestApplied {
 }
 ```
 
-##### TimeTick
+##### ExchangeTimeUpdated
 
 ```rust
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
-pub struct TimeTick {
-    pub timestamp: Timestamp,
+pub struct ExchangeTimeUpdated {
+    pub new_timestamp: Timestamp,
     }
 ```
 
@@ -3660,7 +3660,7 @@ pub fn constructor(
 5. Initialize positions: create fee position with `fee_position_owner_public_key` and insurance fund position with `insurance_fund_position_owner_public_key`.
 6. Initialize forced action timelock with `forced_action_timelock`.
 7. Initialize premium cost with `premium_cost`.
-8. Initialize last system time to current time.
+8. Initialize last exchange time to current time.
 
 ### Public Functions
 
@@ -4053,12 +4053,12 @@ Only the Operator can execute.
 
 [InterestApplied](#interestapplied)
 
-#### Time Tick
+#### Exchange Time Updated
 
-Updates the system time. This function allows the operator to set the current system time, which must be monotonically increasing and not exceed the current block timestamp.
+Updates the exchange time. This function allows the operator to set the current exchange time, which must be monotonically increasing and not exceed the current block timestamp.
 
 ```rust
-fn update_system_time(
+fn update_exchange_time(
     ref self: ContractState,
     operator_nonce: u64,
     new_timestamp: Timestamp,
@@ -4074,12 +4074,12 @@ Only the Operator can execute.
 1. [Pausable check](#pausable)
 2. [Operator Nonce check](#operator-nonce)
 3. `new_timestamp <= now`
-4. `new_timestamp > system_time`
+4. `new_timestamp > exchange_time`
 
 **Logic:**
 
 1. Run validations
-2. Update `system_time` to `new_timestamp`
+2. Update `exchange_time` to `new_timestamp`
 
 **Errors:**
 
@@ -4091,7 +4091,7 @@ Only the Operator can execute.
 
 **Emits:**
 
-[TimeTick](#timetick)
+[ExchangeTimeUpdated](#exchangetimeupdated)
 
 #### Trade
 

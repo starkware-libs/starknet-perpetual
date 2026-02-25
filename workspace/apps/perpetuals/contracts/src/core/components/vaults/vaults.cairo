@@ -30,10 +30,10 @@ pub mod Vaults {
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::interface::IAssets;
     use perpetuals::core::components::deposit::Deposit::InternalImpl as DepositInternal;
+    use perpetuals::core::components::exchange_time::ExchangeTimeComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::positions::Positions as PositionsComponent;
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
-    use perpetuals::core::components::system_time::SystemTimeComponent;
     use perpetuals::core::components::vaults::types::{VaultConfig, VaultConfigTrait};
     use perpetuals::core::types::asset::AssetId;
     use perpetuals::core::types::asset::synthetic::AssetType;
@@ -86,7 +86,7 @@ pub mod Vaults {
         impl Positions: PositionsComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
         impl RequestApprovals: RequestApprovalsComponent::HasComponent<TContractState>,
-        impl SystemTime: SystemTimeComponent::HasComponent<TContractState>,
+        impl ExchangeTime: ExchangeTimeComponent::HasComponent<TContractState>,
     > of IVaults<ComponentState<TContractState>> {
         fn is_vault_position(
             ref self: ComponentState<TContractState>, vault_position: PositionId,
@@ -179,7 +179,7 @@ pub mod Vaults {
         impl Positions: PositionsComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
         impl RequestApprovals: RequestApprovalsComponent::HasComponent<TContractState>,
-        impl SystemTime: SystemTimeComponent::HasComponent<TContractState>,
+        impl ExchangeTime: ExchangeTimeComponent::HasComponent<TContractState>,
     > of InternalTrait<TContractState> {
         fn get_vault_config_for_position(
             ref self: ComponentState<TContractState>, vault_position: PositionId,

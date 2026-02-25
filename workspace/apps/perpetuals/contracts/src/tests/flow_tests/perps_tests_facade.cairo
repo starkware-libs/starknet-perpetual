@@ -18,6 +18,9 @@ use perpetuals::core::components::deposit::deposit_manager::deposit_hash;
 use perpetuals::core::components::deposit::interface::{
     DepositStatus, IDepositDispatcher, IDepositDispatcherTrait,
 };
+use perpetuals::core::components::exchange_time::interface::{
+    IExchangeTimeDispatcher, IExchangeTimeDispatcherTrait,
+};
 use perpetuals::core::components::operator_nonce::interface::{
     IOperatorNonceDispatcher, IOperatorNonceDispatcherTrait,
 };
@@ -26,9 +29,6 @@ use perpetuals::core::components::positions::interface::{
     IPositionsDispatcher, IPositionsDispatcherTrait,
 };
 use perpetuals::core::components::snip::SNIP12MetadataImpl;
-use perpetuals::core::components::system_time::interface::{
-    ISystemTimeDispatcher, ISystemTimeDispatcherTrait,
-};
 use perpetuals::core::interface::{ICoreDispatcher, ICoreDispatcherTrait, Settlement};
 use perpetuals::core::types::asset::synthetic::{AssetBalanceInfo, AssetType};
 use perpetuals::core::types::asset::{AssetId, AssetIdTrait, AssetStatus};
@@ -2836,11 +2836,11 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         let new_timestamp = Time::now().add(Time::seconds(seconds));
         start_cheat_block_timestamp_global(new_timestamp.into());
 
-        // Update system time in the contract
+        // Update exchange time in the contract
         let operator_nonce = self.get_nonce();
-        let dispatcher = ISystemTimeDispatcher { contract_address: self.perpetuals_contract };
+        let dispatcher = IExchangeTimeDispatcher { contract_address: self.perpetuals_contract };
         self.operator.set_as_caller(self.perpetuals_contract);
-        dispatcher.update_system_time(:operator_nonce, :new_timestamp);
+        dispatcher.update_exchange_time(:operator_nonce, :new_timestamp);
     }
 
     fn enable_escape_hatch(ref self: PerpsTestsFacade) {
