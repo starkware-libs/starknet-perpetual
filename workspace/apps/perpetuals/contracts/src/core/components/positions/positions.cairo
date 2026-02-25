@@ -9,6 +9,8 @@ pub mod Positions {
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::AssetsComponent::InternalTrait as AssetsInternalTrait;
     use perpetuals::core::components::assets::interface::IAssets;
+    use perpetuals::core::components::exchange_time::ExchangeTimeComponent;
+    use perpetuals::core::components::exchange_time::interface::IExchangeTime;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalTrait as NonceInternal;
     use perpetuals::core::components::positions::errors::{
@@ -19,8 +21,6 @@ pub mod Positions {
     };
     use perpetuals::core::components::positions::events;
     use perpetuals::core::components::positions::interface::IPositions;
-    use perpetuals::core::components::system_time::SystemTimeComponent;
-    use perpetuals::core::components::system_time::interface::ISystemTime;
     use perpetuals::core::types::asset::AssetId;
     use perpetuals::core::types::asset::synthetic::{AssetBalanceInfo, SyntheticTrait};
     use perpetuals::core::types::balance::Balance;
@@ -101,7 +101,7 @@ pub mod Positions {
         impl Pausable: PausableComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
         impl RequestApprovals: RequestApprovalsComponent::HasComponent<TContractState>,
-        impl SystemTime: SystemTimeComponent::HasComponent<TContractState>,
+        impl ExchangeTime: ExchangeTimeComponent::HasComponent<TContractState>,
     > of IPositions<ComponentState<TContractState>> {
         fn get_position_assets(
             self: @ComponentState<TContractState>, position_id: PositionId,
@@ -195,8 +195,8 @@ pub mod Positions {
             let mut position = self.positions.entry(position_id);
             assert(position.version.read().is_zero(), POSITION_ALREADY_EXISTS);
             assert(owner_public_key.is_non_zero(), INVALID_ZERO_PUBLIC_KEY);
-            let system_time_component = get_dep_component!(@self, SystemTime);
-            let current_time = system_time_component.get_system_time();
+            let exchange_time_component = get_dep_component!(@self, ExchangeTime);
+            let current_time = exchange_time_component.get_exchange_time();
             position.version.write(POSITION_VERSION);
             position.owner_public_key.write(owner_public_key);
             position.owner_protection_enabled.write(owner_protection_enabled);
@@ -410,7 +410,7 @@ pub mod Positions {
         impl Pausable: PausableComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
         impl RequestApprovals: RequestApprovalsComponent::HasComponent<TContractState>,
-        impl SystemTime: SystemTimeComponent::HasComponent<TContractState>,
+        impl ExchangeTime: ExchangeTimeComponent::HasComponent<TContractState>,
     > of InternalTrait<TContractState> {
         fn initialize(
             ref self: ComponentState<TContractState>,
@@ -546,8 +546,8 @@ pub mod Positions {
             position_id: PositionId,
             interest_amount: i64,
         ) {
-            let system_time_component = get_dep_component!(@self, SystemTime);
-            let current_time = system_time_component.get_system_time();
+            let exchange_time_component = get_dep_component!(@self, ExchangeTime);
+            let current_time = exchange_time_component.get_exchange_time();
             let max_interest_rate_per_sec = self.max_interest_rate_per_sec.read();
 
             self
@@ -837,7 +837,7 @@ pub mod Positions {
         +Drop<TContractState>,
         +AccessControlComponent::HasComponent<TContractState>,
         +SRC5Component::HasComponent<TContractState>,
-        +SystemTimeComponent::HasComponent<TContractState>,
+        +ExchangeTimeComponent::HasComponent<TContractState>,
         impl Assets: AssetsComponent::HasComponent<TContractState>,
         impl OperatorNonce: OperatorNonceComponent::HasComponent<TContractState>,
         impl Pausable: PausableComponent::HasComponent<TContractState>,
