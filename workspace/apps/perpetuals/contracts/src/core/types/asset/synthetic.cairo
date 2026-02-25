@@ -1,4 +1,4 @@
-use core::num::traits::Zero;
+use core::num::traits::{Bounded, Zero};
 use perpetuals::core::types::asset::{AssetId, AssetStatus};
 use perpetuals::core::types::balance::Balance;
 use perpetuals::core::types::funding::FundingIndex;
@@ -10,8 +10,8 @@ use starknet::syscalls::storage_read_syscall;
 use starknet::{ContractAddress, SyscallResultTrait};
 use starkware_utils::time::time::Timestamp;
 
-
 const VERSION: u8 = 1;
+pub const MAX_U128: u128 = Bounded::<u128>::MAX;
 
 #[derive(Copy, Debug, Drop, PartialEq, Serde, starknet::Store, Default)]
 pub enum AssetType {
@@ -112,8 +112,6 @@ pub impl SyntheticImpl of SyntheticTrait {
 
     fn spot(
         status: AssetStatus,
-        risk_factor_first_tier_boundary: u128,
-        risk_factor_tier_size: u128,
         quorum: u8,
         resolution_factor: u64,
         quantum: u64,
@@ -122,8 +120,8 @@ pub impl SyntheticImpl of SyntheticTrait {
         AssetConfig {
             version: VERSION,
             status,
-            risk_factor_first_tier_boundary,
-            risk_factor_tier_size,
+            risk_factor_first_tier_boundary: MAX_U128,
+            risk_factor_tier_size: 0,
             quorum,
             resolution_factor,
             quantum: quantum,
@@ -134,8 +132,6 @@ pub impl SyntheticImpl of SyntheticTrait {
 
     fn vault_share(
         status: AssetStatus,
-        risk_factor_first_tier_boundary: u128,
-        risk_factor_tier_size: u128,
         quorum: u8,
         resolution_factor: u64,
         quantum: u64,
@@ -144,8 +140,8 @@ pub impl SyntheticImpl of SyntheticTrait {
         AssetConfig {
             version: VERSION,
             status,
-            risk_factor_first_tier_boundary,
-            risk_factor_tier_size,
+            risk_factor_first_tier_boundary: MAX_U128,
+            risk_factor_tier_size: 0,
             quorum,
             resolution_factor,
             quantum: quantum,

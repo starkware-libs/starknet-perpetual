@@ -80,9 +80,7 @@ pub trait IAssetsManager<TContractState> {
         asset_id: AssetId,
         erc20_contract_address: ContractAddress,
         quantum: u64,
-        risk_factor_tiers: Span<u16>,
-        risk_factor_first_tier_boundary: u128,
-        risk_factor_tier_size: u128,
+        risk_factor: u16,
         quorum: u8,
     );
     fn add_spot_asset(
@@ -91,9 +89,7 @@ pub trait IAssetsManager<TContractState> {
         erc20_contract_address: ContractAddress,
         quantum: u64,
         resolution_factor: u64,
-        risk_factor_tiers: Span<u16>,
-        risk_factor_first_tier_boundary: u128,
-        risk_factor_tier_size: u128,
+        risk_factor: u16,
         quorum: u8,
     );
     fn deactivate_synthetic(ref self: TContractState, synthetic_id: AssetId);

@@ -40,9 +40,7 @@ pub struct AssetChanged {
 pub struct SpotAssetAdded {
     #[key]
     pub asset_id: AssetId,
-    pub risk_factor_tiers: Span<u16>,
-    pub risk_factor_first_tier_boundary: u128,
-    pub risk_factor_tier_size: u128,
+    pub risk_factor: u16,
     pub resolution_factor: u64,
     pub quorum: u8,
     pub contract_address: ContractAddress,

@@ -1,65 +1,9 @@
 use openzeppelin::interfaces::erc4626::{IERC4626Dispatcher, IERC4626DispatcherTrait};
-use perpetuals::core::components::assets::interface::{
-    IAssetsManagerDispatcher, IAssetsManagerDispatcherTrait,
-};
 use perpetuals::tests::constants::*;
 use perpetuals::tests::flow_tests::infra::*;
 use perpetuals::tests::flow_tests::perps_tests_facade::*;
 use perpetuals::tests::test_utils::assert_with_error;
-use starkware_utils_testing::test_utils::{TokenTrait, cheat_caller_address_once};
-
-#[test]
-#[should_panic(expected: 'INVALID_VAULT_RF_TIERS')]
-fn test_registering_vault_shares_with_more_than_one_risk_tier_fails() {
-    let mut state: FlowTestBase = FlowTestBaseTrait::new();
-    let vault_user = state.new_user_with_position();
-    let vault_init_deposit = state
-        .facade
-        .deposit(vault_user.account, vault_user.position_id, 5000_u64);
-    state.facade.process_deposit(vault_init_deposit);
-
-    let vault = deploy_protocol_vault_with_dispatcher(
-        perps_address: state.facade.perpetuals_contract,
-        vault_position_id: vault_user.position_id,
-        usdc_token_state: state.facade.token_state,
-    );
-
-    let risk_factor_first_tier_boundary = 1000;
-    let risk_factor_tier_size = 1;
-    let risk_factor_1 = array![100, 200].span();
-
-    let asset_info = AssetInfoTrait::new_with_resolution(
-        asset_name: 'VS_1',
-        risk_factor_data: RiskFactorTiers {
-            tiers: risk_factor_1,
-            first_tier_boundary: risk_factor_first_tier_boundary,
-            tier_size: risk_factor_tier_size,
-        },
-        oracles_len: 1,
-        resolution: 1000000,
-    );
-
-    let asset_id = asset_info.asset_id;
-    let assets_dispatcher = IAssetsManagerDispatcher {
-        contract_address: state.facade.perpetuals_contract,
-    };
-
-    cheat_caller_address_once(
-        contract_address: state.facade.perpetuals_contract,
-        caller_address: state.facade.app_governor,
-    );
-
-    assets_dispatcher
-        .add_vault_collateral_asset(
-            asset_id,
-            erc20_contract_address: vault.contract_address,
-            quantum: 1,
-            risk_factor_tiers: risk_factor_1,
-            :risk_factor_first_tier_boundary,
-            :risk_factor_tier_size,
-            quorum: asset_info.oracles.len().try_into().unwrap(),
-        );
-}
+use starkware_utils_testing::test_utils::TokenTrait;
 
 #[test]
 fn test_deposit_into_protocol_vault_recieve_to_same_position() {

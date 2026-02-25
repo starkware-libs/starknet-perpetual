@@ -735,18 +735,14 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 asset_id,
                 erc20_contract_address: vault.contract_address,
                 quantum: 1,
-                risk_factor_tiers: risk_factor_1,
-                :risk_factor_first_tier_boundary,
-                :risk_factor_tier_size,
+                risk_factor: *risk_factor_1[0],
                 quorum: asset_info.oracles.len().try_into().unwrap(),
             );
 
         assert_add_spot_event_with_expected(
             spied_event: self.get_last_event(contract_address: self.perpetuals_contract),
             asset_id: asset_info.asset_id,
-            risk_factor_tiers: asset_info.risk_factor_data.tiers,
-            risk_factor_first_tier_boundary: asset_info.risk_factor_data.first_tier_boundary,
-            risk_factor_tier_size: asset_info.risk_factor_data.tier_size,
+            risk_factor: *asset_info.risk_factor_data.tiers[0],
             resolution_factor: asset_info.resolution_factor,
             quorum: asset_info.oracles.len().try_into().unwrap(),
             contract_address: vault.contract_address,
@@ -2222,18 +2218,14 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
                 erc20_contract_address: *asset_info.erc20_contract_address,
                 quantum: *asset_info.quantum,
                 resolution_factor: *asset_info.resolution_factor,
-                risk_factor_tiers: risk_factor_data.tiers,
-                risk_factor_first_tier_boundary: risk_factor_data.first_tier_boundary,
-                risk_factor_tier_size: risk_factor_data.tier_size,
+                risk_factor: *risk_factor_data.tiers[0],
                 quorum: asset_info.oracles.len().try_into().unwrap(),
             );
 
         assert_add_spot_event_with_expected(
             spied_event: self.get_last_event(contract_address: self.perpetuals_contract),
             asset_id: *asset_info.asset_id,
-            risk_factor_tiers: risk_factor_data.tiers,
-            risk_factor_first_tier_boundary: risk_factor_data.first_tier_boundary,
-            risk_factor_tier_size: risk_factor_data.tier_size,
+            risk_factor: *risk_factor_data.tiers[0],
             resolution_factor: *asset_info.resolution_factor,
             quorum: asset_info.oracles.len().try_into().unwrap(),
             contract_address: *asset_info.erc20_contract_address,

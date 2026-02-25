@@ -15,7 +15,6 @@ use starkware_utils::hash::message_hash::OffchainMessageHash;
 use starkware_utils_testing::test_utils::TokenTrait;
 use super::perps_tests_facade::PerpsTestsFacadeTrait;
 
-
 pub const MAX_U128: u128 = Bounded::<u128>::MAX;
 
 #[test]
