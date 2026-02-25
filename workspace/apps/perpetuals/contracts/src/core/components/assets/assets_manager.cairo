@@ -101,14 +101,13 @@ pub(crate) mod AssetsManager {
     };
     use starkware_utils::storage::utils::SubFromStorage;
     use starkware_utils::time::time::TimeDelta;
-    use crate::core::components::assets::AssetsComponent::InternalTrait as AssetsInternalTrait;
     use crate::core::components::assets::errors::{
         ASSET_NAME_TOO_LONG, ASSET_REGISTERED_AS_COLLATERAL, INACTIVE_ASSET,
         INVALID_NON_SYNTHETIC_RF_TIERS, INVALID_SAME_QUORUM, INVALID_ZERO_ASSET_ID,
         INVALID_ZERO_ASSET_NAME, INVALID_ZERO_ORACLE_NAME, INVALID_ZERO_PUBLIC_KEY,
         INVALID_ZERO_QUORUM, INVALID_ZERO_RF_FIRST_BOUNDRY, INVALID_ZERO_RF_TIERS_LEN,
         INVALID_ZERO_RF_TIER_SIZE, NOT_SYNTHETIC, ORACLE_ALREADY_EXISTS, ORACLE_NAME_TOO_LONG,
-        ORACLE_NOT_EXISTS, RF_INCREASE_REQUEST_NOT_FOUND, RF_REQUEST_MISMATCH, SYNTHETIC_NOT_ACTIVE,
+        ORACLE_NOT_EXISTS, RF_REQUEST_MISMATCH, RF_REQUEST_NOT_FOUND, SYNTHETIC_NOT_ACTIVE,
         SYNTHETIC_NOT_EXISTS, UNSORTED_RISK_FACTOR_TIERS,
     };
     use crate::core::components::assets::events;
@@ -424,9 +423,11 @@ pub(crate) mod AssetsManager {
         /// - Each risk factor in risk_factor_tiers is less or equal to 1000.
         /// - After update postitions risk must be the same or lower.
         /// - Non-synthetic assets must have exactly 1 risk factor tier.
-        /// - If increasing risk factors, a matching governor request must exist.
+        /// - A matching governor request must exist from `update_asset_risk_factor_request`.
+        ///   The request parameters must exactly match the provided parameters.
         ///
         /// Execution:
+        /// - Validate that a matching request exists and clear it.
         /// - Clear existing risk factor tiers.
         /// - Update the asset configuration.
         /// - Emit event.
@@ -453,55 +454,17 @@ pub(crate) mod AssetsManager {
                 assert(risk_factor_tiers.len() == 1, INVALID_NON_SYNTHETIC_RF_TIERS);
             }
 
-            // Check if Risk Factors are Increasing
-            let mut is_increasing = false;
-            let mut bound = risk_factor_first_tier_boundary;
-            for i in 0..risk_factor_tiers.len() {
-                let old_factor = self
-                    .assets
-                    .get_synthetic_risk_factor_for_value(
-                        synthetic_id: asset_id, synthetic_value: bound - 1,
-                    );
+            let stored_hash = self.assets.risk_factor_increase_request_hash.read();
+            assert(stored_hash.is_non_zero(), RF_REQUEST_NOT_FOUND);
 
-                // Check if this tier is increasing
-                if old_factor.value < *risk_factor_tiers[i] {
-                    is_increasing = true;
-                    break;
-                }
+            // Compute hash of provided parameters and verify it matches the stored hash
+            let computed_hash = risk_factor_increase_request_hash(
+                asset_id, risk_factor_tiers, risk_factor_first_tier_boundary, risk_factor_tier_size,
+            );
+            assert(computed_hash == stored_hash, RF_REQUEST_MISMATCH);
 
-                // Validate the next tier boundary if it exists (to ensure it's also not increasing)
-                if i + 1 < risk_factor_tiers.len() {
-                    let old_factor_next = self
-                        .assets
-                        .get_synthetic_risk_factor_for_value(
-                            synthetic_id: asset_id, synthetic_value: bound,
-                        );
-                    if old_factor_next.value < *risk_factor_tiers[i + 1] {
-                        is_increasing = true;
-                        break;
-                    }
-                }
-
-                bound += risk_factor_tier_size;
-            }
-
-            // Validate and Clear Increase Request (if increasing)
-            if is_increasing {
-                let stored_hash = self.assets.risk_factor_increase_request_hash.read();
-                assert(stored_hash.is_non_zero(), RF_INCREASE_REQUEST_NOT_FOUND);
-
-                // Compute hash of provided parameters and verify it matches the stored hash
-                let computed_hash = risk_factor_increase_request_hash(
-                    asset_id,
-                    risk_factor_tiers,
-                    risk_factor_first_tier_boundary,
-                    risk_factor_tier_size,
-                );
-                assert(computed_hash == stored_hash, RF_REQUEST_MISMATCH);
-
-                // Clear request after validation
-                self.assets.risk_factor_increase_request_hash.write(Zero::zero());
-            }
+            // Clear request after validation
+            self.assets.risk_factor_increase_request_hash.write(Zero::zero());
 
             // Clear and update risk factor tiers
             let entry = self.assets.risk_factor_tiers.entry(asset_id);
