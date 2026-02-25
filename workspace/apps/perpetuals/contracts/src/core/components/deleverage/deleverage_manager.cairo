@@ -28,22 +28,11 @@ pub trait IDeleverageManager<TContractState> {
         interest_amount_deleveraged: i64,
         interest_amount_deleverager: i64,
     );
-    fn deleverage_spot_asset(
-        ref self: TContractState,
-        deleveraged_position_id: PositionId,
-        deleverager_position_id: PositionId,
-        asset_id: AssetId,
-        deleveraged_amount: i64,
-        deleveraged_base_collateral_amount: i64,
-        interest_amount_deleveraged: i64,
-        interest_amount_deleverager: i64,
-    );
 }
 
 #[starknet::contract]
 pub(crate) mod DeleverageManager {
     use core::panic_with_felt252;
-    use core::panics::panic_with_byte_array;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
@@ -71,13 +60,9 @@ pub(crate) mod DeleverageManager {
     use crate::core::components::assets::errors::NO_SUCH_ASSET;
     use crate::core::components::external_components::interface::EXTERNAL_COMPONENT_DELEVERAGES;
     use crate::core::components::external_components::named_component::ITypedComponent;
-    use crate::core::components::positions::interface::IPositions;
-    use crate::core::errors::{NO_DELEVERAGE_VAULT_SHARES, position_not_deleveragable};
+    use crate::core::errors::{NO_DELEVERAGE_SPOT, NO_DELEVERAGE_VAULT_SHARES};
     use crate::core::types::position::{Position, PositionDiff};
-    use crate::core::value_risk_calculator::{
-        calculate_position_tvtr_before, calculate_position_tvtr_change,
-        deleveraged_position_validations,
-    };
+    use crate::core::value_risk_calculator::deleveraged_position_validations;
     use super::{AssetId, Deleverage, IDeleverageManager};
 
     #[event]
@@ -235,71 +220,6 @@ pub(crate) mod DeleverageManager {
                     :interest_amount_deleverager,
                 );
         }
-        fn deleverage_spot_asset(
-            ref self: ContractState,
-            deleveraged_position_id: PositionId,
-            deleverager_position_id: PositionId,
-            asset_id: AssetId,
-            deleveraged_amount: i64,
-            deleveraged_base_collateral_amount: i64,
-            interest_amount_deleveraged: i64,
-            interest_amount_deleverager: i64,
-        ) {
-            let deleveraged_position = self
-                .positions
-                .get_position_mut(position_id: deleveraged_position_id);
-            let deleverager_position = self
-                .positions
-                .get_position_mut(position_id: deleverager_position_id);
-
-            /// Validation:
-            self.assets.validate_asset_active(:asset_id);
-            self
-                .positions
-                ._validate_imposed_reduction_trade(
-                    position_id_a: deleveraged_position_id,
-                    position_id_b: deleverager_position_id,
-                    position_a: deleveraged_position.into(),
-                    position_b: deleverager_position.into(),
-                    base_asset_id: asset_id,
-                    base_amount_a: deleveraged_amount,
-                    quote_amount_a: deleveraged_base_collateral_amount,
-                );
-
-            // Validate interest in range for both positions before applying diffs
-            self
-                .positions
-                .verify_and_update_interest_range(
-                    position: deleveraged_position,
-                    position_id: deleveraged_position_id,
-                    interest_amount: interest_amount_deleveraged,
-                );
-
-            self
-                .positions
-                .verify_and_update_interest_range(
-                    position: deleverager_position,
-                    position_id: deleverager_position_id,
-                    interest_amount: interest_amount_deleverager,
-                );
-
-            /// Execution:
-            // Pass default values for interest validation parameters since deleverage_spot_asset
-            // doesn't support interest amounts. Interest validation is skipped when interest
-            // amounts are zero, so these parameters are not used.
-            self
-                ._execute_deleverage(
-                    :deleveraged_position_id,
-                    :deleverager_position_id,
-                    deleveraged_position: deleveraged_position.into(),
-                    deleverager_position: deleverager_position.into(),
-                    :asset_id,
-                    deleveraged_asset_amount: deleveraged_amount,
-                    deleveraged_collateral_amount: deleveraged_base_collateral_amount,
-                    :interest_amount_deleveraged,
-                    :interest_amount_deleverager,
-                );
-        }
     }
 
     #[generate_trait]
@@ -333,27 +253,7 @@ pub(crate) mod DeleverageManager {
                         :position_id, :unchanged_assets, :position_diff_enriched,
                     );
                 },
-                AssetType::SPOT_COLLATERAL => {
-                    if (!self.positions.is_deleveragable(:position_id)) {
-                        let tvtr_before = calculate_position_tvtr_before(
-                            :unchanged_assets, :position_diff_enriched,
-                        );
-                        let tvtr = calculate_position_tvtr_change(
-                            :tvtr_before,
-                            synthetic_enriched_position_diff: position_diff_enriched.into(),
-                        );
-                        let err = position_not_deleveragable(:position_id, :tvtr);
-                        panic_with_byte_array(err: @err);
-                    }
-                    self
-                        .positions
-                        .validate_healthy_or_healthier_position(
-                            :position_id,
-                            :position,
-                            :position_diff,
-                            tvtr_before: Default::default(),
-                        );
-                },
+                AssetType::SPOT_COLLATERAL => { panic_with_felt252(NO_DELEVERAGE_SPOT); },
                 AssetType::VAULT_SHARE_COLLATERAL => {
                     panic_with_felt252(NO_DELEVERAGE_VAULT_SHARES);
                 },
@@ -388,12 +288,6 @@ pub(crate) mod DeleverageManager {
             /// Validations - Fundamentals:
             // The deleveraged position should be deleveragable before
             // and healthy or healthier after and the deleverage must be fair.
-
-            // TODO: Add logic for spot asset is fair deleverage. Technical issue- we currently
-            // check is fair deleverage in value_risk_calculator which is not a contract and does
-            // not have any of the components of the perps contract (we would need the assets
-            // component at the very least to get the asset type but could be more depending on the
-            // validation logic).
 
             self
                 ._validate_deleveraged_position(

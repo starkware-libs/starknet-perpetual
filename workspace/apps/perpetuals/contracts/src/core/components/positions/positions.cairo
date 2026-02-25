@@ -532,11 +532,11 @@ pub mod Positions {
                     synthetic_assets.append(*asset);
                 }
             }
-            let collateral_balance = position.collateral_balance.read();
-            let collateral_balance_with_funding = collateral_balance + funding_delta;
+            let base_collateral_balance = position.collateral_balance.read();
+            let base_collateral_balance_with_funding = base_collateral_balance + funding_delta;
             calculate_pnl(
                 synthetic_assets: synthetic_assets.span(),
-                collateral_balance: collateral_balance_with_funding,
+                collateral_balance: base_collateral_balance_with_funding,
             )
         }
 

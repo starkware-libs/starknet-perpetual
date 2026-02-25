@@ -499,7 +499,7 @@ pub(crate) mod WithdrawalManager {
                 (
                     PositionDiff {
                         collateral_diff: interest_amount.into(),
-                        asset_diff: Some((collateral_id, -amount.into())),
+                        asset_diff: Some((collateral_id, negative_amount.into())),
                     },
                     SyntheticTrait::at_quantum(entry),
                     IERC20Dispatcher { contract_address: SyntheticTrait::at_token_contract(entry) },

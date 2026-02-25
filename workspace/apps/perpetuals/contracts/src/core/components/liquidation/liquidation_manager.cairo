@@ -92,7 +92,7 @@ pub(crate) mod LiquidationManager {
     use crate::core::components::external_components::interface::EXTERNAL_COMPONENT_LIQUIDATIONS;
     use crate::core::components::external_components::named_component::ITypedComponent;
     use crate::core::errors::{
-        CANT_LIQUIDATE_IF_POSITION, CANT_TRADE_WITH_FEE_POSITION, INVALID_SAME_POSITIONS,
+        CANT_LIQUIDATE_IF_POSITION, CANT_LIQUIDATE_WITH_FP, INVALID_SAME_POSITIONS,
     };
     use crate::core::types::asset::synthetic::AssetType;
     use crate::core::types::order::ValidateableOrderTrait;
@@ -336,7 +336,7 @@ pub(crate) mod LiquidationManager {
                 liquidator_order.receive_position != INSURANCE_FUND_POSITION,
                 CANT_LIQUIDATE_IF_POSITION,
             );
-            assert(liquidator_order.receive_position != FEE_POSITION, CANT_TRADE_WITH_FEE_POSITION);
+            assert(liquidator_order.receive_position != FEE_POSITION, CANT_LIQUIDATE_WITH_FP);
             assert(
                 liquidator_order.receive_position != liquidated_position_id, INVALID_SAME_POSITIONS,
             );

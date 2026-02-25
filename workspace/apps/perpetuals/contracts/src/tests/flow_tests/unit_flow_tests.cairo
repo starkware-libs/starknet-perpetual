@@ -6382,7 +6382,7 @@ fn test_liquidate_spot_receiver_is_insurance_fund() {
 }
 
 #[test]
-#[should_panic(expected: 'CANT_TRADE_WITH_FEE_POSITION')]
+#[should_panic(expected: 'CANT_LIQUIDATE_WITH_FP')]
 fn test_liquidate_spot_receiver_is_fee_position() {
     let risk_factor_data = RiskFactorTiers {
         tiers: array![100].span(), first_tier_boundary: MAX_U128, tier_size: 1,
