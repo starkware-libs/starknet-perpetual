@@ -764,7 +764,8 @@ pub mod Positions {
                     if (tv_loss > max_tvtr_loss) {
                         panic_with_byte_array(
                             err: @format!(
-                                "Vault Protection Limit Exceeded, tv_at_last_check: {}, tv_after_operation: {}, max_allowed_loss : {}",
+                                "Vault Protection Limit Exceeded, position_id: {:?}, tv_at_last_check: {}, tv_after_operation: {}, max_allowed_loss : {}",
+                                position_id,
                                 tv_at_last_check,
                                 tv_after,
                                 max_tvtr_loss,

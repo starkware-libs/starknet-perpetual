@@ -310,6 +310,7 @@ pub(crate) mod DeleverageManager {
                     position_diff: deleverager_position_diff,
                     tvtr_before: Default::default(),
                 );
+            // Deleveraged is not validated against vault limits as this might block ADL, which takes precedence.
             self
                 .positions
                 .validate_against_vault_limits(
@@ -319,6 +320,7 @@ pub(crate) mod DeleverageManager {
                         .get_vault_protection_config(deleverager_position_id),
                     :tvtr,
                 );
+            
 
             // Apply diffs
             self
