@@ -2605,24 +2605,33 @@ fn test_deposit_two_spot_collaterals() {
     let mut state: FlowTestBase = FlowTestBaseTrait::new();
 
     // Create first spot collateral asset (BTC).
-    let token = snforge_std::Token::STRK;
-    let erc20_contract_address = token.contract_address();
+    let strk_token = snforge_std::Token::STRK;
+    let btc_erc20_contract_address = strk_token.contract_address();
     let asset_info_btc = AssetInfoTrait::new_collateral(
-        asset_name: 'BTC', :risk_factor_data, oracles_len: 1, :erc20_contract_address,
+        asset_name: 'BTC',
+        :risk_factor_data,
+        oracles_len: 1,
+        erc20_contract_address: btc_erc20_contract_address,
     );
     let asset_id_btc = asset_info_btc.asset_id;
     state.facade.add_active_collateral(asset_info: @asset_info_btc, initial_price: 100);
 
     // Create second spot collateral asset (ETH).
+    let eth_token = snforge_std::Token::ETH;
+    let eth_erc20_contract_address = eth_token.contract_address();
     let asset_info_eth = AssetInfoTrait::new_collateral(
-        asset_name: 'ETH', :risk_factor_data, oracles_len: 1, :erc20_contract_address,
+        asset_name: 'ETH',
+        :risk_factor_data,
+        oracles_len: 1,
+        erc20_contract_address: eth_erc20_contract_address,
     );
     let asset_id_eth = asset_info_eth.asset_id;
     state.facade.add_active_collateral(asset_info: @asset_info_eth, initial_price: 50);
 
     // Create user.
     let user = state.new_user_with_position();
-    snforge_std::set_balance(target: user.account.address, new_balance: 5000000, :token);
+    snforge_std::set_balance(target: user.account.address, new_balance: 5000000, token: strk_token);
+    snforge_std::set_balance(target: user.account.address, new_balance: 5000000, token: eth_token);
 
     // Deposit BTC spot collateral.
     let deposit_info_btc = state

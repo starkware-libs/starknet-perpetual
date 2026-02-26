@@ -99,8 +99,8 @@ pub(crate) mod AssetsManager {
     use starkware_utils::time::time::TimeDelta;
     use crate::core::components::assets::AssetsComponent::InternalTrait as AssetsInternalTrait;
     use crate::core::components::assets::errors::{
-        ASSET_NAME_TOO_LONG, ASSET_REGISTERED_AS_COLLATERAL, INACTIVE_ASSET,
-        INVALID_NON_SYNTHETIC_RF_TIERS, INVALID_SAME_QUORUM, INVALID_ZERO_ASSET_ID,
+        ASSET_NAME_TOO_LONG, ASSET_REGISTERED_AS_COLLATERAL, CONTRACT_ADDRESS_ALREADY_USED,
+        INACTIVE_ASSET, INVALID_NON_SYNTHETIC_RF_TIERS, INVALID_SAME_QUORUM, INVALID_ZERO_ASSET_ID,
         INVALID_ZERO_ASSET_NAME, INVALID_ZERO_ORACLE_NAME, INVALID_ZERO_PUBLIC_KEY,
         INVALID_ZERO_QUORUM, INVALID_ZERO_RF_FIRST_BOUNDRY, INVALID_ZERO_RF_TIERS_LEN,
         INVALID_ZERO_RF_TIER_SIZE, NOT_SYNTHETIC, ORACLE_ALREADY_EXISTS, ORACLE_NAME_TOO_LONG,
@@ -303,6 +303,12 @@ pub(crate) mod AssetsManager {
             assert(asset_id.is_non_zero(), 'INVALID_ZERO_ASSET_ID');
             assert(quorum.is_non_zero(), 'INVALID_ZERO_QUORUM');
 
+            // Check that the contract address is unique
+            self
+                ._assert_contract_address_unique(
+                    contract_address: erc20_contract_address, exclude_asset_id: asset_id,
+                );
+
             let asset_config = SyntheticTrait::vault_share(
                 AssetStatus::PENDING,
                 quorum,
@@ -351,6 +357,12 @@ pub(crate) mod AssetsManager {
             if let Option::Some(collateral_id) = self.assets.collateral_id.read() {
                 assert(collateral_id != asset_id, ASSET_REGISTERED_AS_COLLATERAL);
             }
+
+            // Check that the contract address is unique
+            self
+                ._assert_contract_address_unique(
+                    contract_address: erc20_contract_address, exclude_asset_id: asset_id,
+                );
 
             let asset_config = SyntheticTrait::spot(
                 AssetStatus::PENDING, quorum, resolution_factor, quantum, erc20_contract_address,
@@ -592,6 +604,38 @@ pub(crate) mod AssetsManager {
 
         fn get_max_funding_rate(self: @ContractState) -> u32 {
             self.assets.max_funding_rate.read()
+        }
+    }
+
+    #[generate_trait]
+    impl PrivateImpl of PrivateTrait {
+        /// Assert that the contract address is not already used by any asset.
+        /// Iterates over all assets and checks if any asset uses the given contract address.
+        fn _assert_contract_address_unique(
+            ref self: ContractState, contract_address: ContractAddress, exclude_asset_id: AssetId,
+        ) {
+            // First check if the contract address is the base collateral token contract address.
+            assert(
+                self
+                    .assets
+                    .get_base_collateral_token_contract()
+                    .contract_address != contract_address,
+                CONTRACT_ADDRESS_ALREADY_USED,
+            );
+
+            let mut timely_data_iter = self.assets.timely_data.into_iter();
+            while let Option::Some((asset_id, _)) = timely_data_iter.next() {
+                // Skip the asset we're currently adding
+                if asset_id == exclude_asset_id {
+                    continue;
+                }
+                if let Option::Some(asset_config) = self.assets.asset_config.read(asset_id) {
+                    // Check if this asset has a contract address
+                    if let Option::Some(existing_address) = asset_config.token_contract {
+                        assert(existing_address != contract_address, CONTRACT_ADDRESS_ALREADY_USED);
+                    }
+                }
+            }
         }
     }
 
