@@ -56,7 +56,9 @@ use perpetuals::tests::test_utils::{
     setup_state_with_pending_vault_share, validate_asset_balance, validate_balance,
 };
 use snforge_std::cheatcodes::events::{EventSpyTrait, EventsFilterTrait};
-use snforge_std::{start_cheat_block_timestamp_global, test_address};
+use snforge_std::{
+    TokenTrait as SnforgeTokenTrait, start_cheat_block_timestamp_global, test_address,
+};
 use starknet::storage::{StoragePathEntry, StoragePointerReadAccess};
 use starknet::{SyscallResultTrait, get_block_info};
 use starkware_utils::components::replaceability::interface::IReplaceable;
@@ -1518,7 +1520,7 @@ fn test_rf_increase_with_request_spot() {
     let quorum = 1_u8;
     let resolution_factor = SYNTHETIC_RESOLUTION_FACTOR;
     let quantum = 12_u64;
-    let erc20_contract_address = token_state.address;
+    let erc20_contract_address = snforge_std::Token::ETH.contract_address();
 
     // Add spot asset.
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
@@ -1774,7 +1776,7 @@ fn test_rf_update_spot_multiple_tiers_invalid() {
     let quorum = 1_u8;
     let resolution_factor = SYNTHETIC_RESOLUTION_FACTOR;
     let quantum = 12_u64;
-    let erc20_contract_address = token_state.address;
+    let erc20_contract_address = snforge_std::Token::ETH.contract_address();
 
     // Add spot asset.
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
@@ -5285,7 +5287,7 @@ fn test_successful_add_spot_asset() {
     let quorum = 1_u8;
     let resolution_factor = SYNTHETIC_RESOLUTION_FACTOR;
     let quantum = 12_u64;
-    let erc20_contract_address = token_state.address;
+    let erc20_contract_address = snforge_std::Token::ETH.contract_address();
 
     // Test:
     cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.app_governor);
@@ -5376,6 +5378,48 @@ fn test_unsuccessful_add_spot_asset_existing_asset() {
             :quorum,
         );
 }
+
+#[test]
+#[should_panic(expected: 'ASSET_TOKEN_ADDRESS_USED')]
+fn test_unsuccessful_add_asset_duplicate_contract_address() {
+    // Setup state, token:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = init_state(cfg: @cfg, token_state: @token_state);
+
+    // Setup test parameters for first spot asset:
+    let first_spot_asset_id = SYNTHETIC_ASSET_ID_2();
+    let risk_factor = 10;
+    let quorum = 1_u8;
+    let resolution_factor = SYNTHETIC_RESOLUTION_FACTOR;
+    let quantum = 12_u64;
+    let erc20_contract_address = snforge_std::Token::ETH.contract_address();
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.app_governor);
+    state
+        .add_spot_asset(
+            asset_id: first_spot_asset_id,
+            :erc20_contract_address,
+            :quantum,
+            :resolution_factor,
+            :risk_factor,
+            :quorum,
+        );
+
+    // Try to add second asset with same contract address.
+    let second_spot_asset_id = SYNTHETIC_ASSET_ID_3();
+    cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.app_governor);
+    state
+        .add_spot_asset(
+            asset_id: second_spot_asset_id,
+            :erc20_contract_address,
+            :quantum,
+            :resolution_factor,
+            :risk_factor,
+            :quorum,
+        );
+}
+
 #[test]
 fn test_successful_vault_token_deposit() {
     // Setup state, token and user:
