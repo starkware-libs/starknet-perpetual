@@ -11,6 +11,7 @@ pub mod Positions {
     use perpetuals::core::components::assets::AssetsComponent::InternalTrait as AssetsInternalTrait;
     use perpetuals::core::components::assets::interface::IAssets;
     use perpetuals::core::components::exchange_time::ExchangeTimeComponent;
+    use perpetuals::core::components::exchange_time::errors::TIMESTAMP_TOO_OLD;
     use perpetuals::core::components::exchange_time::interface::IExchangeTime;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalTrait as NonceInternal;
@@ -46,6 +47,7 @@ pub mod Positions {
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent::InternalTrait as RequestApprovalsInternal;
     use starkware_utils::components::roles::RolesComponent;
+    use starkware_utils::constants::DAY;
     use starkware_utils::math::abs::Abs;
     use starkware_utils::math::utils::have_same_sign;
     use starkware_utils::signature::stark::{PublicKey, Signature};
@@ -643,6 +645,7 @@ pub mod Positions {
         ) {
             let exchange_time_component = get_dep_component!(@self, ExchangeTime);
             let current_time = exchange_time_component.get_exchange_time();
+            let time_of_last_update = exchange_time_component.get_time_of_last_update();
             let max_interest_rate_per_sec = self.max_interest_rate_per_sec.read();
 
             self
@@ -651,6 +654,7 @@ pub mod Positions {
                     :position_id,
                     :interest_amount,
                     :current_time,
+                    :time_of_last_update,
                     :max_interest_rate_per_sec,
                 )
         }
@@ -661,6 +665,7 @@ pub mod Positions {
             position_id: PositionId,
             interest_amount: i64,
             current_time: Timestamp,
+            time_of_last_update: Timestamp,
             max_interest_rate_per_sec: u32,
         ) {
             let previous_timestamp = position.last_interest_applied_time.read();
@@ -680,6 +685,7 @@ pub mod Positions {
                     :position_id,
                     :interest_amount,
                     :current_time,
+                    :time_of_last_update,
                     :previous_timestamp,
                     :max_interest_rate_per_sec,
                 );
@@ -1049,9 +1055,14 @@ pub mod Positions {
             position_id: PositionId,
             interest_amount: i64,
             current_time: Timestamp,
+            time_of_last_update: Timestamp,
             previous_timestamp: Timestamp,
             max_interest_rate_per_sec: u32,
         ) {
+            // Validate that there was time update in the last day.
+            let now = Time::now();
+            assert(time_of_last_update >= now.sub_delta(Time::seconds(DAY)), TIMESTAMP_TOO_OLD);
+
             // If `previous_timestamp` is zero, this indicates the first interest calculation,
             // and the interest amount is required to be zero.
             if previous_timestamp.is_zero() {
