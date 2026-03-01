@@ -212,6 +212,7 @@ pub mod Core {
         WithdrawRequest: events::WithdrawRequest,
         ForcedTradeRequest: events::ForcedTradeRequest,
         ForcedTrade: events::ForcedTrade,
+        ForcedWithdrawRequest: events::ForcedWithdrawRequest,
         ForcedRedeemFromVaultRequest: vault_events::ForcedRedeemFromVaultRequest,
         ForcedRedeemFromVault: vault_events::ForcedRedeemFromVault,
         InterestApplied: events::InterestApplied,
@@ -835,7 +836,7 @@ pub mod Core {
         ) {
             assert(self._is_escape_hatch_enabled(), ESCAPE_HATCH_DISABLED);
             assert(!self._is_vault(vault_position: position_id), 'VAULT_CANNOT_INITIATE_WITHDRAW');
-            self
+            let hash = self
                 .external_components
                 ._get_withdrawal_manager_dispatcher()
                 .forced_withdraw_request(
@@ -846,6 +847,24 @@ pub mod Core {
                     :amount,
                     :expiration,
                     :salt,
+                );
+
+            /// Executions:
+
+            // Transfer premium_cost (forced fee) from the caller to the sequencer address.
+            self._transfer_premium_cost();
+
+            self
+                .emit(
+                    events::ForcedWithdrawRequest {
+                        position_id,
+                        recipient,
+                        collateral_id,
+                        amount,
+                        expiration,
+                        forced_withdraw_request_hash: hash,
+                        salt,
+                    },
                 );
         }
 
@@ -927,18 +946,7 @@ pub mod Core {
             );
 
             // Transfer premium_cost (forced fee) from the caller to the sequencer address.
-            let premium_cost = self.premium_cost.read();
-            let quantum = self.assets.get_collateral_quantum();
-            let token_contract = self.assets.get_base_collateral_token_contract();
-            assert(
-                token_contract
-                    .transfer_from(
-                        sender: get_caller_address(),
-                        recipient: get_block_info().sequencer_address,
-                        amount: (premium_cost * quantum).into(),
-                    ),
-                TRANSFER_FAILED,
-            );
+            self._transfer_premium_cost();
 
             self
                 .emit(
@@ -1102,18 +1110,7 @@ pub mod Core {
             );
 
             // Transfer premium_cost (forced fee) from the caller to the sequencer address.
-            let premium_cost = self.premium_cost.read();
-            let quantum = self.assets.get_collateral_quantum();
-            let token_contract = self.assets.get_base_collateral_token_contract();
-            assert(
-                token_contract
-                    .transfer_from(
-                        sender: get_caller_address(),
-                        recipient: get_block_info().sequencer_address,
-                        amount: (premium_cost * quantum).into(),
-                    ),
-                TRANSFER_FAILED,
-            );
+            self._transfer_premium_cost();
 
             self
                 .emit(
@@ -1156,7 +1153,7 @@ pub mod Core {
         /// - Processes the forced redeem.
         /// - Marks the forced request as completed and clears the pending entry.
         /// - Emits a `ForcedRedeemFromVault` event.
-        fn force_redeem_from_vault(
+        fn forced_redeem_from_vault(
             ref self: ContractState,
             operator_nonce: u64,
             order: LimitOrder,
@@ -1187,7 +1184,7 @@ pub mod Core {
             self
                 .external_components
                 ._get_vault_manager_dispatcher()
-                .force_redeem_from_vault(:order, :vault_approval);
+                .forced_redeem_from_vault(:order, :vault_approval);
 
             self
                 .emit(
@@ -1525,6 +1522,22 @@ pub mod Core {
 
         fn _is_escape_hatch_enabled(ref self: ContractState) -> bool {
             return self.forced_actions_enabled.read();
+        }
+
+        /// Transfers the premium cost (forced fee) from the caller to the sequencer address.
+        fn _transfer_premium_cost(ref self: ContractState) {
+            let premium_cost = self.premium_cost.read();
+            let quantum = self.assets.get_collateral_quantum();
+            let token_contract = self.assets.get_base_collateral_token_contract();
+            assert(
+                token_contract
+                    .transfer_from(
+                        sender: get_caller_address(),
+                        recipient: get_block_info().sequencer_address,
+                        amount: (premium_cost * quantum).into(),
+                    ),
+                TRANSFER_FAILED,
+            );
         }
     }
 }
