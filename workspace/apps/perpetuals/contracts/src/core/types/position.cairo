@@ -1,6 +1,6 @@
 use core::num::traits::Zero;
-use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::asset::synthetic::{AssetBalanceDiffEnriched, AssetBalanceInfo};
+use perpetuals::core::types::asset::{AssetId, AssetIdFelt};
 use perpetuals::core::types::balance::{Balance, BalanceDiff};
 use perpetuals::core::types::funding::FundingIndex;
 use starknet::ContractAddress;
@@ -9,6 +9,8 @@ use starkware_utils::signature::stark::PublicKey;
 use starkware_utils::storage::iterable_map::{
     IterableMap, IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
 };
+use starkware_utils::storage::linked_iterable_map_felt::LinkedIterableMapFelt;
+use starkware_utils::storage::utils::{Castable160, Castable64};
 use starkware_utils::time::time::Timestamp;
 
 pub const POSITION_VERSION: u8 = 1;
@@ -21,6 +23,7 @@ pub struct Position {
     pub collateral_balance: Balance,
     #[rename("synthetic_balance")]
     pub asset_balances: IterableMap<AssetId, AssetBalance>,
+    pub spot_balances: LinkedIterableMapFelt<AssetId, SpotBalance>,
     pub owner_protection_enabled: bool,
     pub last_interest_applied_time: Timestamp,
 }
@@ -34,6 +37,7 @@ pub struct AssetBalance {
     pub balance: Balance,
     pub funding_index: FundingIndex,
 }
+
 
 pub impl AssetBalanceZeroImpl of Zero<AssetBalance> {
     fn zero() -> AssetBalance {
@@ -54,6 +58,45 @@ pub impl AssetBalanceDefault of Default<AssetBalance> {
         Zero::zero()
     }
 }
+
+
+#[derive(Copy, Drop, Serde, starknet::Store)]
+pub struct SpotBalance {
+    pub version: u8,
+    pub balance: Balance,
+}
+
+pub impl SpotBalanceZeroImpl of Zero<SpotBalance> {
+    fn zero() -> SpotBalance {
+        SpotBalance { version: POSITION_VERSION, balance: Zero::zero() }
+    }
+    fn is_zero(self: @SpotBalance) -> bool {
+        self.balance.is_zero()
+    }
+    fn is_non_zero(self: @SpotBalance) -> bool {
+        !self.is_zero()
+    }
+}
+
+pub impl SpotBalanceDefault of Default<SpotBalance> {
+    fn default() -> SpotBalance {
+        Zero::zero()
+    }
+}
+
+pub impl Castable160SpotBalance of Castable160<SpotBalance> {
+    fn encode(value: SpotBalance) -> (u128, u32) {
+        (Castable64::encode(value.balance).into(), value.version.into())
+    }
+
+    fn decode(value: (u128, u32)) -> SpotBalance {
+        let (balance, version) = value;
+        let balance_u64: u64 = balance.try_into().unwrap();
+        let version_u8: u8 = version.try_into().unwrap();
+        SpotBalance { balance: Castable64::decode(balance_u64), version: version_u8 }
+    }
+}
+
 
 #[derive(Copy, Debug, Drop, Hash, PartialEq, Serde, starknet::Store)]
 pub struct PositionId {

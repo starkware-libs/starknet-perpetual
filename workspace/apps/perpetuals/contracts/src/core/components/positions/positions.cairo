@@ -24,7 +24,7 @@ pub mod Positions {
     use perpetuals::core::types::asset::AssetId;
     use perpetuals::core::types::asset::synthetic::{AssetBalanceInfo, SyntheticTrait};
     use perpetuals::core::types::balance::Balance;
-    use perpetuals::core::types::funding::calculate_funding;
+    use perpetuals::core::types::funding::{FundingIndex, calculate_funding};
     use perpetuals::core::types::position::{
         AssetBalance, POSITION_VERSION, Position, PositionData, PositionDiff, PositionId,
         PositionMutableTrait, PositionTrait,
@@ -36,8 +36,8 @@ pub mod Positions {
         calculate_position_tvtr, evaluate_position,
     };
     use starknet::storage::{
-        Map, Mutable, StorageAsPointer, StoragePath, StoragePathEntry, StoragePointerReadAccess,
-        StoragePointerWriteAccess,
+        Map, Mutable, StorageAsPointer, StorageMapReadAccess, StoragePath, StoragePathEntry,
+        StoragePointerReadAccess, StoragePointerWriteAccess,
     };
     use starknet::{ContractAddress, get_caller_address};
     use starkware_utils::components::pausable::PausableComponent;
@@ -51,6 +51,10 @@ pub mod Positions {
     use starkware_utils::storage::iterable_map::{
         IterableMapIntoIterImpl, IterableMapReadAccessImpl, IterableMapWriteAccessImpl,
     };
+    use starkware_utils::storage::linked_iterable_map_felt::{
+        LinkedIterableMapFeltExistsTrait, LinkedIterableMapFeltReadAccess,
+        LinkedIterableMapFeltWriteAccess, LinkedIterableMapIntoIterImpl,
+    };
     use starkware_utils::storage::utils::AddToStorage;
     use starkware_utils::time::time::{Time, Timestamp, validate_expiration};
     use crate::core::components::assets::errors::NO_SUCH_ASSET;
@@ -62,7 +66,9 @@ pub mod Positions {
     };
     use crate::core::types::asset::synthetic::{AssetBalanceDiffEnriched, AssetType};
     use crate::core::types::balance::BalanceDiff;
-    use crate::core::types::position::{AssetEnrichedPositionDiff, PositionDiffEnriched};
+    use crate::core::types::position::{
+        AssetEnrichedPositionDiff, PositionDiffEnriched, SpotBalance,
+    };
     use crate::core::value_risk_calculator::{
         assert_healthy_or_healthier, calculate_position_tvtr_before, calculate_position_tvtr_change,
     };
@@ -108,6 +114,7 @@ pub mod Positions {
             self: @ComponentState<TContractState>, position_id: PositionId,
         ) -> PositionData {
             let position = self.get_position_snapshot(:position_id);
+            // TODO: comibine assets and spots or change PositionData.
             let (provisional_delta, assets) = self
                 .derive_funding_delta_and_unchanged_assets(
                     :position, position_diff: Default::default(),
@@ -448,11 +455,8 @@ pub mod Positions {
             let position_mut = self.get_position_mut(:position_id);
             position_mut.collateral_balance.add_and_write(position_diff.collateral_diff);
 
-            if let Option::Some((synthetic_id, asset_diff)) = position_diff.asset_diff {
-                self
-                    ._update_synthetic_balance_and_funding(
-                        position: position_mut, :synthetic_id, :asset_diff,
-                    );
+            if let Option::Some((asset_id, asset_diff)) = position_diff.asset_diff {
+                self.update_balance(position: position_mut, :asset_id, :asset_diff);
             };
         }
 
@@ -616,10 +620,23 @@ pub mod Positions {
             position: StoragePath<Position>,
             synthetic_id: AssetId,
         ) -> Balance {
-            if let Option::Some(synthetic) = position.asset_balances.read(synthetic_id) {
-                synthetic.balance
-            } else {
-                0_i64.into()
+            let assets = get_dep_component!(self, Assets);
+            let asset_type = assets.get_asset_type_unsafe(asset_id: synthetic_id);
+            match asset_type {
+                AssetType::SPOT_COLLATERAL => {
+                    if position.spot_balances.exists(synthetic_id) {
+                        position.spot_balances.read(key: synthetic_id).balance
+                    } else {
+                        0_i64.into()
+                    }
+                },
+                _ => {
+                    if let Option::Some(synthetic) = position.asset_balances.read(synthetic_id) {
+                        synthetic.balance
+                    } else {
+                        0_i64.into()
+                    }
+                },
             }
         }
 
@@ -659,7 +676,7 @@ pub mod Positions {
             let assets = get_dep_component!(self, Assets);
             let mut unchanged_assets = array![];
 
-            let synthetic_diff_id = if let Option::Some((id, _)) = position_diff.asset_diff {
+            let asset_diff_id = if let Option::Some((id, _)) = position_diff.asset_diff {
                 id
             } else {
                 Default::default()
@@ -680,7 +697,7 @@ pub mod Positions {
                         new_funding_index: funding_index,
                         balance: synthetic.balance,
                     );
-                if synthetic_diff_id == synthetic_id {
+                if asset_diff_id == synthetic_id {
                     continue;
                 }
 
@@ -695,6 +712,33 @@ pub mod Positions {
                             risk_factor,
                             cached_funding_index: synthetic.funding_index,
                             asset_type,
+                        },
+                    );
+            }
+
+            for (spot_id, spot) in position.spot_balances {
+                let balance: Balance = spot.balance;
+                if balance.is_zero() || asset_diff_id == spot_id {
+                    continue;
+                }
+
+                let price = assets.get_asset_price_unsafe(asset_id: spot_id);
+                // TODO: consider moving this to another storage location.
+                let risk_factor = assets.get_asset_risk_factor(spot_id, balance, price);
+
+                unchanged_assets
+                    .append(
+                        // TODO: change AssetBalanceInfo to other struct. we don't need all the
+                        // fields.
+                        AssetBalanceInfo {
+                            id: spot_id,
+                            balance,
+                            price,
+                            risk_factor: risk_factor,
+                            cached_funding_index: FundingIndex {
+                                value: 0,
+                            }, // Spot assets have no funding index.
+                            asset_type: AssetType::SPOT_COLLATERAL,
                         },
                     );
             }
@@ -873,6 +917,53 @@ pub mod Positions {
         impl Roles: RolesComponent::HasComponent<TContractState>,
         impl RequestApprovals: RequestApprovalsComponent::HasComponent<TContractState>,
     > of PrivateTrait<TContractState> {
+        fn update_balance(
+            ref self: ComponentState<TContractState>,
+            position: StoragePath<Mutable<Position>>,
+            asset_id: AssetId,
+            asset_diff: Balance,
+        ) {
+            let assets = get_dep_component!(@self, Assets);
+            let asset_type = assets.get_asset_type_unsafe(:asset_id);
+            match asset_type {
+                AssetType::SYNTHETIC => {
+                    self
+                        ._update_synthetic_balance_and_funding(
+                            position: position, synthetic_id: asset_id, :asset_diff,
+                        );
+                },
+                AssetType::SPOT_COLLATERAL => {
+                    let current_balance = if position.spot_balances.exists(asset_id) {
+                        position.spot_balances.read(key: asset_id)
+                    } else {
+                        Zero::zero()
+                    };
+                    let spot_balance = SpotBalance {
+                        version: current_balance.version,
+                        balance: current_balance.balance + asset_diff,
+                    };
+                    position.spot_balances.write(asset_id, spot_balance);
+                },
+                AssetType::VAULT_SHARE_COLLATERAL => {
+                    let current_balance = if let Option::Some(balance) = position
+                        .asset_balances
+                        .read(key: asset_id) {
+                        balance.balance
+                    } else {
+                        0_i64.into()
+                    };
+
+                    let asset_balance = AssetBalance {
+                        version: POSITION_VERSION,
+                        balance: current_balance + asset_diff,
+                        funding_index: 0_i64.into(),
+                    };
+                    position.asset_balances.write(asset_id, asset_balance);
+                },
+            }
+        }
+
+
         /// Updates the synthetic balance and handles the funding mechanism.
         /// This function adjusts the main collateral balance of a position by applying funding
         /// costs or earnings based on the difference between the global funding index and the
