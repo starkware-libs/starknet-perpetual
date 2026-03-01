@@ -41,7 +41,7 @@ pub trait IVaultExternal<TContractState> {
         interest_amount_vault_position: i64,
         interest_amount_liquidated: i64,
     );
-    fn force_redeem_from_vault(
+    fn forced_redeem_from_vault(
         ref self: TContractState, order: LimitOrder, vault_approval: LimitOrder,
     );
 }
@@ -486,7 +486,7 @@ pub(crate) mod VaultsManager {
                 );
         }
 
-        fn force_redeem_from_vault(
+        fn forced_redeem_from_vault(
             ref self: ContractState, order: LimitOrder, vault_approval: LimitOrder,
         ) {
             let empty_signature = array![].span();
