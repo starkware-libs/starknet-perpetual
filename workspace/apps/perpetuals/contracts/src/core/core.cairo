@@ -21,8 +21,9 @@ pub mod Core {
     };
     use perpetuals::core::components::positions::errors::ZERO_MAX_INTEREST_RATE;
     use perpetuals::core::errors::{
-        AMOUNT_OVERFLOW, ESCAPE_HATCH_DISABLED, FORCED_WAIT_REQUIRED, INVALID_ZERO_TIMEOUT,
-        LENGTH_MISMATCH, ORDER_IS_NOT_EXPIRED, TRADE_ASSET_NOT_SYNTHETIC, TRANSFER_FAILED,
+        AMOUNT_OVERFLOW, ESCAPE_HATCH_DISABLED, FORCED_WAIT_REQUIRED, INSUFFICIENT_APPROVAL,
+        INVALID_ZERO_TIMEOUT, LENGTH_MISMATCH, ORDER_IS_NOT_EXPIRED, TRADE_ASSET_NOT_SYNTHETIC,
+        TRANSFER_FAILED,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
@@ -38,7 +39,7 @@ pub mod Core {
     use starknet::storage::{
         StorageMapReadAccess, StoragePointerReadAccess, StoragePointerWriteAccess,
     };
-    use starknet::{ContractAddress, get_block_info, get_caller_address};
+    use starknet::{ContractAddress, get_block_info, get_caller_address, get_contract_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
@@ -212,6 +213,7 @@ pub mod Core {
         WithdrawRequest: events::WithdrawRequest,
         ForcedTradeRequest: events::ForcedTradeRequest,
         ForcedTrade: events::ForcedTrade,
+        ForcedWithdrawRequest: events::ForcedWithdrawRequest,
         ForcedRedeemFromVaultRequest: vault_events::ForcedRedeemFromVaultRequest,
         ForcedRedeemFromVault: vault_events::ForcedRedeemFromVault,
         InterestApplied: events::InterestApplied,
@@ -773,7 +775,7 @@ pub mod Core {
         ) {
             assert(self._is_escape_hatch_enabled(), ESCAPE_HATCH_DISABLED);
             assert(!self._is_vault(vault_position: position_id), 'VAULT_CANNOT_INITIATE_WITHDRAW');
-            self
+            let forced_withdraw_request_hash = self
                 .external_components
                 ._get_withdrawal_manager_dispatcher()
                 .forced_withdraw_request(
@@ -784,6 +786,24 @@ pub mod Core {
                     :amount,
                     :expiration,
                     :salt,
+                );
+
+            /// Executions:
+
+            // Transfer premium_cost (forced fee) from the caller to the sequencer address.
+            self._collect_forced_action_premium();
+
+            self
+                .emit(
+                    events::ForcedWithdrawRequest {
+                        position_id,
+                        recipient,
+                        collateral_id,
+                        amount,
+                        expiration,
+                        forced_withdraw_request_hash,
+                        salt,
+                    },
                 );
         }
 
@@ -865,18 +885,7 @@ pub mod Core {
             );
 
             // Transfer premium_cost (forced fee) from the caller to the sequencer address.
-            let premium_cost = self.premium_cost.read();
-            let quantum = self.assets.get_collateral_quantum();
-            let token_contract = self.assets.get_base_collateral_token_contract();
-            assert(
-                token_contract
-                    .transfer_from(
-                        sender: get_caller_address(),
-                        recipient: get_block_info().sequencer_address,
-                        amount: (premium_cost * quantum).into(),
-                    ),
-                TRANSFER_FAILED,
-            );
+            self._collect_forced_action_premium();
 
             self
                 .emit(
@@ -1041,18 +1050,7 @@ pub mod Core {
             );
 
             // Transfer premium_cost (forced fee) from the caller to the sequencer address.
-            let premium_cost = self.premium_cost.read();
-            let quantum = self.assets.get_collateral_quantum();
-            let token_contract = self.assets.get_base_collateral_token_contract();
-            assert(
-                token_contract
-                    .transfer_from(
-                        sender: get_caller_address(),
-                        recipient: get_block_info().sequencer_address,
-                        amount: (premium_cost * quantum).into(),
-                    ),
-                TRANSFER_FAILED,
-            );
+            self._collect_forced_action_premium();
 
             self
                 .emit(
@@ -1095,7 +1093,7 @@ pub mod Core {
         /// - Processes the forced redeem.
         /// - Marks the forced request as completed and clears the pending entry.
         /// - Emits a `ForcedRedeemFromVault` event.
-        fn force_redeem_from_vault(
+        fn forced_redeem_from_vault(
             ref self: ContractState,
             operator_nonce: u64,
             order: LimitOrder,
@@ -1126,7 +1124,7 @@ pub mod Core {
             self
                 .external_components
                 ._get_vault_manager_dispatcher()
-                .force_redeem_from_vault(:order, :vault_approval);
+                .forced_redeem_from_vault(:order, :vault_approval);
 
             self
                 .emit(
@@ -1469,6 +1467,27 @@ pub mod Core {
 
         fn _is_escape_hatch_enabled(ref self: ContractState) -> bool {
             return self.forced_actions_enabled.read();
+        }
+
+        /// Transfers the premium cost (forced fee) from the caller to the sequencer address.
+        fn _collect_forced_action_premium(ref self: ContractState) {
+            let premium_cost = self.premium_cost.read();
+            let quantum = self.assets.get_collateral_quantum();
+            let token_contract = self.assets.get_base_collateral_token_contract();
+            let amount: u256 = (premium_cost * quantum).into();
+            let outstanding_allowance = token_contract
+                .allowance(owner: get_caller_address(), spender: get_contract_address());
+            assert(outstanding_allowance >= amount, INSUFFICIENT_APPROVAL);
+
+            assert(
+                token_contract
+                    .transfer_from(
+                        sender: get_caller_address(),
+                        recipient: get_block_info().sequencer_address,
+                        :amount,
+                    ),
+                TRANSFER_FAILED,
+            );
         }
     }
 }

@@ -1672,7 +1672,7 @@ fn test_forced_redeem_from_vault_after_timelock() {
     state.facade.advance_time(FORCED_ACTION_TIMELOCK + 1);
 
     // Execute forced redeem
-    state.facade.force_redeem_from_vault(user_order, vault_order, caller: redeeming_user.account);
+    state.facade.forced_redeem_from_vault(user_order, vault_order, caller: redeeming_user.account);
 
     // Check ForcedRedeemFromVault event
     let events_span = state
@@ -1807,7 +1807,7 @@ fn test_forced_redeem_from_vault_by_operator_before_timelock() {
         );
 
     // Operator executes forced redeem before timelock (allowed)
-    state.facade.force_redeem_from_vault(user_order, vault_order, caller: state.facade.operator);
+    state.facade.forced_redeem_from_vault(user_order, vault_order, caller: state.facade.operator);
 
     // Check balances after forced redeem
     let redeeming_user_usdc_balance_after = state
@@ -1896,7 +1896,7 @@ fn test_forced_redeem_from_vault_user_before_timelock_fails() {
         );
 
     // Try to execute forced redeem before timelock (should fail)
-    state.facade.force_redeem_from_vault(user_order, vault_order, caller: redeeming_user.account);
+    state.facade.forced_redeem_from_vault(user_order, vault_order, caller: redeeming_user.account);
 }
 
 #[test]
@@ -1966,13 +1966,13 @@ fn test_forced_redeem_from_vault_user_after_operator_already_redeemed_fails() {
         );
 
     // Operator executes forced redeem before timelock (allowed)
-    state.facade.force_redeem_from_vault(user_order, vault_order, caller: state.facade.operator);
+    state.facade.forced_redeem_from_vault(user_order, vault_order, caller: state.facade.operator);
 
     // Wait for timelock
     state.facade.advance_time(FORCED_ACTION_TIMELOCK + 1);
 
     // User tries to execute forced redeem after operator already did it (should fail)
-    state.facade.force_redeem_from_vault(user_order, vault_order, caller: redeeming_user.account);
+    state.facade.forced_redeem_from_vault(user_order, vault_order, caller: redeeming_user.account);
 }
 
 #[test]
@@ -2045,8 +2045,8 @@ fn test_forced_redeem_from_vault_operator_after_user_already_redeemed_fails() {
     state.facade.advance_time(FORCED_ACTION_TIMELOCK + 1);
 
     // User executes forced redeem after timelock
-    state.facade.force_redeem_from_vault(user_order, vault_order, caller: redeeming_user.account);
+    state.facade.forced_redeem_from_vault(user_order, vault_order, caller: redeeming_user.account);
 
     // Operator tries to execute forced redeem after user already did it (should fail)
-    state.facade.force_redeem_from_vault(user_order, vault_order, caller: state.facade.operator);
+    state.facade.forced_redeem_from_vault(user_order, vault_order, caller: state.facade.operator);
 }

@@ -2769,11 +2769,11 @@ fn test_successful_forced_withdraw_request() {
     // Fund user with premium cost
     let premium_cost = PREMIUM_COST;
     let premium_amount: u128 = premium_cost.into() * cfg.collateral_cfg.quantum.into();
-    token_state.fund(recipient: user.address, amount: USER_INIT_BALANCE.try_into().unwrap());
+    token_state.fund(recipient: user.address, amount: USER_INIT_BALANCE);
     token_state.approve(owner: user.address, spender: contract_address, amount: premium_amount);
 
     // Check user balance before forced withdraw request
-    validate_balance(token_state, user.address, USER_INIT_BALANCE.try_into().unwrap());
+    validate_balance(token_state, user.address, USER_INIT_BALANCE);
 
     // Get sequencer address and check its balance before
     let sequencer_address = get_block_info().sequencer_address;
@@ -2783,7 +2783,7 @@ fn test_successful_forced_withdraw_request() {
     start_cheat_block_timestamp_global(
         block_timestamp: Time::now().add(delta: Time::days(1)).into(),
     );
-    let expiration = Time::now().add(delta: Time::days(1));
+    let expiration = Time::now().add(delta: Time::weeks(2));
 
     let withdraw_args = WithdrawArgs {
         position_id: user.position_id,

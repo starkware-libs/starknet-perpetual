@@ -2816,7 +2816,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
         (user_order, vault_order)
     }
 
-    fn force_redeem_from_vault(
+    fn forced_redeem_from_vault(
         ref self: PerpsTestsFacade,
         user_order: LimitOrder,
         vault_order: LimitOrder,
@@ -2830,7 +2830,7 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
 
         caller.set_as_caller(self.perpetuals_contract);
         ICoreDispatcher { contract_address: self.perpetuals_contract }
-            .force_redeem_from_vault(
+            .forced_redeem_from_vault(
                 :operator_nonce, order: user_order, vault_approval: vault_order,
             );
     }

@@ -177,7 +177,7 @@ pub trait ICore<TContractState> {
         order: LimitOrder,
         vault_approval: LimitOrder,
     );
-    fn force_redeem_from_vault(
+    fn forced_redeem_from_vault(
         ref self: TContractState,
         operator_nonce: u64,
         order: LimitOrder,
