@@ -3,9 +3,7 @@ use perpetuals::core::components::deposit::events as deposit_events;
 use perpetuals::core::components::positions::events as positions_events;
 use perpetuals::core::components::snip::SNIP12MetadataImpl;
 use perpetuals::core::components::vaults::events as vault_events;
-use perpetuals::core::components::withdrawal::withdrawal_manager::{
-    ForcedWithdraw, ForcedWithdrawRequest,
-};
+use perpetuals::core::components::withdrawal::withdrawal_manager::ForcedWithdraw;
 use perpetuals::core::events;
 use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::funding::FundingIndex;
@@ -188,7 +186,7 @@ pub fn assert_forced_withdraw_request_event_with_expected(
     forced_withdraw_request_hash: felt252,
     salt: felt252,
 ) {
-    let expected_event = ForcedWithdrawRequest {
+    let expected_event = events::ForcedWithdrawRequest {
         position_id,
         recipient,
         collateral_id,
