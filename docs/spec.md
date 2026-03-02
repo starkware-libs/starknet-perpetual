@@ -1913,7 +1913,7 @@ Only APP\_GOVERNOR can execute.
 
 Update asset risk factors. This function must be sequenced by the operator to prevent liquidation failures if submitted out of order.
 
-Risk factors can be decreased by the operator without any request. Risk factors can only be increased if there is a matching request from the app governor via `update_asset_risk_factor_request`.
+All risk factor updates require a matching request from the app governor via `update_asset_risk_factor_request`. The operator can only execute updates that match an existing request.
 
 ```rust
 fn update_asset_risk_factor(
@@ -1940,19 +1940,14 @@ Only the Operator can execute.
 6. `asset_id` is not the collateral asset.
 7. Non-synthetic assets must have exactly 1 risk factor tier.
 8. `risk_factor_tiers` is sorted.
-9. If any risk factor is increasing:
-   - A matching request must exist from `update_asset_risk_factor_request` for the same `asset_id`.
-   - The request parameters (`risk_factor_first_tier_boundary`, `risk_factor_tier_size`, `risk_factor_tiers`) must exactly match the provided parameters.
-10. If no risk factors are increasing, all new risk factors must be less than or equal to the old risk factors (risk can only decrease or stay the same).
+9. A matching request must exist from `update_asset_risk_factor_request`.
+10. The request parameters (`asset_id`, `risk_factor_first_tier_boundary`, `risk_factor_tier_size`, `risk_factor_tiers`) must exactly match the provided parameters.
 
 **Logic:**
 
 1. Run validations.
-2. Check if any risk factor is increasing by comparing new tiers with old tiers.
-3. If increasing:
-   - Validate that a matching request exists for the same `asset_id`.
-   - Validate that all request parameters exactly match the provided parameters.
-   - Clear the request after validation.
+2. Validate that a matching request exists and that all request parameters exactly match the provided parameters.
+3. Clear the request after validation.
 4. Update `risk_factor_first_tier_boundary` and `risk_factor_tier_size` in asset config.
 5. Clear existing risk factor tiers.
 6. Add new risk factor tiers.
@@ -1979,7 +1974,7 @@ Only the Operator can execute.
 
 ###### Update Asset Risk Factor Request
 
-Request an increase in asset risk factors. This function allows the app governor to request a risk factor increase, which must then be executed by the operator via `update_asset_risk_factor`.
+Request an update to asset risk factors. This function allows the app governor to request a risk factor update, which must then be executed by the operator via `update_asset_risk_factor`.
 
 Only one request can be active at a time. A new request will overwrite any previous request, regardless of the asset ID.
 
@@ -2006,12 +2001,8 @@ Only the App Governor can execute.
 **Logic:**
 
 1. Run validations.
-2. Clear any existing risk factor increase request (if present).
-3. Store the new request parameters:
-   - `risk_factor_increase_request_asset_id`
-   - `risk_factor_increase_request_first_tier_boundary`
-   - `risk_factor_increase_request_tier_size`
-   - `risk_factor_increase_request_tiers` (Vec of tier values)
+2. Compute the hash of the request parameters.
+3. Store the request hash (overwrites any previous request).
 4. Emit `RiskFactorIncreaseRequest` event.
 
 **Emits:**

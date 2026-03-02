@@ -78,6 +78,19 @@ pub struct AssetBalanceInfo {
 }
 
 #[derive(Copy, Debug, Default, Drop, Serde)]
+pub struct SpotAssetBalanceDiff {
+    pub asset_id: AssetId,
+    pub diff: i64,
+}
+
+#[generate_trait]
+pub impl SpotAssetBalanceDiffImpl of SpotAssetBalanceDiffTrait {
+    fn invert(self: SpotAssetBalanceDiff) -> SpotAssetBalanceDiff {
+        SpotAssetBalanceDiff { asset_id: self.asset_id, diff: -self.diff }
+    }
+}
+
+#[derive(Copy, Debug, Default, Drop, Serde)]
 pub struct AssetBalanceDiffEnriched {
     pub asset_id: AssetId,
     pub balance_before: Balance,

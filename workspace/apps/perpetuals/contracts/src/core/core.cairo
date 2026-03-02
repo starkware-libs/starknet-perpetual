@@ -426,6 +426,7 @@ pub mod Core {
 
             // Read interest validation parameters once for all settlements
             let current_time = self.get_exchange_time();
+            let time_of_last_update = self.exchange_time.get_time_of_last_update();
             let max_interest_rate_per_sec = self.get_max_interest_rate_per_sec();
 
             let mut tvtr_cache: Felt252Dict<Nullable<PositionTVTR>> = Default::default();
@@ -450,6 +451,7 @@ pub mod Core {
                         interest_amount_a: trade.interest_amount_a,
                         interest_amount_b: trade.interest_amount_b,
                         :current_time,
+                        :time_of_last_update,
                         :max_interest_rate_per_sec,
                         tvtr_a_before: cached_pos_a_tvtr,
                         tvtr_b_before: cached_pos_b_tvtr,
@@ -535,6 +537,7 @@ pub mod Core {
                     interest_amount_a: 0,
                     interest_amount_b: 0,
                     current_time: Timestamp { seconds: 0 },
+                    time_of_last_update: Timestamp { seconds: 0 },
                     max_interest_rate_per_sec: 0,
                     tvtr_a_before: Default::default(),
                     tvtr_b_before: Default::default(),
@@ -1018,6 +1021,7 @@ pub mod Core {
                     interest_amount_a: 0,
                     interest_amount_b: 0,
                     current_time: Timestamp { seconds: 0 },
+                    time_of_last_update: Timestamp { seconds: 0 },
                     max_interest_rate_per_sec: 0,
                     tvtr_a_before: Default::default(),
                     tvtr_b_before: Default::default(),
@@ -1228,6 +1232,7 @@ pub mod Core {
 
             // Read once and pass as arguments to avoid redundant storage reads
             let current_time = self.get_exchange_time();
+            let time_of_last_update = self.exchange_time.get_time_of_last_update();
             let max_interest_rate_per_sec = self.positions.max_interest_rate_per_sec.read();
 
             for (position_id, interest_amount) in position_interest_amounts {
@@ -1241,6 +1246,7 @@ pub mod Core {
                         :position_id,
                         :interest_amount,
                         :current_time,
+                        :time_of_last_update,
                         :max_interest_rate_per_sec,
                     );
 
@@ -1337,6 +1343,7 @@ pub mod Core {
             interest_amount_a: i64,
             interest_amount_b: i64,
             current_time: Timestamp,
+            time_of_last_update: Timestamp,
             max_interest_rate_per_sec: u32,
             tvtr_a_before: Nullable<PositionTVTR>,
             tvtr_b_before: Nullable<PositionTVTR>,
@@ -1368,6 +1375,7 @@ pub mod Core {
                     position_id: position_id_a,
                     interest_amount: interest_amount_a,
                     :current_time,
+                    :time_of_last_update,
                     :max_interest_rate_per_sec,
                 );
 
@@ -1378,6 +1386,7 @@ pub mod Core {
                     position_id: position_id_b,
                     interest_amount: interest_amount_b,
                     :current_time,
+                    :time_of_last_update,
                     :max_interest_rate_per_sec,
                 );
 

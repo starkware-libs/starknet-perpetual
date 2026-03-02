@@ -1,6 +1,8 @@
 use core::num::traits::Zero;
 use perpetuals::core::types::asset::AssetId;
-use perpetuals::core::types::asset::synthetic::{AssetBalanceDiffEnriched, AssetBalanceInfo};
+use perpetuals::core::types::asset::synthetic::{
+    AssetBalanceDiffEnriched, AssetBalanceInfo, SpotAssetBalanceDiff,
+};
 use perpetuals::core::types::balance::{Balance, BalanceDiff};
 use perpetuals::core::types::funding::FundingIndex;
 use starknet::ContractAddress;
@@ -78,6 +80,13 @@ pub struct PositionDiff {
     pub collateral_diff: Balance,
     pub asset_diff: Option<(AssetId, Balance)>,
 }
+
+#[derive(Copy, Debug, Drop, Serde)]
+pub struct MultiSpotPositionDiff {
+    pub collateral_diff: Balance,
+    pub asset_diffs: Span<SpotAssetBalanceDiff>,
+}
+
 
 /// Diff where synthetic is enriched but collateral is still raw.
 #[derive(Copy, Debug, Drop, Serde, Default)]

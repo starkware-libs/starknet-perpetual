@@ -78,7 +78,7 @@ pub mod AssetsComponent {
         pub asset_oracle: Map<AssetId, Map<PublicKey, felt252>>,
         pub max_oracle_price_validity: TimeDelta,
         pub collateral_id: Option<AssetId>,
-        pub risk_factor_increase_request_hash: HashType,
+        pub risk_factor_request_hash: HashType,
     }
 
     #[event]

@@ -19,12 +19,13 @@ pub mod ExchangeTimeComponent {
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
     use starkware_utils::components::roles::RolesComponent;
-    use starkware_utils::constants::DAY;
+    use starkware_utils::constants::WEEK;
     use starkware_utils::time::time::{Time, Timestamp};
 
     #[storage]
     pub struct Storage {
         exchange_time: Timestamp,
+        last_time_of_exchange_time_update: Timestamp,
     }
 
     #[event]
@@ -49,9 +50,12 @@ pub mod ExchangeTimeComponent {
         impl Pausable: PausableComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
     > of IExchangeTime<ComponentState<TContractState>> {
-        /// Returns the current exchange time stored in the contract.
         fn get_exchange_time(self: @ComponentState<TContractState>) -> Timestamp {
             self.exchange_time.read()
+        }
+
+        fn get_time_of_last_update(self: @ComponentState<TContractState>) -> Timestamp {
+            self.last_time_of_exchange_time_update.read()
         }
 
         /// Updates the exchange time stored in the contract.
@@ -60,14 +64,16 @@ pub mod ExchangeTimeComponent {
         /// - The contract must not be paused.
         /// - Only the operator can call this function.
         /// - The operator_nonce must be valid.
-        /// - The new exchange time must be strictly greater than the current exchange time.
+        /// - The new exchange time must be strictly greater than the current exchange time
+        ///   (monotonically increasing).
         /// - The new exchange time must not drift more than MAX_TIME_DRIFT seconds from the current
-        /// Starknet block timestamp.
-        /// - The new exchange time must be larger than now - DAY (cannot be more than a day in the
-        /// past).
+        ///   Starknet block timestamp (cannot be too far in the future).
+        /// - The new exchange time must be larger than now - WEEK (cannot be more than a week in
+        ///   the past).
         ///
         /// Execution:
-        /// - Updates the exchange time.
+        /// - Updates the exchange time storage.
+        /// - Emits an ExchangeTimeUpdated event with the new timestamp.
         fn update_exchange_time(
             ref self: ComponentState<TContractState>, operator_nonce: u64, new_timestamp: Timestamp,
         ) {
@@ -81,13 +87,14 @@ pub mod ExchangeTimeComponent {
 
             let now = Time::now();
             // The new exchange time cannot be more than a day in the past.
-            let min_acceptable_time = now.sub_delta(Time::seconds(DAY));
+            let min_acceptable_time = now.sub_delta(Time::seconds(WEEK));
             assert(new_timestamp > min_acceptable_time, TIMESTAMP_TOO_OLD);
 
             let acceptable_time = now.add(Time::seconds(MAX_TIME_DRIFT));
             assert(new_timestamp <= acceptable_time, STALE_TIME);
 
             self.exchange_time.write(new_timestamp);
+            self.last_time_of_exchange_time_update.write(now);
 
             self.emit(ExchangeTimeUpdated { new_timestamp });
         }
@@ -102,7 +109,10 @@ pub mod ExchangeTimeComponent {
     > of InternalTrait<TContractState> {
         fn initialize(ref self: ComponentState<TContractState>) {
             assert(self.exchange_time.read() == Zero::zero(), ALREADY_INITIALIZED);
-            self.exchange_time.write(Time::now());
+
+            let now = Time::now();
+            self.exchange_time.write(now);
+            self.last_time_of_exchange_time_update.write(now);
         }
     }
 }

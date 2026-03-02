@@ -415,6 +415,45 @@ pub fn setup_state_with_pending_spot_asset(
     state
 }
 
+pub fn setup_state_with_multiple_spot_assets(
+    cfg: @PerpetualsInitConfig, token_state: @TokenState,
+) -> Core::ContractState {
+    let mut state = init_state(:cfg, :token_state);
+    cheat_caller_address_once(contract_address: test_address(), caller_address: *cfg.app_governor);
+    state
+        .assets
+        .add_spot_asset(
+            asset_id: *cfg.spot_cfg.collateral_id,
+            erc20_contract_address: *cfg.spot_cfg.contract_address,
+            quantum: *cfg.spot_cfg.quantum,
+            resolution_factor: *cfg.spot_cfg.resolution_factor,
+            risk_factor: RISK_FACTOR,
+            quorum: *cfg.spot_cfg.quorum,
+        );
+    cfg
+        .spot_cfg
+        .token_state
+        .fund(recipient: test_address(), amount: CONTRACT_INIT_BALANCE.try_into().unwrap());
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: *cfg.app_governor);
+    state
+        .assets
+        .add_spot_asset(
+            asset_id: *cfg.vault_share_cfg.collateral_id,
+            erc20_contract_address: *cfg.vault_share_cfg.contract_address,
+            quantum: *cfg.vault_share_cfg.quantum,
+            resolution_factor: *cfg.vault_share_cfg.resolution_factor,
+            risk_factor: RISK_FACTOR,
+            quorum: *cfg.vault_share_cfg.quorum,
+        );
+    cfg
+        .vault_share_cfg
+        .token_state
+        .fund(recipient: test_address(), amount: CONTRACT_INIT_BALANCE.try_into().unwrap());
+
+    state
+}
+
 pub fn setup_state_with_pending_vault_share(
     cfg: @PerpetualsInitConfig, token_state: @TokenState,
 ) -> Core::ContractState {
@@ -441,6 +480,60 @@ pub fn setup_state_with_pending_vault_share(
             quorum: 1_u8,
         );
     state
+}
+
+pub fn send_price_tick_for_spot(
+    ref state: Core::ContractState, cfg: @PerpetualsInitConfig, price: u64,
+) {
+    let mut spy = snforge_std::spy_events();
+    let asset_name = 'SPOT_ASSET';
+    let oracle1_name = 'ORCL1';
+    let oracle1 = Oracle { oracle_name: oracle1_name, asset_name, key_pair: KEY_PAIR_1() };
+    let spot_asset_id = *cfg.spot_cfg.collateral_id;
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: *cfg.app_governor);
+    state
+        .add_oracle_to_asset(
+            asset_id: spot_asset_id,
+            oracle_public_key: oracle1.key_pair.public_key,
+            oracle_name: oracle1_name,
+            :asset_name,
+        );
+    let old_time: u64 = Time::now().into();
+    let new_time = Time::now().add(delta: MAX_ORACLE_PRICE_VALIDITY);
+    assert!(state.assets.get_num_of_active_synthetic_assets() == 0);
+    start_cheat_block_timestamp_global(block_timestamp: new_time.into());
+    cheat_caller_address_once(contract_address: test_address(), caller_address: *cfg.operator);
+    let oracle_price: u128 = price.into() * 10_u128.pow(18);
+    let operator_nonce = state.get_operator_nonce();
+    state
+        .price_tick(
+            :operator_nonce,
+            asset_id: spot_asset_id,
+            :oracle_price,
+            signed_prices: [
+                oracle1.get_signed_price(:oracle_price, timestamp: old_time.try_into().unwrap())
+            ]
+                .span(),
+        );
+
+    // Catch the event.
+    let events = spy.get_events().emitted_by(test_address()).events;
+
+    let expected_price = convert_oracle_to_perps_price(
+        oracle_price: oracle_price, resolution_factor: *cfg.spot_cfg.resolution_factor,
+    );
+    assert_asset_activated_event_with_expected(spied_event: events[1], asset_id: spot_asset_id);
+    assert_price_tick_event_with_expected(
+        spied_event: events[2], asset_id: spot_asset_id, price: expected_price,
+    );
+    assert!(state.assets.get_asset_config(spot_asset_id).status == AssetStatus::ACTIVE);
+    //check synthetic count is not incremented
+    assert!(state.assets.get_num_of_active_synthetic_assets() == 0);
+
+    let data = state.assets.get_timely_data(spot_asset_id);
+    assert!(data.last_price_update == new_time);
+    assert!(data.price.value() == expected_price.value());
 }
 
 pub fn send_price_tick_for_vault_share(
