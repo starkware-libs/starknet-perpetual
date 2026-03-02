@@ -69,6 +69,7 @@ pub(crate) mod VaultsManager {
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
     use perpetuals::core::types::asset::AssetId;
     use perpetuals::core::types::position::{PositionId, PositionTrait};
+    use starknet::storage::{Mutable, StoragePath};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
     use starkware_utils::components::roles::RolesComponent;
@@ -87,13 +88,18 @@ pub(crate) mod VaultsManager {
     use crate::core::components::positions::interface::IPositions;
     use crate::core::components::snip::SNIP12MetadataImpl;
     use crate::core::components::vaults::events;
+    use crate::core::components::vaults::types::VaultConfig;
     use crate::core::components::vaults::vaults::Vaults::InternalTrait as VaultsInternal;
     use crate::core::components::vaults::vaults::{IVaults, Vaults as VaultsComponent};
     use crate::core::errors::order_expired_err;
-    use crate::core::types::asset::synthetic::{SpotAssetBalanceDiff, SpotAssetBalanceDiffTrait};
+    use crate::core::types::asset::synthetic::{
+        AssetConfig, SpotAssetBalanceDiff, SpotAssetBalanceDiffTrait,
+    };
     use crate::core::types::balance::Balance;
     use crate::core::types::order::ValidateableOrderTrait;
-    use crate::core::types::position::{MultiSpotPositionDiff, PositionDiff};
+    use crate::core::types::position::{
+        MultiSpotPositionDiff, Position, PositionDiff, PositionMutableTrait,
+    };
     use crate::core::types::price::PriceMulTrait;
     use crate::core::utils::{validate_signature, validate_trade};
     use crate::core::value_risk_calculator::assert_healthy_or_healthier;
@@ -233,7 +239,7 @@ pub(crate) mod VaultsManager {
             let sending_position = self.positions.get_position_mut(position_id: from_position_id);
 
             let order_hash = validate_signature(
-                public_key: sending_position.into().get_owner_public_key(),
+                public_key: sending_position.get_owner_public_key(),
                 message: order,
                 signature: signature,
             );
@@ -520,76 +526,31 @@ pub(crate) mod VaultsManager {
 
     #[generate_trait]
     pub impl InternalFunctions of VaultsFunctionsTrait {
-        fn _execute_redeem(
+        fn _validate_orders_and_track_fulfillments(
             ref self: ContractState,
+            redeeming_position_id: PositionId,
+            redeeming_position: StoragePath<Mutable<Position>>,
+            vault_position_id: PositionId,
+            vault_position: StoragePath<Mutable<Position>>,
             order: LimitOrder,
             vault_approval: LimitOrder,
+            user_signature: Signature,
             vault_signature: Signature,
             actual_shares_user: i64,
-            actual_collateral_user: i64,
             validate_user_order: bool,
-            user_signature: Signature,
             validate_signatures: bool,
-            interest_amount_vault_position: i64,
-            interest_amount_sender: i64,
-            interest_amount_receiver: i64,
-            other_amounts: Span<SpotAssetBalanceDiff>,
         ) {
-            let vault_config = self.vaults.get_vault_config_for_asset(order.base_asset_id);
-            let vault_asset = self.assets.get_asset_config(vault_config.asset_id);
-
-            let vault_position_id: PositionId = vault_config.position_id.into();
-            let redeeming_position_id = order.source_position;
-            let receiving_position_id = order.receive_position;
-
-            if (actual_shares_user >= 0) {
-                let err = format!("INVALID_ACTUAL_SHARES_AMOUNT: {}", actual_shares_user);
-                panic_with_byte_array(err: @err);
-            }
-
-            if (actual_collateral_user < 0) {
-                let err = format!("INVALID_ACTUAL_COLLATERAL_AMOUNT: {}", actual_collateral_user);
-                panic_with_byte_array(err: @err);
-            }
-
-            let vault_position = self.positions.get_position_mut(vault_position_id);
-            let redeeming_position = self.positions.get_position_mut(redeeming_position_id);
-            let receiving_position = self.positions.get_position_mut(receiving_position_id);
-
-            // Validate interest amounts in range
-            self
-                .positions
-                .verify_and_update_interest_range(
-                    vault_position, vault_position_id, interest_amount_vault_position,
-                );
-
-            self
-                .positions
-                .verify_and_update_interest_range(
-                    redeeming_position, redeeming_position_id, interest_amount_sender,
-                );
-
-            self
-                .positions
-                .verify_and_update_interest_range(
-                    receiving_position, receiving_position_id, interest_amount_receiver,
-                );
-
-            let amount_to_burn = actual_shares_user;
-
-            if (validate_user_order) {
+            if validate_user_order {
                 let order_hash = if validate_signatures {
                     validate_signature(
-                        public_key: redeeming_position.into().get_owner_public_key(),
+                        public_key: redeeming_position.get_owner_public_key(),
                         message: order,
                         signature: user_signature,
                     )
                 } else {
-                    order
-                        .get_message_hash(
-                            public_key: redeeming_position.into().get_owner_public_key(),
-                        )
+                    order.get_message_hash(public_key: redeeming_position.get_owner_public_key())
                 };
+
                 self
                     .fulfillment_tracking
                     .update_fulfillment(
@@ -602,14 +563,14 @@ pub(crate) mod VaultsManager {
 
             let vault_order_hash = if validate_signatures {
                 validate_signature(
-                    public_key: vault_position.into().get_owner_public_key(),
+                    public_key: vault_position.get_owner_public_key(),
                     message: vault_approval,
                     signature: vault_signature,
                 )
             } else {
-                vault_approval
-                    .get_message_hash(public_key: vault_position.into().get_owner_public_key())
+                vault_approval.get_message_hash(public_key: vault_position.get_owner_public_key())
             };
+
             self
                 .fulfillment_tracking
                 .update_fulfillment(
@@ -618,26 +579,13 @@ pub(crate) mod VaultsManager {
                     order_base_amount: vault_approval.base_amount,
                     actual_base_amount: -actual_shares_user,
                 );
+        }
 
-            let vault_dispatcher = IProtocolVaultDispatcher {
-                contract_address: vault_asset.token_contract.expect('NOT_ERC20'),
-            };
-
-            let vault_erc4626_dispatcher = IERC4626Dispatcher {
-                contract_address: vault_asset.token_contract.expect('NOT_ERC4626'),
-            };
-
-            let vault_erc20Dispatcher = IERC20Dispatcher {
-                contract_address: vault_asset.token_contract.expect('NOT_ERC20'),
-            };
-
-            let pnl_collateral_dispatcher = self.assets.get_base_collateral_token_contract();
-            let perps_contract_balance_before = pnl_collateral_dispatcher
-                .balance_of(starknet::get_contract_address());
-
-            let unquantized_amount_to_burn = amount_to_burn.abs().wide_mul(vault_asset.quantum);
-
-            //calculate total value of redemption
+        fn _calculate_total_value_to_receive(
+            self: @ContractState,
+            actual_collateral_user: i64,
+            other_amounts: Span<SpotAssetBalanceDiff>,
+        ) -> u64 {
             let mut total_value_to_receive: i128 = actual_collateral_user.into();
             for other_collateral in other_amounts {
                 assert(*other_collateral.diff >= 0_i64, 'NEGATIVE_OTHER_COLLATERAL');
@@ -646,34 +594,41 @@ pub(crate) mod VaultsManager {
                 total_value_to_receive += price.mul(balance_diff);
             }
 
-            let value_to_receive: u64 = total_value_to_receive
-                .abs()
-                .try_into()
-                .expect('REDEEM_VALUE_TOO_LARGE');
+            total_value_to_receive.abs().try_into().expect('REDEEM_VALUE_TOO_LARGE')
+        }
 
-            validate_trade(
-                order_a: order,
-                order_b: vault_approval,
-                actual_amount_base_a: actual_shares_user,
-                actual_amount_quote_a: value_to_receive.try_into().expect('VALUE_TOO_LARGE'),
-                actual_fee_a: 0_u64,
-                actual_fee_b: 0_u64,
-                asset: Some(vault_asset),
-                collateral_id: self.assets.get_base_collateral_id(),
-            );
+        fn _execute_burn_with_price(
+            self: @ContractState,
+            vault_asset: AssetConfig,
+            value_to_receive: u64,
+            unquantized_amount_to_burn: u128,
+        ) {
+            let vault_dispatcher = IProtocolVaultDispatcher {
+                contract_address: (vault_asset).token_contract.expect('NOT_ERC20'),
+            };
+
+            let vault_erc4626_dispatcher = IERC4626Dispatcher {
+                contract_address: (vault_asset).token_contract.expect('NOT_ERC4626'),
+            };
+
+            let vault_erc20Dispatcher = IERC20Dispatcher {
+                contract_address: (vault_asset).token_contract.expect('NOT_ERC20'),
+            };
+
+            let pnl_collateral_dispatcher = self.assets.get_base_collateral_token_contract();
 
             //approve the vault contract to transfer pnl collateral to itself to "send back" to
             //perps
             pnl_collateral_dispatcher
                 .approve(
-                    spender: vault_asset.token_contract.expect('NOT_ERC20'),
+                    spender: (vault_asset).token_contract.expect('NOT_ERC20'),
                     amount: value_to_receive.into(),
                 );
 
             //approve the vault contract transferring vault shares to itself for burning
             vault_erc20Dispatcher
                 .approve(
-                    spender: vault_asset.token_contract.expect('NOT_ERC20'),
+                    spender: (vault_asset).token_contract.expect('NOT_ERC20'),
                     amount: unquantized_amount_to_burn.into(),
                 );
 
@@ -703,7 +658,21 @@ pub(crate) mod VaultsManager {
                 );
                 panic_with_byte_array(err: @err);
             }
+        }
 
+        fn _apply_redeem_position_diffs(
+            ref self: ContractState,
+            vault_config: VaultConfig,
+            vault_position_id: PositionId,
+            redeeming_position_id: PositionId,
+            receiving_position_id: PositionId,
+            actual_shares_user: i64,
+            actual_collateral_user: i64,
+            interest_amount_vault_position: i64,
+            interest_amount_sender: i64,
+            interest_amount_receiver: i64,
+            other_amounts: Span<SpotAssetBalanceDiff>,
+        ) {
             let mut vault_spot_diffs = array![];
             for item in other_amounts {
                 vault_spot_diffs.append((*item).invert());
@@ -734,10 +703,14 @@ pub(crate) mod VaultsManager {
 
             // prevent withdrawal of more collateral than is contained with the vault
             // protection against malicious operator
+            let vault_position_storage: StoragePath<Position> = self
+                .positions
+                .get_position_snapshot(vault_position_id);
             self
                 .positions
                 .validate_asset_balance_is_not_negative(
-                    position: vault_position.into(), asset_id: self.assets.get_base_collateral_id(),
+                    position: vault_position_storage,
+                    asset_id: self.assets.get_base_collateral_id(),
                 );
 
             if (redeeming_position_id == receiving_position_id) {
@@ -807,6 +780,118 @@ pub(crate) mod VaultsManager {
                     position_id: receiving_position_id, tvtr: receiver_tv_tr,
                 );
             }
+        }
+
+        fn _execute_redeem(
+            ref self: ContractState,
+            order: LimitOrder,
+            vault_approval: LimitOrder,
+            vault_signature: Signature,
+            actual_shares_user: i64,
+            actual_collateral_user: i64,
+            validate_user_order: bool,
+            user_signature: Signature,
+            validate_signatures: bool,
+            interest_amount_vault_position: i64,
+            interest_amount_sender: i64,
+            interest_amount_receiver: i64,
+            other_amounts: Span<SpotAssetBalanceDiff>,
+        ) {
+            let vault_config = self.vaults.get_vault_config_for_asset(order.base_asset_id);
+            let vault_asset = self.assets.get_asset_config(vault_config.asset_id);
+
+            let vault_position_id: PositionId = vault_config.position_id.into();
+            let redeeming_position_id = order.source_position;
+            let receiving_position_id = order.receive_position;
+
+            if (actual_shares_user >= 0) {
+                let err = format!("INVALID_ACTUAL_SHARES_AMOUNT: {}", actual_shares_user);
+                panic_with_byte_array(err: @err);
+            }
+
+            if (actual_collateral_user < 0) {
+                let err = format!("INVALID_ACTUAL_COLLATERAL_AMOUNT: {}", actual_collateral_user);
+                panic_with_byte_array(err: @err);
+            }
+
+            let vault_position = self.positions.get_position_mut(vault_position_id);
+            let redeeming_position = self.positions.get_position_mut(redeeming_position_id);
+            let receiving_position = self.positions.get_position_mut(receiving_position_id);
+
+            // Validate interest amounts in range
+            self
+                .positions
+                .verify_and_update_interest_range(
+                    vault_position, vault_position_id, interest_amount_vault_position,
+                );
+
+            self
+                .positions
+                .verify_and_update_interest_range(
+                    redeeming_position, redeeming_position_id, interest_amount_sender,
+                );
+
+            self
+                .positions
+                .verify_and_update_interest_range(
+                    receiving_position, receiving_position_id, interest_amount_receiver,
+                );
+
+            let amount_to_burn = actual_shares_user;
+            let unquantized_amount_to_burn = amount_to_burn.abs().wide_mul(vault_asset.quantum);
+
+            let value_to_receive = self
+                ._calculate_total_value_to_receive(:actual_collateral_user, :other_amounts);
+
+            let pnl_collateral_dispatcher = self.assets.get_base_collateral_token_contract();
+            let perps_contract_balance_before = pnl_collateral_dispatcher
+                .balance_of(starknet::get_contract_address());
+
+            self
+                ._validate_orders_and_track_fulfillments(
+                    :redeeming_position_id,
+                    redeeming_position: redeeming_position,
+                    :vault_position_id,
+                    vault_position: vault_position,
+                    :order,
+                    :vault_approval,
+                    :user_signature,
+                    :vault_signature,
+                    :actual_shares_user,
+                    :validate_user_order,
+                    :validate_signatures,
+                );
+
+            self
+                ._execute_burn_with_price(
+                    vault_asset: vault_asset, :value_to_receive, :unquantized_amount_to_burn,
+                );
+
+            //validate that user receives at least the value they signed over
+            validate_trade(
+                order_a: order,
+                order_b: vault_approval,
+                actual_amount_base_a: actual_shares_user,
+                actual_amount_quote_a: value_to_receive.try_into().expect('VALUE_TOO_LARGE'),
+                actual_fee_a: 0_u64,
+                actual_fee_b: 0_u64,
+                asset: Some(vault_asset),
+                collateral_id: self.assets.get_base_collateral_id(),
+            );
+
+            self
+                ._apply_redeem_position_diffs(
+                    vault_config: vault_config,
+                    :vault_position_id,
+                    :redeeming_position_id,
+                    :receiving_position_id,
+                    :actual_shares_user,
+                    :actual_collateral_user,
+                    :interest_amount_vault_position,
+                    :interest_amount_sender,
+                    :interest_amount_receiver,
+                    :other_amounts,
+                );
 
             let new_perps_contract_balance = pnl_collateral_dispatcher
                 .balance_of(starknet::get_contract_address());
