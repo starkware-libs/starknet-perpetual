@@ -1422,20 +1422,23 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             .get_position_assets(position_id: FEE_POSITION)
             .collateral_balance;
 
+        let settelment = Settlement {
+            signature_a,
+            signature_b,
+            order_a,
+            order_b,
+            actual_amount_base_a: base,
+            actual_amount_quote_a: quote,
+            actual_fee_a: fee_a,
+            actual_fee_b: fee_b,
+            interest_amount_a: 0,
+            interest_amount_b: 0,
+        };
+
         let operator_nonce = self.get_nonce();
         self.operator.set_as_caller(self.perpetuals_contract);
         ICoreDispatcher { contract_address: self.perpetuals_contract }
-            .trade(
-                :operator_nonce,
-                :signature_a,
-                :signature_b,
-                :order_a,
-                :order_b,
-                actual_amount_base_a: base,
-                actual_amount_quote_a: quote,
-                actual_fee_a: fee_a,
-                actual_fee_b: fee_b,
-            );
+            .multi_trade(:operator_nonce, trades: array![settelment].span());
 
         self
             .validate_collateral_balance(

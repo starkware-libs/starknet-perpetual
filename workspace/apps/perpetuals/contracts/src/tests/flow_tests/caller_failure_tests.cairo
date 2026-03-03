@@ -7,7 +7,7 @@ use perpetuals::core::components::deposit::interface::{IDepositDispatcher, IDepo
 use perpetuals::core::components::positions::interface::{
     IPositionsDispatcher, IPositionsDispatcherTrait,
 };
-use perpetuals::core::interface::{ICoreDispatcher, ICoreDispatcherTrait};
+use perpetuals::core::interface::{ICoreDispatcher, ICoreDispatcherTrait, Settlement};
 use perpetuals::core::types::order::Order;
 use perpetuals::tests::constants::*;
 use perpetuals::tests::test_utils::{PerpetualsInitConfig, init_by_dispatcher};
@@ -131,16 +131,23 @@ fn test_trade_only_operator() {
         salt: 0,
     };
     dispatcher
-        .trade(
+        .multi_trade(
             operator_nonce: Zero::zero(),
-            signature_a: array![].span(),
-            signature_b: array![].span(),
-            order_a: default_order,
-            order_b: default_order,
-            actual_amount_base_a: 0,
-            actual_amount_quote_a: 0,
-            actual_fee_a: 0,
-            actual_fee_b: 0,
+            trades: array![
+                Settlement {
+                    signature_a: array![].span(),
+                    signature_b: array![].span(),
+                    order_a: default_order,
+                    order_b: default_order,
+                    actual_amount_base_a: 0,
+                    actual_amount_quote_a: 0,
+                    actual_fee_a: 0,
+                    actual_fee_b: 0,
+                    interest_amount_a: 0,
+                    interest_amount_b: 0,
+                },
+            ]
+                .span(),
         );
 }
 

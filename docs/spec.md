@@ -8,6 +8,7 @@ classDiagram
         accesscontrol: Component
         operator_nonce: Component
         pausable: Component
+        exchange_time: Component
         replaceability: Component
         roles: Component
         src5: Component
@@ -24,7 +25,6 @@ classDiagram
         transfer_request()
         transfer()
         multi_trade()
-        trade()
         liquidate()
         deleverage()
         reduce_asset_position()
@@ -39,6 +39,14 @@ classDiagram
         forced_trade()
         forced_redeem_from_vault_request()
         forced_redeem_from_vault()
+        clean_fulfillments()
+        apply_interests()
+        enable_escape_hatch()
+        get_max_interest_rate_per_sec()
+        set_max_interest_rate_per_sec()
+        update_exchange_time()
+        get_exchange_time()
+        get_time_of_last_update()
     }
     class Position{
         version: u8,
@@ -137,6 +145,14 @@ classDiagram
         pause()
         unpause()
     }
+    class ExchangeTime{
+        exchange_time: Timestamp
+        last_time_of_exchange_time_update: Timestamp
+
+        get_exchange_time() -> Timestamp
+        get_time_of_last_update() -> Timestamp
+        update_exchange_time()
+    }
     class ReplaceabilityComponent {
         upgrade_delay: u64
         impl_activation_time: Map< felt252, u64>
@@ -204,6 +220,7 @@ classDiagram
     CoreContract o-- Requests
     CoreContract o-- OperatorNonce
     CoreContract o-- Pausable
+    CoreContract o-- ExchangeTime
     CoreContract o-- Roles
     CoreContract o-- ReplaceabilityComponent
     CoreContract o-- SRC5
@@ -4145,106 +4162,6 @@ Only the Operator can execute.
 
 [ExchangeTimeUpdated](#exchangetimeupdated)
 
-#### Trade
-
-A trade between 2 positions in the system.
-
-```rust
-fn trade(
-    ref self: ContractState,
-    operator_nonce: u64,
-    signature_a: Signature,
-    signature_b: Signature,
-    order_a: Order,
-    order_b: Order,
-    actual_amount_base_a: i64,
-    actual_amount_quote_a: i64,
-    actual_fee_a: u64,
-    actual_fee_b: u64,
-    interest_amount_a: i64,
-    interest_amount_b: i64,
-)
-```
-
-**Access Control:**
-
-Only the Operator can execute.
-
-**Hash:**
-
-[get\_message\_hash](#get-message-hash) on [Order](#order) with position `public_key`.
-
-**Validations:**
-
-1. [Pausable check](#pausable)
-2. [Operator Nonce check](#operator-nonce)
-3. [Funding validation](#funding)
-4. [Price validation](#price)
-5. [public key signature](#public-key-signature) on each `Order`
-6. All fee amounts are positive (actuals and order)
-7. [Expiration validation](#expiration)
-8. [Synthetic asset check](#asset)
-9. Orders are not from the same position.
-10. Positions are not `FEE_POSITION`.
-11. Orders base and quote amounts have opposite signs and are non-zero (between them and individually).
-12. Orders quote and fee asset ids are the same as the collateral id.
-13. Orders base asset_ids the same and are registered and active synthetics.
-14. `actual_amount_base_a` and `actual_amount_quote_a` are non-zero.
-15. `order_a.base.amount` and `actual_amount_base_a` have the same sign.
-16. `order_a.quote.amount` and `actual_amount_quote_a` have the same sign.
-17. `|fulfillment[order_a_hash]|+|actual_amount_base_a|≤|order_a.base.amount|`
-18. `|fulfillment[order_b_hash]|+|(-actual_amount_base_a)|≤|order_b.base.amount|`
-19. `actual_fee_a / |actual_amount_quote_a| ≤ order_a.fee.amount / |order_a.quote.amount|`
-20. `actual_fee_b / |actual_amount_quote_a| ≤ order_b.fee.amount / |order_b.quote.amount|`
-21. `order_a.base.amount/|order_a.quote.amount|≤actual_amount_base_a/|actual_amount_quote_a|`
-22. `order_b.base.amount/|order_b.quote.amount|≤(-actual_amount_base_a)/|actual_amount_quote_a|`
-23. Check interest amounts is in range for both positions.
-
-**Logic:**
-
-1. Run validations
-2. Subtract the fees from each position collateral.
-3. Add the fees to the fee\_position.
-4. Add `actual_amount_base_a` to the `order_a` position base id synthetic.
-5. Subtract `actual_amount_base_a` from the `order_b` position base id synthetic.
-6. Add the `actual_amount_quote_a` to the `order_a` position collateral.
-7. Subtract the `actual_amount_quote_a` from the `order_b` position collateral.
-8. Update collateral balance with interest amounts, including updating timestamp.
-8. [Fundamental validation](#fundamental) for both positions in trade.
-9. `fulfillment[order_a_hash]+=|actual_amount_base_a|`
-10. `fulfillment[order_b_hash]+=|actual_amount_base_a|`
-
-**Emits:**
-
-[Trade](#trade)
-
-**Errors:**
-
-- PAUSED
-- ONLY\_OPERATOR
-- INVALID\_NONCE
-- FUNDING\_EXPIRED
-- SYNTHETIC\_NOT\_EXISTS
-- SYNTHETIC\_EXPIRED\_PRICE
-- INVALID\_POSITION
-- INVALID_STARK_KEY_SIGNATURE
-- FULFILLMENT_EXCEEDED
-- INVALID_SAME_POSITIONS
-- CANT_TRADE_WITH_FEE_POSITION
-- DIFFERENT_BASE_ASSET_IDS
-- INVALID\_ZERO\_AMOUNT
-- ORDER\_EXPIRED
-- INVALID_AMOUNT_SIGN
-- INVALID_QUOTE_FEE_AMOUNT
-- SYNTHETIC_NOT_ACTIVE
-- NOT_SYNTHETIC
-- INVALID_QUOTE_AMOUNT_SIGN
-- INVALID_ACTUAL_BASE_SIGN
-- INVALID_ACTUAL_QUOTE_SIGN
-- ILLEGAL_BASE_TO_QUOTE_RATIO
-- ILLEGAL_FEE_TO_QUOTE_RATIO
-- POSITION_NOT_HEALTHY_NOR_HEALTHIER
-
 #### Forced Trade Request
 
 A forced trade request allows users to initiate a trade without operator approval, but requires a timelock period before execution (unless executed by the operator). This mechanism provides users with an exit option if the operator becomes unresponsive.
@@ -4455,9 +4372,7 @@ fn forced_redeem_from_vault(
 
 #### Multi Trade
 
-Executes multiple trades in a single operation.
-Each trade is validated and executed using the same logic as a single trade.
-All trades are processed within one transaction.
+Executes multiple trades in a single operation. This is the primary function for executing trades between positions. Each trade in the span is validated and executed sequentially, with position TV/TR values cached between trades for efficiency.
 
 ```rust
 fn multi_trade(
@@ -4467,29 +4382,104 @@ fn multi_trade(
 )
 ```
 
+**Settlement Struct:**
+
+Each trade is represented by a `Settlement` struct containing:
+- `signature_a`: Signature for order_a
+- `signature_b`: Signature for order_b
+- `order_a`: First order in the trade
+- `order_b`: Second order in the trade
+- `actual_amount_base_a`: Actual base amount executed for order_a
+- `actual_amount_quote_a`: Actual quote amount executed for order_a
+- `actual_fee_a`: Actual fee paid by order_a position
+- `actual_fee_b`: Actual fee paid by order_b position
+- `interest_amount_a`: Interest amount for order_a position
+- `interest_amount_b`: Interest amount for order_b position
+
 **Access Control:**
 
 Only the Operator can execute.
 
-**Hash:**
-
-See [Trade](#trade) for details.
-
 **Validations:**
 
-See [Trade](#trade) for details.
+For each trade in the span:
+
+1. [Pausable check](#pausable)
+2. [Operator Nonce check](#operator-nonce) (checked once for all trades)
+3. [Assets integrity validation](#assets-integrity) (checked once for all trades)
+4. Base asset must be the same for both orders
+5. Base asset must be a registered and active synthetic
+6. Orders must be from different positions
+7. Positions must not be `FEE_POSITION`
+8. Orders base and quote amounts must have opposite signs and be non-zero
+9. Orders quote and fee asset ids must be the same as the collateral id
+10. `actual_amount_base_a` and `actual_amount_quote_a` must be non-zero
+11. `order_a.base.amount` and `actual_amount_base_a` must have the same sign
+12. `order_a.quote.amount` and `actual_amount_quote_a` must have the same sign
+13. `order_b.base.amount` and `(-actual_amount_base_a)` must have the same sign
+14. `order_b.quote.amount` and `(-actual_amount_quote_a)` must have the same sign
+15. Fulfillment validation: `|fulfillment[order_a_hash]|+|actual_amount_base_a|≤|order_a.base.amount|`
+16. Fulfillment validation: `|fulfillment[order_b_hash]|+|actual_amount_base_a|≤|order_b.base.amount|`
+17. Fee ratio validation for both orders
+18. Price ratio validation for both orders
+19. Interest amount validation for both positions (using exchange time and max interest rate)
+20. [Public key signature](#public-key-signature) validation on each order
+21. [Fundamental validation](#fundamental) - positions must be healthy or healthier after the trade
+22. Vault protection limit validation for both positions
 
 **Logic:**
 
-See [Trade](#trade) for details.
+1. Validate contract is not paused
+2. Validate and consume operator nonce
+3. Validate assets integrity
+4. Read exchange time and interest validation parameters once for all trades
+5. Initialize TV/TR cache for position optimization
+6. For each trade in the span:
+   - Get cached TV/TR values for both positions (if available)
+   - Execute trade using `_execute_trade`:
+     - Validate signatures
+     - Validate and update fulfillments
+     - Build position diffs (including fees and interest)
+     - Validate positions are healthy or healthier
+     - Validate against vault protection limits
+     - Apply position diffs
+     - Update fee position
+     - Emit `Trade` event
+   - Cache updated TV/TR values for both positions
+
+**Performance Optimization:**
+
+The function uses a TV/TR cache to avoid recalculating position Total Value and Total Risk multiple times when the same position appears in multiple trades within the same `multi_trade` call. This significantly improves gas efficiency for batch trading operations.
 
 **Emits:**
 
-See [Trade](#trade) for details.
+For each trade, emits a [Trade](#trade) event.
 
 **Errors:**
 
-See [Trade](#trade) for details.
+- PAUSED
+- ONLY\_OPERATOR
+- INVALID\_NONCE
+- TRADE_ASSET_NOT_SYNTHETIC
+- DIFFERENT_BASE_ASSET_IDS
+- INVALID\_POSITION
+- INVALID_STARK_KEY_SIGNATURE
+- FULFILLMENT_EXCEEDED
+- INVALID_SAME_POSITIONS
+- CANT_TRADE_WITH_FEE_POSITION
+- INVALID\_ZERO\_AMOUNT
+- ORDER\_EXPIRED
+- INVALID_AMOUNT_SIGN
+- INVALID_QUOTE_FEE_AMOUNT
+- SYNTHETIC_NOT_ACTIVE
+- SYNTHETIC\_NOT\_EXISTS
+- INVALID_QUOTE_AMOUNT_SIGN
+- INVALID_ACTUAL_BASE_SIGN
+- INVALID_ACTUAL_QUOTE_SIGN
+- ILLEGAL_BASE_TO_QUOTE_RATIO
+- ILLEGAL_FEE_TO_QUOTE_RATIO
+- POSITION_NOT_HEALTHY_NOR_HEALTHIER
+- Interest-related errors
 
 #### Clean Fulfillments
 
