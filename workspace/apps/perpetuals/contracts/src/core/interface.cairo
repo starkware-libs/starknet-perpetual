@@ -65,18 +65,6 @@ pub trait ICore<TContractState> {
         interest_amount_sender: i64,
         interest_amount_recipient: i64,
     );
-    fn trade(
-        ref self: TContractState,
-        operator_nonce: u64,
-        signature_a: Signature,
-        signature_b: Signature,
-        order_a: Order,
-        order_b: Order,
-        actual_amount_base_a: i64,
-        actual_amount_quote_a: i64,
-        actual_fee_a: u64,
-        actual_fee_b: u64,
-    );
     fn multi_trade(ref self: TContractState, operator_nonce: u64, trades: Span<Settlement>);
     fn clean_fulfillments(
         ref self: TContractState, orders: Span<Order>, public_keys: Span<felt252>,

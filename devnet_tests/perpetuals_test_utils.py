@@ -742,19 +742,26 @@ class PerpetualsTestUtils:
             ],
         )
 
+        # Create Settlement struct for multi_trade
+        settlement = {
+            "signature_a": signature_a,
+            "signature_b": signature_b,
+            "order_a": order_a,
+            "order_b": order_b,
+            "actual_amount_base_a": actual_amount_base_a,
+            "actual_amount_quote_a": actual_amount_quote_a,
+            "actual_fee_a": actual_fee_a,
+            "actual_fee_b": actual_fee_b,
+            "interest_amount_a": 0,
+            "interest_amount_b": 0,
+        }
+
         invocation = (
             await self.known_contracts["operator"]
-            .functions["trade"]
+            .functions["multi_trade"]
             .invoke_v3(
                 await self.consume_operator_nonce(),
-                signature_a,
-                signature_b,
-                order_a,
-                order_b,
-                actual_amount_base_a,
-                actual_amount_quote_a,
-                actual_fee_a,
-                actual_fee_b,
+                [settlement],
                 auto_estimate=True,
             )
         )
