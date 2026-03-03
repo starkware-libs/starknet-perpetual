@@ -8,6 +8,7 @@ classDiagram
         accesscontrol: Component
         operator_nonce: Component
         pausable: Component
+        exchange_time: Component
         replaceability: Component
         roles: Component
         src5: Component
@@ -24,7 +25,6 @@ classDiagram
         transfer_request()
         transfer()
         multi_trade()
-        trade()
         liquidate()
         deleverage()
         reduce_asset_position()
@@ -33,9 +33,20 @@ classDiagram
         redeem_from_vault()
         liquidate_vault_shares()
         liquidate_spot_asset()
-        deleverage_spot_asset()
+        forced_withdraw_request()
+        forced_withdraw()
+        forced_trade_request()
+        forced_trade()
         forced_redeem_from_vault_request()
-        force_redeem_from_vault()
+        forced_redeem_from_vault()
+        clean_fulfillments()
+        apply_interests()
+        enable_escape_hatch()
+        get_max_interest_rate_per_sec()
+        set_max_interest_rate_per_sec()
+        update_exchange_time()
+        get_exchange_time()
+        get_time_of_last_update()
     }
     class Position{
         version: u8,
@@ -134,6 +145,14 @@ classDiagram
         pause()
         unpause()
     }
+    class ExchangeTime{
+        exchange_time: Timestamp
+        last_time_of_exchange_time_update: Timestamp
+
+        get_exchange_time() -> Timestamp
+        get_time_of_last_update() -> Timestamp
+        update_exchange_time()
+    }
     class ReplaceabilityComponent {
         upgrade_delay: u64
         impl_activation_time: Map< felt252, u64>
@@ -201,6 +220,7 @@ classDiagram
     CoreContract o-- Requests
     CoreContract o-- OperatorNonce
     CoreContract o-- Pausable
+    CoreContract o-- ExchangeTime
     CoreContract o-- Roles
     CoreContract o-- ReplaceabilityComponent
     CoreContract o-- SRC5
@@ -2162,6 +2182,54 @@ Only APP\_GOVERNOR can execute.
 - INVALID_ZERO_QUORUM
 - INVALID_SAME_QUORUM
 
+#### Vaults
+
+In charge of all vault-related operations, including vault position management and vault protection limits.
+
+##### Interface
+
+```rust
+#[starknet::interface]
+pub trait IVaults<TContractState> {
+    fn is_vault_position(ref self: TContractState, vault_position: PositionId) -> bool;
+    fn is_vault_asset(ref self: TContractState, asset_id: AssetId) -> bool;
+    fn force_reset_daily_protection_limit(ref self: TContractState, vault_position: PositionId);
+    fn update_vault_protection_limit(
+        ref self: TContractState, vault_position: PositionId, percentage: u32,
+    );
+}
+```
+
+##### View Functions
+
+###### Is Vault Position
+
+Checks if a given position ID is a registered vault position.
+
+```rust
+fn is_vault_position(ref self: ContractState, vault_position: PositionId) -> bool
+```
+
+**Returns:**
+
+- `true` if `vault_position` is a registered vault position
+- `false` otherwise
+
+###### Is Vault Asset
+
+Checks if a given asset ID is a registered vault asset.
+
+```rust
+fn is_vault_asset(ref self: ContractState, asset_id: AssetId) -> bool
+```
+
+**Returns:**
+
+- `true` if `asset_id` is a registered vault asset
+- `false` otherwise
+
+##### Write Functions
+
   ###### Force Reset Protection Limit
 
   Force-resets the vault protection mechanism by snapshotting the current total value and recalculating the maximum allowed TV loss so that the limit for a day can be extended.
@@ -2202,13 +2270,13 @@ Only APP\_GOVERNOR can execute.
 
   ###### Update Vault Protection Limit
 
-  Updates the per-vault protection limit percentage override. Default is 5%, 0 is not allowed as it prevents any withdraws.
+  Updates the per-vault protection limit percentage override. Default is 5% (DEFAULT_LIMIT_PERCENT). A value of 0 is not allowed as it prevents any withdraws.
 
   ```rust
   fn update_vault_protection_limit(
       ref self: ContractState,
       vault_position: PositionId,
-      limit: u32,
+      percentage: u32,
   )
   ```
 
@@ -2220,11 +2288,12 @@ Only APP\_GOVERNOR can execute.
 
   1. App Governor is the caller.
   2. `vault_position` is a registered vault position.
+  3. `percentage` must be non-zero (0 is not allowed as it prevents any withdraws).
 
   **Logic:**
 
   1. Run validations.
-  2. Write `limit` to `vault_protection_limit_overrides[vault_position]`.
+  2. Write `percentage` to `vault_protection_limit_overrides[vault_position]`.
 
   **Emits:**
 
@@ -2234,6 +2303,7 @@ Only APP\_GOVERNOR can execute.
 
   - ONLY\_APP\_GOVERNOR
   - UNKNOWN\_VAULT
+  - ZERO-LIMIT (when `percentage` is zero)
 
   And the events:
 
@@ -4009,8 +4079,7 @@ Applies interest to the positions collateral balances.
 fn apply_interests(
     ref self: ContractState,
     operator_nonce: u64,
-    position_ids: Span<PositionId>,
-    interest_amounts: Span<i64>,
+    position_interest_amounts: Span<(PositionId, i64)>,
 )
 ```
 
@@ -4022,15 +4091,19 @@ Only the Operator can execute.
 
 1. [Pausable check](#pausable)
 2. [Operator Nonce check](#operator-nonce)
-3. position_ids.len() equals interest_amounts.len(), and both are non-empty.
-4. [Position check](#position) for `position_id`s.
-5. Interest amounts are in range.
+3. [Position check](#position) for all `position_id`s in the span.
+4. Interest amounts are in range for all positions.
 
 **Logic:**
 
 1. Run validations
-2. Add interest amounts to the base collateral balances, including updating timestamp.
-// TODO(Mohammad): Check if health validation is needed.
+2. For each (position_id, interest_amount) pair:
+   - Verify interest amount is in range for the position
+   - If interest_amount is non-zero:
+     - Validate position is healthy or healthier after applying interest
+     - Add interest amount to the position's base collateral balance
+     - Update the position's last_interest_amount_applied_time timestamp
+   - Emit InterestApplied event
 
 **Errors:**
 
@@ -4046,7 +4119,10 @@ Only the Operator can execute.
 
 #### Exchange Time Updated
 
-Updates the exchange time. This function allows the operator to set the current exchange time, which must be monotonically increasing and not exceed the current block timestamp.
+Updates the exchange time. This function allows the operator to set the current exchange time, which must be:
+- Monotonically increasing (strictly greater than the current exchange time)
+- Not more than a week in the past
+- Not more than MAX_TIME_DRIFT (2 minutes) into the future from the current block timestamp
 
 ```rust
 fn update_exchange_time(
@@ -4064,8 +4140,9 @@ Only the Operator can execute.
 
 1. [Pausable check](#pausable)
 2. [Operator Nonce check](#operator-nonce)
-3. `new_timestamp <= now`
-4. `new_timestamp > exchange_time`
+3. `new_timestamp > current_exchange_time` (must be strictly greater than the current exchange time to ensure monotonicity)
+4. `new_timestamp > now - WEEK` (cannot be more than a day in the past)
+5. `new_timestamp <= now + MAX_TIME_DRIFT`
 
 **Logic:**
 
@@ -4077,112 +4154,13 @@ Only the Operator can execute.
 - PAUSED
 - ONLY\_OPERATOR
 - INVALID\_NONCE
-- INVALID_TIMESTAMP
-- TIMESTAMP_NOT_MONOTONIC
+- NON_MONOTONIC_TIME (when `new_timestamp <= current_exchange_time`)
+- TIMESTAMP_TOO_OLD (when `new_timestamp <= now - WEEK`)
+- STALE_TIME (when `new_timestamp > now + MAX_TIME_DRIFT`)
 
 **Emits:**
 
 [ExchangeTimeUpdated](#exchangetimeupdated)
-
-#### Trade
-
-A trade between 2 positions in the system.
-
-```rust
-fn trade(
-    ref self: ContractState,
-    operator_nonce: u64,
-    signature_a: Signature,
-    signature_b: Signature,
-    order_a: Order,
-    order_b: Order,
-    actual_amount_base_a: i64,
-    actual_amount_quote_a: i64,
-    actual_fee_a: u64,
-    actual_fee_b: u64,
-    interest_amount_a: i64,
-    interest_amount_b: i64,
-)
-```
-
-**Access Control:**
-
-Only the Operator can execute.
-
-**Hash:**
-
-[get\_message\_hash](#get-message-hash) on [Order](#order) with position `public_key`.
-
-**Validations:**
-
-1. [Pausable check](#pausable)
-2. [Operator Nonce check](#operator-nonce)
-3. [Funding validation](#funding)
-4. [Price validation](#price)
-5. [public key signature](#public-key-signature) on each `Order`
-6. All fee amounts are positive (actuals and order)
-7. [Expiration validation](#expiration)
-8. [Synthetic asset check](#asset)
-9. Orders are not from the same position.
-10. Positions are not `FEE_POSITION`.
-11. Orders base and quote amounts have opposite signs and are non-zero (between them and individually).
-12. Orders quote and fee asset ids are the same as the collateral id.
-13. Orders base asset_ids the same and are registered and active synthetics.
-14. `actual_amount_base_a` and `actual_amount_quote_a` are non-zero.
-15. `order_a.base.amount` and `actual_amount_base_a` have the same sign.
-16. `order_a.quote.amount` and `actual_amount_quote_a` have the same sign.
-17. `|fulfillment[order_a_hash]|+|actual_amount_base_a|≤|order_a.base.amount|`
-18. `|fulfillment[order_b_hash]|+|(-actual_amount_base_a)|≤|order_b.base.amount|`
-19. `actual_fee_a / |actual_amount_quote_a| ≤ order_a.fee.amount / |order_a.quote.amount|`
-20. `actual_fee_b / |actual_amount_quote_a| ≤ order_b.fee.amount / |order_b.quote.amount|`
-21. `order_a.base.amount/|order_a.quote.amount|≤actual_amount_base_a/|actual_amount_quote_a|`
-22. `order_b.base.amount/|order_b.quote.amount|≤(-actual_amount_base_a)/|actual_amount_quote_a|`
-23. Check interest amounts is in range for both positions.
-
-**Logic:**
-
-1. Run validations
-2. Subtract the fees from each position collateral.
-3. Add the fees to the fee\_position.
-4. Add `actual_amount_base_a` to the `order_a` position base id synthetic.
-5. Subtract `actual_amount_base_a` from the `order_b` position base id synthetic.
-6. Add the `actual_amount_quote_a` to the `order_a` position collateral.
-7. Subtract the `actual_amount_quote_a` from the `order_b` position collateral.
-8. Update collateral balance with interest amounts, including updating timestamp.
-8. [Fundamental validation](#fundamental) for both positions in trade.
-9. `fulfillment[order_a_hash]+=|actual_amount_base_a|`
-10. `fulfillment[order_b_hash]+=|actual_amount_base_a|`
-
-**Emits:**
-
-[Trade](#trade)
-
-**Errors:**
-
-- PAUSED
-- ONLY\_OPERATOR
-- INVALID\_NONCE
-- FUNDING\_EXPIRED
-- SYNTHETIC\_NOT\_EXISTS
-- SYNTHETIC\_EXPIRED\_PRICE
-- INVALID\_POSITION
-- INVALID_STARK_KEY_SIGNATURE
-- FULFILLMENT_EXCEEDED
-- INVALID_SAME_POSITIONS
-- CANT_TRADE_WITH_FEE_POSITION
-- DIFFERENT_BASE_ASSET_IDS
-- INVALID\_ZERO\_AMOUNT
-- ORDER\_EXPIRED
-- INVALID_AMOUNT_SIGN
-- INVALID_QUOTE_FEE_AMOUNT
-- SYNTHETIC_NOT_ACTIVE
-- NOT_SYNTHETIC
-- INVALID_QUOTE_AMOUNT_SIGN
-- INVALID_ACTUAL_BASE_SIGN
-- INVALID_ACTUAL_QUOTE_SIGN
-- ILLEGAL_BASE_TO_QUOTE_RATIO
-- ILLEGAL_FEE_TO_QUOTE_RATIO
-- POSITION_NOT_HEALTHY_NOR_HEALTHIER
 
 #### Forced Trade Request
 
@@ -4343,7 +4321,7 @@ fn forced_redeem_from_vault_request(
 Executes a forced redeem from vault after the timelock period has elapsed (or immediately if executed by the operator). This allows users to redeem vault shares without operator approval if the operator is unresponsive.
 
 ```rust
-fn force_redeem_from_vault(
+fn forced_redeem_from_vault(
     ref self: ContractState,
     operator_nonce: u64,
     order: LimitOrder,
@@ -4394,9 +4372,7 @@ fn force_redeem_from_vault(
 
 #### Multi Trade
 
-Executes multiple trades in a single operation.
-Each trade is validated and executed using the same logic as a single trade.
-All trades are processed within one transaction.
+Executes multiple trades in a single operation. This is the primary function for executing trades between positions. Each trade in the span is validated and executed sequentially, with position TV/TR values cached between trades for efficiency.
 
 ```rust
 fn multi_trade(
@@ -4406,29 +4382,138 @@ fn multi_trade(
 )
 ```
 
+**Settlement Struct:**
+
+Each trade is represented by a `Settlement` struct containing:
+- `signature_a`: Signature for order_a
+- `signature_b`: Signature for order_b
+- `order_a`: First order in the trade
+- `order_b`: Second order in the trade
+- `actual_amount_base_a`: Actual base amount executed for order_a
+- `actual_amount_quote_a`: Actual quote amount executed for order_a
+- `actual_fee_a`: Actual fee paid by order_a position
+- `actual_fee_b`: Actual fee paid by order_b position
+- `interest_amount_a`: Interest amount for order_a position
+- `interest_amount_b`: Interest amount for order_b position
+
 **Access Control:**
 
 Only the Operator can execute.
 
-**Hash:**
-
-See [Trade](#trade) for details.
-
 **Validations:**
 
-See [Trade](#trade) for details.
+For each trade in the span:
+
+1. [Pausable check](#pausable)
+2. [Operator Nonce check](#operator-nonce) (checked once for all trades)
+3. [Assets integrity validation](#assets-integrity) (checked once for all trades)
+4. Base asset must be the same for both orders
+5. Base asset must be a registered and active synthetic
+6. Orders must be from different positions
+7. Positions must not be `FEE_POSITION`
+8. Orders base and quote amounts must have opposite signs and be non-zero
+9. Orders quote and fee asset ids must be the same as the collateral id
+10. `actual_amount_base_a` and `actual_amount_quote_a` must be non-zero
+11. `order_a.base.amount` and `actual_amount_base_a` must have the same sign
+12. `order_a.quote.amount` and `actual_amount_quote_a` must have the same sign
+13. `order_b.base.amount` and `(-actual_amount_base_a)` must have the same sign
+14. `order_b.quote.amount` and `(-actual_amount_quote_a)` must have the same sign
+15. Fulfillment validation: `|fulfillment[order_a_hash]|+|actual_amount_base_a|≤|order_a.base.amount|`
+16. Fulfillment validation: `|fulfillment[order_b_hash]|+|actual_amount_base_a|≤|order_b.base.amount|`
+17. Fee ratio validation for both orders
+18. Price ratio validation for both orders
+19. Interest amount validation for both positions (using exchange time and max interest rate)
+20. [Public key signature](#public-key-signature) validation on each order
+21. [Fundamental validation](#fundamental) - positions must be healthy or healthier after the trade
+22. Vault protection limit validation for both positions
 
 **Logic:**
 
-See [Trade](#trade) for details.
+1. Validate contract is not paused
+2. Validate and consume operator nonce
+3. Validate assets integrity
+4. Read exchange time and interest validation parameters once for all trades
+5. Initialize TV/TR cache for position optimization
+6. For each trade in the span:
+   - Get cached TV/TR values for both positions (if available)
+   - Execute trade using `_execute_trade`:
+     - Validate signatures
+     - Validate and update fulfillments
+     - Build position diffs (including fees and interest)
+     - Validate positions are healthy or healthier
+     - Validate against vault protection limits
+     - Apply position diffs
+     - Update fee position
+     - Emit `Trade` event
+   - Cache updated TV/TR values for both positions
+
+**Performance Optimization:**
+
+The function uses a TV/TR cache to avoid recalculating position Total Value and Total Risk multiple times when the same position appears in multiple trades within the same `multi_trade` call. This significantly improves gas efficiency for batch trading operations.
 
 **Emits:**
 
-See [Trade](#trade) for details.
+For each trade, emits a [Trade](#trade) event.
 
 **Errors:**
 
-See [Trade](#trade) for details.
+- PAUSED
+- ONLY\_OPERATOR
+- INVALID\_NONCE
+- TRADE_ASSET_NOT_SYNTHETIC
+- DIFFERENT_BASE_ASSET_IDS
+- INVALID\_POSITION
+- INVALID_STARK_KEY_SIGNATURE
+- FULFILLMENT_EXCEEDED
+- INVALID_SAME_POSITIONS
+- CANT_TRADE_WITH_FEE_POSITION
+- INVALID\_ZERO\_AMOUNT
+- ORDER\_EXPIRED
+- INVALID_AMOUNT_SIGN
+- INVALID_QUOTE_FEE_AMOUNT
+- SYNTHETIC_NOT_ACTIVE
+- SYNTHETIC\_NOT\_EXISTS
+- INVALID_QUOTE_AMOUNT_SIGN
+- INVALID_ACTUAL_BASE_SIGN
+- INVALID_ACTUAL_QUOTE_SIGN
+- ILLEGAL_BASE_TO_QUOTE_RATIO
+- ILLEGAL_FEE_TO_QUOTE_RATIO
+- POSITION_NOT_HEALTHY_NOR_HEALTHIER
+- Interest-related errors
+
+#### Clean Fulfillments
+
+Cleans up fulfillment tracking entries for expired orders. This function allows removing old fulfillment data for orders that have expired, helping to manage storage efficiently.
+
+```rust
+fn clean_fulfillments(
+    ref self: ContractState,
+    orders: Span<Order>,
+    public_keys: Span<felt252>,
+)
+```
+
+**Access Control:**
+
+Anyone can call this function.
+
+**Validations:**
+
+1. `orders.len() == public_keys.len()`
+2. All orders in the span must be expired (order.expiration < current_time)
+
+**Logic:**
+
+1. Run validations
+2. For each order:
+   - Calculate the message hash using the corresponding public key
+   - Remove the fulfillment entry for that hash
+3. Clean up the fulfillment tracking storage
+
+**Errors:**
+
+- LENGTH_MISMATCH
+- ORDER_IS_NOT_EXPIRED
 
 #### Liquidate
 
@@ -4543,13 +4628,15 @@ When a user position [is liquidatable](#liquidatable), the system can match the 
         ref self: ContractState,
         operator_nonce: u64,
         liquidated_position_id: PositionId,
-        liquidated_asset_id: AssetId,
         liquidator_order: LimitOrder,
         liquidator_signature: Signature,
         actual_amount_spot_collateral: i64,
         actual_amount_base_collateral: i64,
         actual_liquidator_fee: u64,
         liquidated_fee_amount: u64,
+        interest_amount_liquidated: i64,
+        interest_amount_liquidator: i64,
+        interest_amount_liquidator_receiver: i64,
     );
 ```
 
@@ -4565,7 +4652,7 @@ Only the Operator can execute.
 
 1. [Pausable check](#pausable)
 2. [Operator Nonce check](#operator-nonce)
-3. [Funding validation](#funding)
+3. [Assets check](#asset)
 4. [Price validation](#price)
 5. [public key signature](#public-key-signature) on
 6. All fees amounts are non negative (actuals and order)
@@ -4585,7 +4672,7 @@ Only the Operator can execute.
 20. `|fulfillment[liquidator_order_hash]|+|actual_amount_spot_collateral|≤|liquidator_order.base.amount|`
 21. `actual_liquidator_fee / |actual_amount_base_collateral| ≤ liquidator_order.fee.amount / |liquidator_order.quote.amount|`
 22. `actual_amount_spot_collateral / |actual_amount_base_collateral| ≤ - liquidator_order.base.amount / |liquidator_order.quote.amount|`
-23. Check interest amounts in range for both positions.
+23. Check interest amounts in range for all positions (liquidated, liquidator, and liquidator receiver).
 24. Check liquidated position spot asset balance is bigger than `actual_amount_spot_collateral` in absolute value
 
 
@@ -4600,9 +4687,9 @@ Only the Operator can execute.
 7. Add `actual_liquidator_fee` to the `fee_position` collateral.
 8. Subtract `liquidated_fee_amount` from the `liquidated_position_id` collateral.
 9. Add `liquidated_fee_amount` to the `insurance_fund` collateral.
-10. Add interest amounts to collateral balances for both positions, including timestamps.
+10. Add interest amounts to collateral balances for all positions (liquidated, liquidator, and liquidator receiver), including timestamps.
 11. `fulfillment[liquidator_order_hash] += |actual_amount_base_liquidated|`
-12. [Fundamental validation](#fundamental) for both positions.
+12. [Fundamental validation](#fundamental) for all positions.
 
 **Emits:**
 
@@ -4710,77 +4797,6 @@ Only the Operator can execute.
 - POSITION_IS_NOT_HEALTHIER
 - POSITION_NOT_HEALTHY_NOR_HEALTHIER
 
-#### Deleverage Spot Asset
-
-When a user position [is deleveragable](#deleveragable), the system can match the deleveraged position with deleverger position, both without position’s signature, to make it [healthier](#is-healthier).
-
-```rust
-fn deleverage_spot_asset(
-    ref self: ContractState,
-    operator_nonce: u64,
-    deleveraged_position_id: PositionId,
-    deleverager_position_id: PositionId,
-    spot_asset_id: AssetId,
-    deleveraged_spot_amount: i64,
-    deleveraged_base_collateral_amount: i64,
-    interest_amount_deleveraged: i64,
-    interest_amount_deleverager: i64,
-)
-```
-
-**Access Control:**
-
-Only the Operator can execute.
-
-**Validations:**
-
-1. [Pausable check](#pausable)
-2. [Operator Nonce check](#operator-nonce)
-3. [Assets check](#asset)
-4. [Price validation](#price)
-5. `deleveraged_position_id != deleverager_position_id`
-6. spot\_asset\_id must be a registered active asset.
-7. deleveraged\_position is\_deleveragable
-8. deleveraged\_spot\_amount and deleveraged\_base\_collateral\_amount have opposite signs.
-9. `deleveraged_position.spot_balance` decreases in magnitude after the change: `|spot_deleveraged.amount|` must not exceed `|deleveraged_position.spot_balance|`, and `deleveraged_position.spot_balance` must remain non-negative.
-10. Check interest amounts in range for both positions.
-
-**Logic:**
-
-1. Run validations
-2. Subtract `deleveraged_spot_amount` from the `deleveraged_position_id` spot balance.
-3. Add `deleveraged_spot_amount` to the `deleverager_position_id` spot balance.
-4. Add `deleveraged_base_collateral_amount` to the `deleveraged_position_id` base collateral balance.
-5. Subtract `deleveraged_base_collateral_amount` from the `deleverager_position_id` base collateral balance.
-6. Add interest amounts to collateral balances for both positions, including timestamps.
-7. [Fundamental validation](#fundamental) for both positions.
-
-**Emits:**
-[deleverage](#deleverage)
-
-**Errors:**
-
-- PAUSED
-- ONLY\_OPERATOR
-- INVALID\_NONCE
-- FUNDING\_EXPIRED
-- SYNTHETIC\_NOT\_EXISTS
-- SYNTHETIC\_EXPIRED\_PRICE
-- INVALID\_POSITION
-- INVALID_ZERO_AMOUNT
-- COLLATERAL_NOT_EXISTS
-- COLLATERAL\_NOT\_ACTIVE
-- INVALID_NON_SYNTHETIC_ASSET
-- INVALID_WRONG_AMOUNT_SIGN
-- INVALID_BASE_CHANGE
-- INVALID_POSITION
-- ASSET_NOT_EXISTS
-- NOT_SYNTHETIC
-- POSITION_IS_NOT_DELEVERAGABLE
-- POSITION_IS_NOT_FAIR_DELEVERAGE
-- POSITION_IS_NOT_HEALTHIER
-- POSITION_NOT_HEALTHY_NOR_HEALTHIER
-
 #### ReduceAssetPosition
 
 When a position `a` has a positive amount of an inactive asset, the system can match with a position `b` which has a negative amount of inactive asset, both without position’s signature, to clean inactive assets from the system.
@@ -4793,8 +4809,6 @@ fn reduce_asset_position(
     position_id_b: PositionId,
     base_asset_id: AssetId,
     base_amount_a: i64,
-    interest_amount_a: i64,
-    interest_amount_b: i64,
 )
 ```
 
@@ -4813,7 +4827,6 @@ Only the Operator can execute.
 7. `base_asset_id` must be a registered inactive synthetic asset.
 8. `position_id_a.balance` decreases in magnitude after the change: `|base_amount_a|` must not exceed `|position_id_a.balance|`, and both should have the same sign.
 9. `position_id_b.balance` decreases in magnitude after the change: `|base_amount_a|` must not exceed `|position_id_b.balance|`, and both should have opposite sign.
-10. Check interest amounts in range for both positions.
 
 **Logic:**
 
@@ -4860,7 +4873,8 @@ fn invest_in_vault(
     signature: Signature,
     order: LimitOrder,
     correlation_id: felt252,
-    interest_amount: i64,
+    interest_amount_vault_position: i64,
+    interest_amount_sender: i64,
 )
 ```
 
@@ -4885,7 +4899,7 @@ Only the Operator can execute.
 9. Amount is non zero.
 10. Caller is the operator.
 11. Request is new (check not exists in the fulfillment).
-12. Check (investor) interest amount in range.
+12. Check interest amounts in range for both positions (sender and vault position).
 
 **Logic:**
 
@@ -4895,7 +4909,7 @@ Only the Operator can execute.
 4. decrease the position_id collateral_id balance by quantized_amount.
 5. increase the vault_position_id collateral_id balance by quantized_amount.
 6. calls the perps deposit function to deposit the vault shares to the user.
-7. Add investor interest amount to collateral balance, including timestamp.
+7. Add interest amounts to collateral balances for both positions (sender and vault position), including timestamps.
 
 **Emits:**
 
@@ -4917,9 +4931,9 @@ fn redeem_from_vault(
     vault_signature: Signature,
     actual_shares_user: i64,
     actual_collateral_user: i64,
-    redeeming_interest_amount: i64,
-    receiving_interest_amount: i64,
-    vault_interest_amount: i64,
+    interest_amount_vault_position: i64,
+    interest_amount_sender: i64,
+    interest_amount_receiver: i64,
 );
 ```
 
@@ -4949,7 +4963,7 @@ Only the Operator can execute.
 12. Caller is the operator.
 13. Request is new (check user payload hash not exists in the fulfillment map).
 14. `number_of_shares * vault_share_execution_price >= minimum_quantized_amount`
-15. Check interest amount in range for all the positions.
+15. Check interest amounts in range for all the positions (sender, receiver, and vault position).
 
 **Logic:**
 
@@ -4960,7 +4974,7 @@ Only the Operator can execute.
 5. call the new redeem function of the vault contract (a version where the price of a vault share is dicateded by the operator) which burns the vault shares and transfers the assets from the vault contract to the perps contract
 6. increase the position_id collateral_id balance by vault_share_execution_price*number_of_shares
 7. reduce the vault_position_id collateral_id balance by vault_share_execution_price*number_of_shares
-8. Add interest amounts to collateral balances for all the positions, including timestamp.
+8. Add interest amounts to collateral balances for all the positions (sender, receiver, and vault position), including timestamps.
 
 **Emits:**
 
@@ -4980,8 +4994,8 @@ fn liquidate_vault_shares(
     liquidated_asset_id: AssetId,
     actual_shares_user: i64,
     actual_collateral_user: i64,
-    liquidated_interest_amount: i64,
-    vault_interest_amount: i64,
+    interest_amount_vault_position: i64,
+    interest_amount_liquidated: i64,
 );
 ```
 
@@ -5007,7 +5021,7 @@ Only the Operator can execute.
 10. position id is liquidatable.
 11. vault_share_execution_price is non zero.
 12. Caller is the operator.
-13. Check interest amounts in range for both positions.
+13. Check interest amounts in range for both positions (liquidated and vault position).
 
 **Logic:**
 
@@ -5023,4 +5037,75 @@ Only the Operator can execute.
 
 **Emits:**
 
+[LiquidateVaultShares](#liquidatevaultshares)
+
 **Errors:**
+
+#### Enable Escape Hatch
+
+Enables the escape hatch mechanism for forced actions. Once enabled, users can submit forced withdrawal, forced trade, and forced redeem from vault requests.
+
+```rust
+fn enable_escape_hatch(ref self: ContractState)
+```
+
+**Access Control:**
+
+Only the App Governor can execute.
+
+**Validations:**
+
+None (only access control).
+
+**Logic:**
+
+1. Set `forced_actions_enabled` to `true`.
+
+**Errors:**
+
+- ONLY_APP_GOVERNOR
+
+#### Get Max Interest Rate Per Sec
+
+Returns the maximum interest rate per second that can be applied to positions.
+
+```rust
+fn get_max_interest_rate_per_sec(self: @ContractState) -> u32
+```
+
+**Access Control:**
+
+View function, anyone can call.
+
+**Returns:**
+
+The maximum interest rate per second (u32).
+
+#### Set Max Interest Rate Per Sec
+
+Sets the maximum interest rate per second that can be applied to positions. This rate is used to validate interest amounts when they are applied to positions.
+
+```rust
+fn set_max_interest_rate_per_sec(
+    ref self: ContractState,
+    max_interest_rate_per_sec: u32,
+)
+```
+
+**Access Control:**
+
+Only the App Governor can execute.
+
+**Validations:**
+
+1. `max_interest_rate_per_sec` must be non-zero.
+
+**Logic:**
+
+1. Run validations
+2. Update the maximum interest rate per second in the positions component.
+
+**Errors:**
+
+- ONLY_APP_GOVERNOR
+- ZERO_MAX_INTEREST_RATE

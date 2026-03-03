@@ -21,7 +21,7 @@ pub mod Core {
     };
     use perpetuals::core::components::positions::errors::ZERO_MAX_INTEREST_RATE;
     use perpetuals::core::errors::{
-        AMOUNT_OVERFLOW, ESCAPE_HATCH_DISABLED, FORCED_WAIT_REQUIRED, INVALID_ZERO_TIMEOUT,
+        AMOUNT_OVERFLOW, ESCAPE_HATCH_DISABLED, FORCED_WAIT_REQUIRED, INSUFFICIENT_APPROVAL, INVALID_ZERO_TIMEOUT,
         LENGTH_MISMATCH, ORDER_IS_NOT_EXPIRED, TRADE_ASSET_NOT_SYNTHETIC, TRANSFER_FAILED,
         VAULT_CANNOT_INITIATE_TRANSFER, VAULT_CANNOT_INITIATE_WITHDRAW,
     };
@@ -39,7 +39,7 @@ pub mod Core {
     use starknet::storage::{
         StorageMapReadAccess, StoragePointerReadAccess, StoragePointerWriteAccess,
     };
-    use starknet::{ContractAddress, get_block_info, get_caller_address};
+    use starknet::{ContractAddress, get_block_info, get_caller_address, get_contract_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
@@ -213,6 +213,7 @@ pub mod Core {
         WithdrawRequest: events::WithdrawRequest,
         ForcedTradeRequest: events::ForcedTradeRequest,
         ForcedTrade: events::ForcedTrade,
+        ForcedWithdrawRequest: events::ForcedWithdrawRequest,
         ForcedRedeemFromVaultRequest: vault_events::ForcedRedeemFromVaultRequest,
         ForcedRedeemFromVault: vault_events::ForcedRedeemFromVault,
         InterestApplied: events::InterestApplied,
@@ -478,71 +479,6 @@ pub mod Core {
                 i += 1;
             }
             self.fulfillment_tracking.clean_fulfillment(hashes.span());
-        }
-
-
-        /// Executes a trade between two orders (Order A and Order B).
-        ///
-        /// Validations:
-        /// - The contract must not be paused.
-        /// - The `operator_nonce` must be valid.
-        /// - The funding validation interval has not passed since the last funding tick.
-        /// - The prices of all assets in the system are valid.
-        /// - Validates signatures for both orders using the public keys of their respective owners.
-        /// - Ensures the fee amounts in both orders are positive.
-        /// - Validates that the base and quote asset types match between the two orders.
-        /// - Verifies the signs of amounts:
-        ///   - Ensures the sign of amounts in each order is consistent.
-        ///   - Ensures the signs between Order A and Order B amounts are opposite where required.
-        /// - Ensures the order fulfillment amounts do not exceed their respective limits.
-        /// - Validates that the fee ratio does not increase.
-        /// - Ensures the base-to-quote amount ratio does not decrease.
-        ///
-        /// Execution:
-        /// - Subtract the fees from each position's collateral.
-        /// - Add the fees to the `fee_position`.
-        /// - Update Order A's position and Order B's position, based on `actual_amount_base`.
-        /// - Adjust collateral balances.
-        /// - Perform fundamental validation for both positions after the execution.
-        /// - Update order fulfillment.
-        fn trade(
-            ref self: ContractState,
-            operator_nonce: u64,
-            signature_a: Signature,
-            signature_b: Signature,
-            order_a: Order,
-            order_b: Order,
-            actual_amount_base_a: i64,
-            actual_amount_quote_a: i64,
-            actual_fee_a: u64,
-            actual_fee_b: u64,
-        ) {
-            self.pausable.assert_not_paused();
-            self.assets.validate_assets_integrity();
-            self.operator_nonce.use_checked_nonce(:operator_nonce);
-
-            // Pass default values for interest validation parameters since interest_amount_a and
-            // interest_amount_b are zero. Interest validation is skipped when interest amounts are
-            // zero, so these parameters are not used.
-            self
-                ._execute_trade(
-                    :signature_a,
-                    :signature_b,
-                    :order_a,
-                    :order_b,
-                    :actual_amount_base_a,
-                    :actual_amount_quote_a,
-                    :actual_fee_a,
-                    :actual_fee_b,
-                    interest_amount_a: 0,
-                    interest_amount_b: 0,
-                    current_time: Timestamp { seconds: 0 },
-                    time_of_last_update: Timestamp { seconds: 0 },
-                    max_interest_rate_per_sec: 0,
-                    tvtr_a_before: Default::default(),
-                    tvtr_b_before: Default::default(),
-                    check_signature: true,
-                );
         }
 
         fn liquidate(
@@ -851,6 +787,24 @@ pub mod Core {
                     :expiration,
                     :salt,
                 );
+
+            /// Executions:
+
+            // Transfer premium_cost (forced fee) from the caller to the sequencer address.
+            self._collect_forced_action_premium();
+
+            self
+                .emit(
+                    events::ForcedWithdrawRequest {
+                        position_id,
+                        recipient,
+                        collateral_id,
+                        amount,
+                        expiration,
+                        forced_withdraw_request_hash,
+                        salt,
+                    },
+                );
         }
 
         /// Executes a previously submitted forced withdrawal request for a position.
@@ -931,18 +885,7 @@ pub mod Core {
             );
 
             // Transfer premium_cost (forced fee) from the caller to the sequencer address.
-            let premium_cost = self.premium_cost.read();
-            let quantum = self.assets.get_collateral_quantum();
-            let token_contract = self.assets.get_base_collateral_token_contract();
-            assert(
-                token_contract
-                    .transfer_from(
-                        sender: get_caller_address(),
-                        recipient: get_block_info().sequencer_address,
-                        amount: (premium_cost * quantum).into(),
-                    ),
-                TRANSFER_FAILED,
-            );
+            self._collect_forced_action_premium();
 
             self
                 .emit(
@@ -1107,18 +1050,7 @@ pub mod Core {
             );
 
             // Transfer premium_cost (forced fee) from the caller to the sequencer address.
-            let premium_cost = self.premium_cost.read();
-            let quantum = self.assets.get_collateral_quantum();
-            let token_contract = self.assets.get_base_collateral_token_contract();
-            assert(
-                token_contract
-                    .transfer_from(
-                        sender: get_caller_address(),
-                        recipient: get_block_info().sequencer_address,
-                        amount: (premium_cost * quantum).into(),
-                    ),
-                TRANSFER_FAILED,
-            );
+            self._collect_forced_action_premium();
 
             self
                 .emit(
@@ -1161,7 +1093,7 @@ pub mod Core {
         /// - Processes the forced redeem.
         /// - Marks the forced request as completed and clears the pending entry.
         /// - Emits a `ForcedRedeemFromVault` event.
-        fn force_redeem_from_vault(
+        fn forced_redeem_from_vault(
             ref self: ContractState,
             operator_nonce: u64,
             order: LimitOrder,
@@ -1192,7 +1124,7 @@ pub mod Core {
             self
                 .external_components
                 ._get_vault_manager_dispatcher()
-                .force_redeem_from_vault(:order, :vault_approval);
+                .forced_redeem_from_vault(:order, :vault_approval);
 
             self
                 .emit(
@@ -1535,6 +1467,27 @@ pub mod Core {
 
         fn _is_escape_hatch_enabled(ref self: ContractState) -> bool {
             return self.forced_actions_enabled.read();
+        }
+
+        /// Transfers the premium cost (forced fee) from the caller to the sequencer address.
+        fn _collect_forced_action_premium(ref self: ContractState) {
+            let premium_cost = self.premium_cost.read();
+            let quantum = self.assets.get_collateral_quantum();
+            let token_contract = self.assets.get_base_collateral_token_contract();
+            let amount: u256 = (premium_cost * quantum).into();
+            let outstanding_allowance = token_contract
+                .allowance(owner: get_caller_address(), spender: get_contract_address());
+            assert(outstanding_allowance >= amount, INSUFFICIENT_APPROVAL);
+
+            assert(
+                token_contract
+                    .transfer_from(
+                        sender: get_caller_address(),
+                        recipient: get_block_info().sequencer_address,
+                        :amount,
+                    ),
+                TRANSFER_FAILED,
+            );
         }
     }
 }

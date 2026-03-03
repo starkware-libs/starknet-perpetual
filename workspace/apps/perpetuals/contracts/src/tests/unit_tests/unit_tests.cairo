@@ -18,6 +18,7 @@ use perpetuals::core::components::snip::SNIP12MetadataImpl;
 use perpetuals::core::errors::SIGNED_TX_EXPIRED;
 use perpetuals::core::interface::{
     ICore, ICoreDispatcher, ICoreDispatcherTrait, ICoreSafeDispatcher, ICoreSafeDispatcherTrait,
+    Settlement,
 };
 use perpetuals::core::types::asset::{AssetId, AssetIdTrait, AssetStatus};
 use perpetuals::core::types::balance::{Balance, BalanceTrait};
@@ -55,9 +56,11 @@ use perpetuals::tests::test_utils::{
     setup_state_with_pending_vault_share, validate_asset_balance, validate_balance,
 };
 use snforge_std::cheatcodes::events::{EventSpyTrait, EventsFilterTrait};
-use snforge_std::{start_cheat_block_timestamp_global, test_address};
-use starknet::get_block_info;
+use snforge_std::{
+    TokenTrait as SnforgeTokenTrait, start_cheat_block_timestamp_global, test_address,
+};
 use starknet::storage::{StoragePathEntry, StoragePointerReadAccess};
+use starknet::{SyscallResultTrait, get_block_info};
 use starkware_utils::components::replaceability::interface::IReplaceable;
 use starkware_utils::components::request_approvals::interface::{IRequestApprovals, RequestStatus};
 use starkware_utils::components::roles::interface::IRoles;
@@ -438,16 +441,23 @@ fn test_signature_validation() {
     // Send empty signature.
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     let result = dispatcher
-        .trade(
+        .multi_trade(
             operator_nonce: 6,
-            signature_a: array![].span(),
-            signature_b: array![].span(),
-            :order_a,
-            :order_b,
-            actual_amount_base_a: 1,
-            actual_amount_quote_a: -1,
-            actual_fee_a: 0,
-            actual_fee_b: 0,
+            trades: array![
+                Settlement {
+                    signature_a: array![].span(),
+                    signature_b: array![].span(),
+                    order_a,
+                    order_b,
+                    actual_amount_base_a: 1,
+                    actual_amount_quote_a: -1,
+                    actual_fee_a: 0,
+                    actual_fee_b: 0,
+                    interest_amount_a: 0,
+                    interest_amount_b: 0,
+                },
+            ]
+                .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: 'INVALID_STARK_KEY_SIGNATURE');
 
@@ -459,18 +469,25 @@ fn test_signature_validation() {
     // Send Correct signature.
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     dispatcher
-        .trade(
+        .multi_trade(
             operator_nonce: 7,
-            :signature_a,
-            :signature_b,
-            :order_a,
-            :order_b,
-            actual_amount_base_a: 1,
-            actual_amount_quote_a: -1,
-            actual_fee_a: 0,
-            actual_fee_b: 0,
+            trades: array![
+                Settlement {
+                    signature_a,
+                    signature_b,
+                    order_a,
+                    order_b,
+                    actual_amount_base_a: 1,
+                    actual_amount_quote_a: -1,
+                    actual_fee_a: 0,
+                    actual_fee_b: 0,
+                    interest_amount_a: 0,
+                    interest_amount_b: 0,
+                },
+            ]
+                .span(),
         )
-        .unwrap();
+        .unwrap_syscall();
 
     let hash_a = order_a.get_message_hash(KEY_PAIR_2().public_key);
     let signature_a = user_a.sign_message(hash_a);
@@ -478,16 +495,23 @@ fn test_signature_validation() {
     // Send a signature created by different key.
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     let result = dispatcher
-        .trade(
+        .multi_trade(
             operator_nonce: 8,
-            :signature_a,
-            :signature_b,
-            :order_a,
-            :order_b,
-            actual_amount_base_a: 1,
-            actual_amount_quote_a: -1,
-            actual_fee_a: 0,
-            actual_fee_b: 0,
+            trades: array![
+                Settlement {
+                    signature_a,
+                    signature_b,
+                    order_a,
+                    order_b,
+                    actual_amount_base_a: 1,
+                    actual_amount_quote_a: -1,
+                    actual_fee_a: 0,
+                    actual_fee_b: 0,
+                    interest_amount_a: 0,
+                    interest_amount_b: 0,
+                },
+            ]
+                .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: 'INVALID_STARK_KEY_SIGNATURE');
 
@@ -499,16 +523,23 @@ fn test_signature_validation() {
     // Send different order message, than the signed one.
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     let result = dispatcher
-        .trade(
+        .multi_trade(
             operator_nonce: 9,
-            :signature_a,
-            :signature_b,
-            :order_a,
-            :order_b,
-            actual_amount_base_a: 1,
-            actual_amount_quote_a: -1,
-            actual_fee_a: 0,
-            actual_fee_b: 0,
+            trades: array![
+                Settlement {
+                    signature_a,
+                    signature_b,
+                    order_a,
+                    order_b,
+                    actual_amount_base_a: 1,
+                    actual_amount_quote_a: -1,
+                    actual_fee_a: 0,
+                    actual_fee_b: 0,
+                    interest_amount_a: 0,
+                    interest_amount_b: 0,
+                },
+            ]
+                .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: 'INVALID_STARK_KEY_SIGNATURE');
 
@@ -521,16 +552,23 @@ fn test_signature_validation() {
     // Send different order message, than the signed one.
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     let result = dispatcher
-        .trade(
+        .multi_trade(
             operator_nonce: 10,
-            :signature_a,
-            :signature_b,
-            :order_a,
-            :order_b,
-            actual_amount_base_a: 1,
-            actual_amount_quote_a: -1,
-            actual_fee_a: 0,
-            actual_fee_b: 0,
+            trades: array![
+                Settlement {
+                    signature_a,
+                    signature_b,
+                    order_a,
+                    order_b,
+                    actual_amount_base_a: 1,
+                    actual_amount_quote_a: -1,
+                    actual_fee_a: 0,
+                    actual_fee_b: 0,
+                    interest_amount_a: 0,
+                    interest_amount_b: 0,
+                },
+            ]
+                .span(),
         );
     assert_panic_with_felt_error(:result, expected_error: 'INVALID_STARK_KEY_SIGNATURE');
 }
@@ -1482,7 +1520,7 @@ fn test_rf_increase_with_request_spot() {
     let quorum = 1_u8;
     let resolution_factor = SYNTHETIC_RESOLUTION_FACTOR;
     let quantum = 12_u64;
-    let erc20_contract_address = token_state.address;
+    let erc20_contract_address = snforge_std::Token::ETH.contract_address();
 
     // Add spot asset.
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
@@ -1738,7 +1776,7 @@ fn test_rf_update_spot_multiple_tiers_invalid() {
     let quorum = 1_u8;
     let resolution_factor = SYNTHETIC_RESOLUTION_FACTOR;
     let quantum = 12_u64;
-    let erc20_contract_address = token_state.address;
+    let erc20_contract_address = snforge_std::Token::ETH.contract_address();
 
     // Add spot asset.
     cheat_caller_address_once(:contract_address, caller_address: cfg.app_governor);
@@ -2503,16 +2541,23 @@ fn test_successful_trade() {
     // Test:
     cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.operator);
     state
-        .trade(
+        .multi_trade(
             :operator_nonce,
-            :signature_a,
-            :signature_b,
-            :order_a,
-            :order_b,
-            actual_amount_base_a: BASE,
-            actual_amount_quote_a: QUOTE,
-            actual_fee_a: FEE,
-            actual_fee_b: FEE,
+            trades: array![
+                Settlement {
+                    signature_a,
+                    signature_b,
+                    order_a,
+                    order_b,
+                    actual_amount_base_a: BASE,
+                    actual_amount_quote_a: QUOTE,
+                    actual_fee_a: FEE,
+                    actual_fee_b: FEE,
+                    interest_amount_a: 0,
+                    interest_amount_b: 0,
+                },
+            ]
+                .span(),
         );
 
     // Catch the event.
@@ -2628,16 +2673,23 @@ fn test_invalid_trade_same_base_signs() {
     // Test:
     cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.operator);
     state
-        .trade(
+        .multi_trade(
             :operator_nonce,
-            :signature_a,
-            :signature_b,
-            :order_a,
-            :order_b,
-            actual_amount_base_a: BASE,
-            actual_amount_quote_a: QUOTE,
-            actual_fee_a: FEE,
-            actual_fee_b: FEE,
+            trades: array![
+                Settlement {
+                    signature_a,
+                    signature_b,
+                    order_a,
+                    order_b,
+                    actual_amount_base_a: BASE,
+                    actual_amount_quote_a: QUOTE,
+                    actual_fee_a: FEE,
+                    actual_fee_b: FEE,
+                    interest_amount_a: 0,
+                    interest_amount_b: 0,
+                },
+            ]
+                .span(),
         );
 }
 
@@ -2717,11 +2769,11 @@ fn test_successful_forced_withdraw_request() {
     // Fund user with premium cost
     let premium_cost = PREMIUM_COST;
     let premium_amount: u128 = premium_cost.into() * cfg.collateral_cfg.quantum.into();
-    token_state.fund(recipient: user.address, amount: USER_INIT_BALANCE.try_into().unwrap());
+    token_state.fund(recipient: user.address, amount: USER_INIT_BALANCE);
     token_state.approve(owner: user.address, spender: contract_address, amount: premium_amount);
 
     // Check user balance before forced withdraw request
-    validate_balance(token_state, user.address, USER_INIT_BALANCE.try_into().unwrap());
+    validate_balance(token_state, user.address, USER_INIT_BALANCE);
 
     // Get sequencer address and check its balance before
     let sequencer_address = get_block_info().sequencer_address;
@@ -2731,7 +2783,7 @@ fn test_successful_forced_withdraw_request() {
     start_cheat_block_timestamp_global(
         block_timestamp: Time::now().add(delta: Time::days(1)).into(),
     );
-    let expiration = Time::now().add(delta: Time::days(1));
+    let expiration = Time::now().add(delta: Time::weeks(2));
 
     let withdraw_args = WithdrawArgs {
         position_id: user.position_id,
@@ -5235,7 +5287,7 @@ fn test_successful_add_spot_asset() {
     let quorum = 1_u8;
     let resolution_factor = SYNTHETIC_RESOLUTION_FACTOR;
     let quantum = 12_u64;
-    let erc20_contract_address = token_state.address;
+    let erc20_contract_address = snforge_std::Token::ETH.contract_address();
 
     // Test:
     cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.app_governor);
@@ -5326,6 +5378,48 @@ fn test_unsuccessful_add_spot_asset_existing_asset() {
             :quorum,
         );
 }
+
+#[test]
+#[should_panic(expected: 'ASSET_TOKEN_ADDRESS_USED')]
+fn test_unsuccessful_add_asset_duplicate_contract_address() {
+    // Setup state, token:
+    let cfg: PerpetualsInitConfig = Default::default();
+    let token_state = cfg.collateral_cfg.token_cfg.deploy();
+    let mut state = init_state(cfg: @cfg, token_state: @token_state);
+
+    // Setup test parameters for first spot asset:
+    let first_spot_asset_id = SYNTHETIC_ASSET_ID_2();
+    let risk_factor = 10;
+    let quorum = 1_u8;
+    let resolution_factor = SYNTHETIC_RESOLUTION_FACTOR;
+    let quantum = 12_u64;
+    let erc20_contract_address = snforge_std::Token::ETH.contract_address();
+
+    cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.app_governor);
+    state
+        .add_spot_asset(
+            asset_id: first_spot_asset_id,
+            :erc20_contract_address,
+            :quantum,
+            :resolution_factor,
+            :risk_factor,
+            :quorum,
+        );
+
+    // Try to add second asset with same contract address.
+    let second_spot_asset_id = SYNTHETIC_ASSET_ID_3();
+    cheat_caller_address_once(contract_address: test_address(), caller_address: cfg.app_governor);
+    state
+        .add_spot_asset(
+            asset_id: second_spot_asset_id,
+            :erc20_contract_address,
+            :quantum,
+            :resolution_factor,
+            :risk_factor,
+            :quorum,
+        );
+}
+
 #[test]
 fn test_successful_vault_token_deposit() {
     // Setup state, token and user:
