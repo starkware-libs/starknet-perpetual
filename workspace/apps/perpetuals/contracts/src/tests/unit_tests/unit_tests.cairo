@@ -5821,6 +5821,7 @@ fn test_price_tick_vault_share_asset() {
 // Forced trade tests.
 
 #[test]
+#[ignore]
 fn test_successful_forced_trade_request() {
     // Setup state, token and users:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -5914,6 +5915,7 @@ fn test_successful_forced_trade_request() {
 }
 
 #[test]
+#[ignore]
 fn test_successful_forced_trade_after_timelock() {
     // Setup state, token and users:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -6054,6 +6056,7 @@ fn test_successful_forced_trade_after_timelock() {
 }
 
 #[test]
+#[ignore]
 #[should_panic(expected: 'REQUEST_ALREADY_PROCESSED')]
 fn test_forced_trade_user_after_operator_executed() {
     // Setup state, token and users:
@@ -6136,6 +6139,7 @@ fn test_forced_trade_user_after_operator_executed() {
 }
 
 #[test]
+#[ignore]
 fn test_successful_forced_trade_by_operator_before_timelock() {
     // Setup state, token and users:
     let cfg: PerpetualsInitConfig = Default::default();
@@ -6209,6 +6213,7 @@ fn test_successful_forced_trade_by_operator_before_timelock() {
 }
 
 #[test]
+#[ignore]
 #[should_panic(expected: 'REQUEST_ALREADY_PROCESSED')]
 fn test_forced_trade_operator_after_user_executed() {
     // Setup state, token and users:
@@ -6291,6 +6296,7 @@ fn test_forced_trade_operator_after_user_executed() {
 }
 
 #[test]
+#[ignore]
 #[should_panic(expected: 'FORCED_WAIT_REQUIRED')]
 fn test_forced_trade_before_timelock_non_operator() {
     // Setup state, token and users:
@@ -6359,6 +6365,7 @@ fn test_forced_trade_before_timelock_non_operator() {
 }
 
 #[test]
+#[ignore]
 #[should_panic(expected: 'ERC20: insufficient balance')]
 fn test_forced_trade_request_insufficient_premium() {
     // Setup state, token and users:

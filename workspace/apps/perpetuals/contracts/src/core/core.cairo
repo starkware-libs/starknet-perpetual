@@ -4,7 +4,6 @@ pub mod Core {
     use core::num::traits::Zero;
     use core::panic_with_felt252;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
-    use openzeppelin::interfaces::erc20::IERC20DispatcherTrait;
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::assets::AssetsComponent;
     use perpetuals::core::components::assets::AssetsComponent::InternalTrait as AssetsInternal;
@@ -21,9 +20,8 @@ pub mod Core {
     };
     use perpetuals::core::components::positions::errors::ZERO_MAX_INTEREST_RATE;
     use perpetuals::core::errors::{
-        AMOUNT_OVERFLOW, ESCAPE_HATCH_DISABLED, FORCED_WAIT_REQUIRED, INSUFFICIENT_APPROVAL,
-        INVALID_ZERO_TIMEOUT, LENGTH_MISMATCH, ORDER_IS_NOT_EXPIRED, TRADE_ASSET_NOT_SYNTHETIC,
-        TRANSFER_FAILED,
+        AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_ZERO_TIMEOUT, LENGTH_MISMATCH,
+        ORDER_IS_NOT_EXPIRED, TRADE_ASSET_NOT_SYNTHETIC,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
@@ -39,7 +37,7 @@ pub mod Core {
     use starknet::storage::{
         StorageMapReadAccess, StoragePointerReadAccess, StoragePointerWriteAccess,
     };
-    use starknet::{ContractAddress, get_block_info, get_caller_address, get_contract_address};
+    use starknet::{ContractAddress, get_caller_address};
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
@@ -60,6 +58,7 @@ pub mod Core {
     use crate::core::components::deposit::events as deposit_events;
     use crate::core::components::external_components::external_component_manager::ExternalComponents as ExternalComponentsComponent;
     use crate::core::components::external_components::external_component_manager::ExternalComponents::InternalTrait as ExternalComponentsInternalTrait;
+    use crate::core::components::forced_requests::forced_requests_manager::IForcedRequestsManagerDispatcherTrait;
     use crate::core::components::fulfillment::fulfillment::Fulfillement;
     use crate::core::components::fulfillment::interface::IFulfillment;
     use crate::core::components::liquidation::liquidation_manager::ILiquidationManagerDispatcherTrait;
@@ -773,11 +772,8 @@ pub mod Core {
             expiration: Timestamp,
             salt: felt252,
         ) {
-            assert(self._is_escape_hatch_enabled(), ESCAPE_HATCH_DISABLED);
-            assert(!self._is_vault(vault_position: position_id), 'VAULT_CANNOT_INITIATE_WITHDRAW');
-            let forced_withdraw_request_hash = self
-                .external_components
-                ._get_withdrawal_manager_dispatcher()
+            let dispatcher = self.external_components._get_forced_request_manager();
+            dispatcher
                 .forced_withdraw_request(
                     :signature,
                     :collateral_id,
@@ -786,24 +782,6 @@ pub mod Core {
                     :amount,
                     :expiration,
                     :salt,
-                );
-
-            /// Executions:
-
-            // Transfer premium_cost (forced fee) from the caller to the sequencer address.
-            self._collect_forced_action_premium();
-
-            self
-                .emit(
-                    events::ForcedWithdrawRequest {
-                        position_id,
-                        recipient,
-                        collateral_id,
-                        amount,
-                        expiration,
-                        forced_withdraw_request_hash,
-                        salt,
-                    },
                 );
         }
 
@@ -855,59 +833,8 @@ pub mod Core {
             order_a: Order,
             order_b: Order,
         ) {
-            assert(self._is_escape_hatch_enabled(), ESCAPE_HATCH_DISABLED);
-            let position_a = self.positions.get_position_snapshot(position_id: order_a.position_id);
-            let position_b = self.positions.get_position_snapshot(position_id: order_b.position_id);
-
-            // Validate the caller is the position owner account
-            let owner_account = if (position_a.owner_protection_enabled.read()) {
-                position_a.get_owner_account()
-            } else {
-                Option::None
-            };
-            let public_key_a = position_a.get_owner_public_key();
-            let public_key_b = position_b.get_owner_public_key();
-
-            // Validate the forced request signatures.
-            self
-                .request_approvals
-                .register_forced_approval(
-                    :owner_account,
-                    public_key: public_key_a,
-                    signature: signature_a,
-                    args: ForcedTrade { order_a, order_b },
-                );
-
-            validate_signature(
-                public_key: public_key_b,
-                message: ForcedTrade { order_a, order_b },
-                signature: signature_b,
-            );
-
-            // Transfer premium_cost (forced fee) from the caller to the sequencer address.
-            self._collect_forced_action_premium();
-
-            self
-                .emit(
-                    events::ForcedTradeRequest {
-                        order_a_position_id: order_a.position_id,
-                        order_a_base_asset_id: order_a.base_asset_id,
-                        order_a_base_amount: order_a.base_amount,
-                        order_a_quote_asset_id: order_a.quote_asset_id,
-                        order_a_quote_amount: order_a.quote_amount,
-                        fee_a_asset_id: order_a.fee_asset_id,
-                        fee_a_amount: order_a.fee_amount,
-                        order_b_position_id: order_b.position_id,
-                        order_b_base_asset_id: order_b.base_asset_id,
-                        order_b_base_amount: order_b.base_amount,
-                        order_b_quote_asset_id: order_b.quote_asset_id,
-                        order_b_quote_amount: order_b.quote_amount,
-                        fee_b_asset_id: order_b.fee_asset_id,
-                        fee_b_amount: order_b.fee_amount,
-                        order_a_hash: order_a.get_message_hash(public_key: public_key_a),
-                        order_b_hash: order_b.get_message_hash(public_key: public_key_b),
-                    },
-                );
+            let dispatcher = self.external_components._get_forced_request_manager();
+            dispatcher.forced_trade_request(:signature_a, :signature_b, :order_a, :order_b);
         }
 
         /// Executes a previously submitted forced trade request for a position.
@@ -1015,68 +942,10 @@ pub mod Core {
             order: LimitOrder,
             vault_approval: LimitOrder,
         ) {
-            assert(self._is_escape_hatch_enabled(), ESCAPE_HATCH_DISABLED);
-
-            let redeeming_position = self
-                .positions
-                .get_position_snapshot(position_id: order.source_position);
-            let vault_config = self.vaults.get_vault_config_for_asset(order.base_asset_id);
-            let vault_position_id: PositionId = vault_config.position_id.into();
-            let vault_position = self
-                .positions
-                .get_position_snapshot(position_id: vault_position_id);
-
-            // Validate the caller is the position owner account
-            let owner_account = if (redeeming_position.owner_protection_enabled.read()) {
-                redeeming_position.get_owner_account()
-            } else {
-                Option::None
-            };
-            let public_key = redeeming_position.get_owner_public_key();
-            let vault_public_key = vault_position.get_owner_public_key();
-            let forced_redeem_from_vault = ForcedRedeemFromVault { order, vault_approval };
-
-            // Validate the forced request signatures.
-            let hash = self
-                .request_approvals
-                .register_forced_approval(
-                    :owner_account, :public_key, :signature, args: forced_redeem_from_vault,
-                );
-
-            validate_signature(
-                public_key: vault_public_key,
-                message: forced_redeem_from_vault,
-                signature: vault_signature,
-            );
-
-            // Transfer premium_cost (forced fee) from the caller to the sequencer address.
-            self._collect_forced_action_premium();
-
-            self
-                .emit(
-                    vault_events::ForcedRedeemFromVaultRequest {
-                        order_source_position: order.source_position,
-                        order_receive_position: order.receive_position,
-                        order_base_asset_id: order.base_asset_id,
-                        order_base_amount: order.base_amount,
-                        order_quote_asset_id: order.quote_asset_id,
-                        order_quote_amount: order.quote_amount,
-                        order_fee_asset_id: order.fee_asset_id,
-                        order_fee_amount: order.fee_amount,
-                        order_expiration: order.expiration,
-                        order_salt: order.salt,
-                        vault_approval_source_position: vault_approval.source_position,
-                        vault_approval_receive_position: vault_approval.receive_position,
-                        vault_approval_base_asset_id: vault_approval.base_asset_id,
-                        vault_approval_base_amount: vault_approval.base_amount,
-                        vault_approval_quote_asset_id: vault_approval.quote_asset_id,
-                        vault_approval_quote_amount: vault_approval.quote_amount,
-                        vault_approval_fee_asset_id: vault_approval.fee_asset_id,
-                        vault_approval_fee_amount: vault_approval.fee_amount,
-                        vault_approval_expiration: vault_approval.expiration,
-                        vault_approval_salt: vault_approval.salt,
-                        hash,
-                    },
+            let dispatcher = self.external_components._get_forced_request_manager();
+            dispatcher
+                .forced_redeem_from_vault_request(
+                    :signature, :vault_signature, :order, :vault_approval,
                 );
         }
 
@@ -1463,31 +1332,6 @@ pub mod Core {
 
         fn _is_vault(ref self: ContractState, vault_position: PositionId) -> bool {
             self.vaults.is_vault_position(vault_position)
-        }
-
-        fn _is_escape_hatch_enabled(ref self: ContractState) -> bool {
-            return self.forced_actions_enabled.read();
-        }
-
-        /// Transfers the premium cost (forced fee) from the caller to the sequencer address.
-        fn _collect_forced_action_premium(ref self: ContractState) {
-            let premium_cost = self.premium_cost.read();
-            let quantum = self.assets.get_collateral_quantum();
-            let token_contract = self.assets.get_base_collateral_token_contract();
-            let amount: u256 = (premium_cost * quantum).into();
-            let outstanding_allowance = token_contract
-                .allowance(owner: get_caller_address(), spender: get_contract_address());
-            assert(outstanding_allowance >= amount, INSUFFICIENT_APPROVAL);
-
-            assert(
-                token_contract
-                    .transfer_from(
-                        sender: get_caller_address(),
-                        recipient: get_block_info().sequencer_address,
-                        :amount,
-                    ),
-                TRANSFER_FAILED,
-            );
         }
     }
 }
