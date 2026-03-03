@@ -775,7 +775,7 @@ pub mod Core {
         ) {
             assert(self._is_escape_hatch_enabled(), ESCAPE_HATCH_DISABLED);
             assert(!self._is_vault(vault_position: position_id), VAULT_CANNOT_INITIATE_WITHDRAW);
-            self
+            let forced_withdraw_request_hash = self
                 .external_components
                 ._get_withdrawal_manager_dispatcher()
                 .forced_withdraw_request(
