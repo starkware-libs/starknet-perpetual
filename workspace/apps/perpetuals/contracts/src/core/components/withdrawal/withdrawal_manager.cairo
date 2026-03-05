@@ -1,7 +1,7 @@
 use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::position::PositionId;
 use starknet::ContractAddress;
-use starkware_utils::signature::stark::{HashType, Signature};
+use starkware_utils::signature::stark::Signature;
 use starkware_utils::time::time::Timestamp;
 
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
@@ -101,8 +101,8 @@ pub(crate) mod WithdrawalManager {
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
     use perpetuals::core::components::snip::SNIP12MetadataImpl;
     use perpetuals::core::errors::{
-        AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_EXPIRATION, INVALID_ZERO_AMOUNT,
-        SIGNED_TX_EXPIRED, TRANSFER_FAILED,
+        AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED,
+        TRANSFER_FAILED,
     };
     use perpetuals::core::types::asset::AssetId;
     use perpetuals::core::types::asset::synthetic::SyntheticTrait;
