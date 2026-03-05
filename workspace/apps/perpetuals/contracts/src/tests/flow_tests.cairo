@@ -2,6 +2,7 @@ mod caller_failure_tests;
 mod exchange_time_tests;
 mod external_components_tests;
 mod flow_tests;
+mod forced_trade_tests;
 mod infra;
 mod perps_tests_facade;
 mod procotol_vault_deposit_tests;
