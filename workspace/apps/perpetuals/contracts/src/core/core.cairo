@@ -22,6 +22,7 @@ pub mod Core {
     use perpetuals::core::errors::{
         AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_ZERO_TIMEOUT, LENGTH_MISMATCH,
         ORDER_IS_NOT_EXPIRED, TRADE_ASSET_NOT_SYNTHETIC,
+        VAULT_CANNOT_INITIATE_TRANSFER, VAULT_CANNOT_INITIATE_WITHDRAW,
     };
     use perpetuals::core::events;
     use perpetuals::core::interface::{ICore, Settlement};
@@ -304,7 +305,7 @@ pub mod Core {
             salt: felt252,
         ) {
             if (self._is_vault(vault_position: position_id)) {
-                panic_with_felt252('VAULT_CANNOT_INITIATE_WITHDRAW');
+                panic_with_felt252(VAULT_CANNOT_INITIATE_WITHDRAW);
             }
             self
                 .external_components
@@ -378,7 +379,7 @@ pub mod Core {
             salt: felt252,
         ) {
             if (self._is_vault(vault_position: position_id)) {
-                panic_with_felt252('VAULT_CANNOT_INITIATE_TRANSFER');
+                panic_with_felt252(VAULT_CANNOT_INITIATE_TRANSFER);
             }
             self
                 .external_components

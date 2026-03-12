@@ -52,7 +52,7 @@ pub(crate) mod ForcedRequestsManager {
     use perpetuals::core::components::snip::SNIP12MetadataImpl;
     use perpetuals::core::errors::{
         ESCAPE_HATCH_DISABLED, INSUFFICIENT_APPROVAL, INVALID_EXPIRATION, INVALID_ZERO_AMOUNT,
-        TRANSFER_FAILED,
+        TRANSFER_FAILED, VAULT_CANNOT_INITIATE_WITHDRAW,
     };
     use perpetuals::core::types::asset::AssetId;
     use perpetuals::core::types::asset::synthetic::{AssetType, SyntheticTrait};
@@ -183,7 +183,7 @@ pub(crate) mod ForcedRequestsManager {
             salt: felt252,
         ) -> HashType {
             assert(self._is_escape_hatch_enabled(), ESCAPE_HATCH_DISABLED);
-            assert(!self.vaults.is_vault_position(position_id), 'VAULT_CANNOT_INITIATE_WITHDRAW');
+            assert(!self.vaults.is_vault_position(position_id), VAULT_CANNOT_INITIATE_WITHDRAW);
 
             // Validate position exists.
             let position = self.positions.get_position_snapshot(:position_id);
