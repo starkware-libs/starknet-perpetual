@@ -19,9 +19,10 @@ pub mod ExternalComponents {
     use crate::core::components::deposit::deposit_manager::IDepositExternalLibraryDispatcher;
     use crate::core::components::external_components::events;
     use crate::core::components::external_components::interface::{
-        EXTERNAL_COMPONENT_DELEVERAGES, IExternalComponents,
+        EXTERNAL_COMPONENT_DELEVERAGES, EXTERNAL_COMPONENT_FORCED_REQUESTS, IExternalComponents,
     };
     use crate::core::components::external_components::named_component::ITypedComponentLibraryDispatcher;
+    use crate::core::components::forced_requests::forced_requests_manager::IForcedRequestsManagerLibraryDispatcher;
     use crate::core::components::liquidation::liquidation_manager::ILiquidationManagerLibraryDispatcher;
     use crate::core::components::transfer::transfer_manager::ITransferManagerLibraryDispatcher;
     use crate::core::components::vaults::vaults_contract::IVaultExternalLibraryDispatcher;
@@ -160,6 +161,17 @@ pub mod ExternalComponents {
             assert(class_hash.is_non_zero(), 'NO_ASSETS_MANAGER');
             IAssetsExternalLibraryDispatcher { class_hash: class_hash }
         }
+
+        fn _get_forced_request_manager(
+            ref self: ComponentState<TContractState>,
+        ) -> IForcedRequestsManagerLibraryDispatcher {
+            let class_hash = self
+                .external_component_implementations
+                .entry(EXTERNAL_COMPONENT_FORCED_REQUESTS)
+                .read();
+            assert(class_hash.is_non_zero(), 'NO_FORCED_REQUESTS_MANAGER');
+            IForcedRequestsManagerLibraryDispatcher { class_hash: class_hash }
+        }
     }
 
     #[generate_trait]
@@ -198,7 +210,8 @@ pub mod ExternalComponents {
                 || (component_type == EXTERNAL_COMPONENT_TRANSFERS)
                 || (component_type == EXTERNAL_COMPONENT_LIQUIDATIONS)
                 || (component_type == EXTERNAL_COMPONENT_DELEVERAGES)
-                || (component_type == EXTERNAL_COMPONENT_ASSETS) {
+                || (component_type == EXTERNAL_COMPONENT_ASSETS)
+                || (component_type == EXTERNAL_COMPONENT_FORCED_REQUESTS) {
                 let now = Time::now();
                 let activation_time = now.add(update_delay);
                 let entry = self.registered_external_components.entry(component_type);

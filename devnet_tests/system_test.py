@@ -34,6 +34,9 @@ async def upgade_test_utils(test_utils: PerpetualsTestUtils):
         "perpetuals_DepositManager", "DEPOSITS"
     )
     await test_utils.register_and_activate_external_component("perpetuals_AssetsManager", "ASSETS")
+    await test_utils.register_and_activate_external_component(
+        "perpetuals_ForcedRequestsManager", "FORCED_REQUESTS"
+    )
 
 
 @pytest.mark.asyncio

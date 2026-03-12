@@ -5,8 +5,8 @@ use core::nullable::{FromNullableResult, match_nullable};
 use core::num::traits::{WideMul, Zero};
 use external_components::interface::{
     EXTERNAL_COMPONENT_ASSETS, EXTERNAL_COMPONENT_DELEVERAGES, EXTERNAL_COMPONENT_DEPOSITS,
-    EXTERNAL_COMPONENT_LIQUIDATIONS, EXTERNAL_COMPONENT_TRANSFERS, EXTERNAL_COMPONENT_VAULT,
-    EXTERNAL_COMPONENT_WITHDRAWALS,
+    EXTERNAL_COMPONENT_FORCED_REQUESTS, EXTERNAL_COMPONENT_LIQUIDATIONS,
+    EXTERNAL_COMPONENT_TRANSFERS, EXTERNAL_COMPONENT_VAULT, EXTERNAL_COMPONENT_WITHDRAWALS,
 };
 use openzeppelin::interfaces::erc20::IERC20Dispatcher;
 use openzeppelin::interfaces::erc4626::{IERC4626Dispatcher, IERC4626DispatcherTrait};
@@ -35,7 +35,7 @@ use perpetuals::core::types::asset::synthetic::{AssetBalanceInfo, AssetType};
 use perpetuals::core::types::asset::{AssetId, AssetIdTrait, AssetStatus};
 use perpetuals::core::types::balance::Balance;
 use perpetuals::core::types::funding::FundingTick;
-use perpetuals::core::types::order::{ForcedRedeemFromVault, LimitOrder, Order};
+use perpetuals::core::types::order::{ForcedRedeemFromVault, ForcedTrade, LimitOrder, Order};
 use perpetuals::core::types::position::{PositionData, PositionId};
 use perpetuals::core::types::price::{Price, SignedPrice};
 use perpetuals::core::types::transfer::TransferArgs;
@@ -47,7 +47,8 @@ use perpetuals::tests::event_test_utils::{
     assert_add_spot_event_with_expected, assert_add_synthetic_event_with_expected,
     assert_deactivate_synthetic_asset_event_with_expected, assert_deleverage_event_with_expected,
     assert_deposit_canceled_event_with_expected, assert_deposit_event_with_expected,
-    assert_deposit_processed_event_with_expected, assert_invest_in_vault_event_with_expected,
+    assert_deposit_processed_event_with_expected, assert_forced_trade_event_with_expected,
+    assert_forced_trade_request_event_with_expected, assert_invest_in_vault_event_with_expected,
     assert_liquidate_event_with_expected, assert_liquidate_vault_shares_event_with_expected,
     assert_redeem_vault_shares_event_with_expected, assert_trade_event_with_expected,
     assert_transfer_event_with_expected, assert_transfer_request_event_with_expected,
@@ -79,6 +80,7 @@ use crate::core::components::external_components;
 use crate::core::components::external_components::interface::{
     IExternalComponentsDispatcher, IExternalComponentsDispatcherTrait,
 };
+use crate::core::events;
 use crate::core::types::funding::FundingIndex;
 use crate::tests::constants::{KEY_PAIR_1, PREMIUM_COST};
 
@@ -574,6 +576,10 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             .unwrap()
             .contract_class();
 
+        let forced_requests_external_component = snforge_std::declare("ForcedRequestsManager")
+            .unwrap()
+            .contract_class();
+
         let collateral_quantum = COLLATERAL_QUANTUM;
         let perpetuals_config: PerpetualsConfig = PerpetualsConfigTrait::new(
             collateral_token_address: token_state.address, :collateral_quantum,
@@ -646,6 +652,12 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             );
 
         external_components_dispatcher
+            .register_external_component(
+                component_type: EXTERNAL_COMPONENT_FORCED_REQUESTS,
+                component_address: *forced_requests_external_component.class_hash,
+            );
+
+        external_components_dispatcher
             .activate_external_component(
                 component_type: EXTERNAL_COMPONENT_DELEVERAGES,
                 component_address: *deleverage_external_component.class_hash,
@@ -681,6 +693,12 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             .activate_external_component(
                 component_type: EXTERNAL_COMPONENT_ASSETS,
                 component_address: *assets_external_component.class_hash,
+            );
+
+        external_components_dispatcher
+            .activate_external_component(
+                component_type: EXTERNAL_COMPONENT_FORCED_REQUESTS,
+                component_address: *forced_requests_external_component.class_hash,
             );
 
         stop_cheat_caller_address(contract_address: perpetuals_contract);
@@ -2833,6 +2851,180 @@ pub impl PerpsTestsFacadeImpl of PerpsTestsFacadeTrait {
             .forced_redeem_from_vault(
                 :operator_nonce, order: user_order, vault_approval: vault_order,
             );
+    }
+
+    fn forced_trade_request(
+        ref self: PerpsTestsFacade,
+        user_a: User,
+        user_b: User,
+        base_asset_id: AssetId,
+        order_a_base_amount: i64,
+        order_a_quote_amount: i64,
+        order_b_base_amount: i64,
+        order_b_quote_amount: i64,
+        fee_amount: u64,
+    ) -> (Order, Order) {
+        let expiration = Time::now().add(Time::weeks(3));
+        let order_a = Order {
+            position_id: user_a.position_id,
+            base_asset_id,
+            base_amount: order_a_base_amount,
+            quote_asset_id: self.collateral_id,
+            quote_amount: order_a_quote_amount,
+            fee_asset_id: self.collateral_id,
+            fee_amount,
+            expiration,
+            salt: self.generate_salt(),
+        };
+
+        let order_b = Order {
+            position_id: user_b.position_id,
+            base_asset_id,
+            base_amount: order_b_base_amount,
+            quote_asset_id: self.collateral_id,
+            quote_amount: order_b_quote_amount,
+            fee_asset_id: self.collateral_id,
+            fee_amount,
+            expiration,
+            salt: self.generate_salt(),
+        };
+
+        let forced_trade = ForcedTrade { order_a, order_b };
+        let hash_a = forced_trade.get_message_hash(user_a.account.key_pair.public_key);
+        let signature_a = user_a.account.sign_message(hash_a);
+        let hash_b = forced_trade.get_message_hash(user_b.account.key_pair.public_key);
+        let signature_b = user_b.account.sign_message(hash_b);
+
+        let user_balance_before = self.token_state.balance_of(account: user_a.account.address);
+
+        user_a.account.set_as_caller(self.perpetuals_contract);
+        ICoreDispatcher { contract_address: self.perpetuals_contract }
+            .forced_trade_request(
+                signature_a: signature_a,
+                signature_b: signature_b,
+                order_a: order_a,
+                order_b: order_b,
+            );
+
+        let premium_amount: u64 = PREMIUM_COST * COLLATERAL_QUANTUM;
+
+        validate_balance(
+            token_state: self.token_state,
+            address: user_a.account.address,
+            expected_balance: user_balance_before - premium_amount.into(),
+        );
+
+        // Assert forced trade request event
+        let order_a_hash = order_a.get_message_hash(user_a.account.key_pair.public_key);
+        let order_b_hash = order_b.get_message_hash(user_b.account.key_pair.public_key);
+        assert_forced_trade_request_event_with_expected(
+            spied_event: self.get_last_event(contract_address: self.perpetuals_contract),
+            order_a_position_id: user_a.position_id,
+            order_a_base_asset_id: base_asset_id,
+            order_a_base_amount: order_a_base_amount,
+            order_a_quote_asset_id: self.collateral_id,
+            order_a_quote_amount: order_a_quote_amount,
+            fee_a_asset_id: self.collateral_id,
+            fee_a_amount: fee_amount,
+            order_b_position_id: user_b.position_id,
+            order_b_base_asset_id: base_asset_id,
+            order_b_base_amount: order_b_base_amount,
+            order_b_quote_asset_id: self.collateral_id,
+            order_b_quote_amount: order_b_quote_amount,
+            fee_b_asset_id: self.collateral_id,
+            fee_b_amount: fee_amount,
+            order_a_hash: order_a_hash,
+            order_b_hash: order_b_hash,
+        );
+
+        (order_a, order_b)
+    }
+
+    fn forced_trade(
+        ref self: PerpsTestsFacade,
+        user_a: User,
+        user_b: User,
+        order_a: Order,
+        order_b: Order,
+        caller: Account,
+    ) {
+        let operator_nonce = if caller.address == self.operator.address {
+            self.get_nonce()
+        } else {
+            Default::default()
+        };
+
+        let asset_id = order_a.base_asset_id;
+        let base = order_a.base_amount;
+        let quote = order_a.quote_amount;
+        let dispatcher = IPositionsDispatcher { contract_address: self.perpetuals_contract };
+
+        let user_a_balance_before = dispatcher
+            .get_position_assets(position_id: order_a.position_id);
+        let user_a_collateral_balance_before = user_a_balance_before.collateral_balance;
+        let user_a_synthetic_balance_before = get_synthetic_balance(
+            assets: user_a_balance_before.assets, :asset_id,
+        );
+        let user_b_balance_before = dispatcher
+            .get_position_assets(position_id: order_b.position_id);
+        let user_b_collateral_balance_before = user_b_balance_before.collateral_balance;
+        let user_b_synthetic_balance_before = get_synthetic_balance(
+            assets: user_b_balance_before.assets, :asset_id,
+        );
+
+        caller.set_as_caller(self.perpetuals_contract);
+        ICoreDispatcher { contract_address: self.perpetuals_contract }
+            .forced_trade(operator_nonce: operator_nonce, order_a: order_a, order_b: order_b);
+
+        self
+            .validate_collateral_balance(
+                position_id: order_a.position_id,
+                expected_balance: user_a_collateral_balance_before + quote.into(),
+            );
+
+        self
+            .validate_collateral_balance(
+                position_id: order_b.position_id,
+                expected_balance: user_b_collateral_balance_before - quote.into(),
+            );
+
+        self
+            .validate_synthetic_balance(
+                position_id: order_a.position_id,
+                :asset_id,
+                expected_balance: user_a_synthetic_balance_before + base.into(),
+            );
+
+        self
+            .validate_synthetic_balance(
+                position_id: order_b.position_id,
+                :asset_id,
+                expected_balance: user_b_synthetic_balance_before - base.into(),
+            );
+
+        let order_a_hash = order_a.get_message_hash(user_a.account.key_pair.public_key);
+        let order_b_hash = order_b.get_message_hash(user_b.account.key_pair.public_key);
+        assert_forced_trade_event_with_expected(
+            spied_event: self.get_last_event(contract_address: self.perpetuals_contract),
+            order_a_position_id: order_a.position_id,
+            order_a_base_asset_id: asset_id,
+            order_a_base_amount: base,
+            order_a_quote_asset_id: self.collateral_id,
+            order_a_quote_amount: quote,
+            fee_a_asset_id: self.collateral_id,
+            fee_a_amount: order_a.fee_amount,
+            order_b_position_id: order_b.position_id,
+            order_b_base_asset_id: asset_id,
+            order_b_base_amount: order_b.base_amount,
+            order_b_quote_asset_id: self.collateral_id,
+            order_b_quote_amount: order_b.quote_amount,
+            fee_b_asset_id: self.collateral_id,
+            fee_b_amount: order_b.fee_amount,
+            actual_amount_base_a: base,
+            actual_amount_quote_a: quote,
+            order_a_hash: order_a_hash,
+            order_b_hash: order_b_hash,
+        );
     }
 
     fn advance_time(ref self: PerpsTestsFacade, seconds: u64) {

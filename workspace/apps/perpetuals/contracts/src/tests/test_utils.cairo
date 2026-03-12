@@ -43,9 +43,9 @@ use starkware_utils_testing::test_utils::{
 use crate::core::components::deposit::interface::IDeposit;
 use crate::core::components::external_components::interface::{
     EXTERNAL_COMPONENT_ASSETS, EXTERNAL_COMPONENT_DELEVERAGES, EXTERNAL_COMPONENT_DEPOSITS,
-    EXTERNAL_COMPONENT_LIQUIDATIONS, EXTERNAL_COMPONENT_TRANSFERS, EXTERNAL_COMPONENT_VAULT,
-    EXTERNAL_COMPONENT_WITHDRAWALS, IExternalComponents, IExternalComponentsDispatcher,
-    IExternalComponentsDispatcherTrait,
+    EXTERNAL_COMPONENT_FORCED_REQUESTS, EXTERNAL_COMPONENT_LIQUIDATIONS,
+    EXTERNAL_COMPONENT_TRANSFERS, EXTERNAL_COMPONENT_VAULT, EXTERNAL_COMPONENT_WITHDRAWALS,
+    IExternalComponents, IExternalComponentsDispatcher, IExternalComponentsDispatcherTrait,
 };
 use super::constants::{FORCED_ACTION_TIMELOCK, MAX_INTEREST_RATE_PER_SEC, PREMIUM_COST};
 
@@ -655,6 +655,9 @@ pub fn init_state(cfg: @PerpetualsInitConfig, token_state: @TokenState) -> Core:
         .contract_class();
 
     let assets_external_component = snforge_std::declare("AssetsManager").unwrap().contract_class();
+    let forced_requests_external_component = snforge_std::declare("ForcedRequestsManager")
+        .unwrap()
+        .contract_class();
 
     cheat_caller_address(
         contract_address: test_address(),
@@ -699,6 +702,11 @@ pub fn init_state(cfg: @PerpetualsInitConfig, token_state: @TokenState) -> Core:
             component_type: EXTERNAL_COMPONENT_ASSETS,
             component_address: *assets_external_component.class_hash,
         );
+    state
+        .register_external_component(
+            component_type: EXTERNAL_COMPONENT_FORCED_REQUESTS,
+            component_address: *forced_requests_external_component.class_hash,
+        );
 
     state
         .activate_external_component(
@@ -735,6 +743,11 @@ pub fn init_state(cfg: @PerpetualsInitConfig, token_state: @TokenState) -> Core:
         .activate_external_component(
             component_type: EXTERNAL_COMPONENT_ASSETS,
             component_address: *assets_external_component.class_hash,
+        );
+    state
+        .activate_external_component(
+            component_type: EXTERNAL_COMPONENT_FORCED_REQUESTS,
+            component_address: *forced_requests_external_component.class_hash,
         );
 
     stop_cheat_caller_address(contract_address: test_address());
@@ -1004,6 +1017,9 @@ pub fn register_external_components_by_dispatcher(
         .unwrap()
         .contract_class();
     let assets_external_component = snforge_std::declare("AssetsManager").unwrap().contract_class();
+    let forced_requests_external_component = snforge_std::declare("ForcedRequestsManager")
+        .unwrap()
+        .contract_class();
 
     cheat_caller_address(
         :contract_address, caller_address: GOVERNANCE_ADMIN(), span: CheatSpan::Indefinite,
@@ -1044,6 +1060,11 @@ pub fn register_external_components_by_dispatcher(
             component_type: EXTERNAL_COMPONENT_ASSETS,
             component_address: *assets_external_component.class_hash,
         );
+    external_components_dispatcher
+        .register_external_component(
+            component_type: EXTERNAL_COMPONENT_FORCED_REQUESTS,
+            component_address: *forced_requests_external_component.class_hash,
+        );
     start_cheat_block_timestamp_global(Time::now().add(Time::seconds(*cfg.upgrade_delay)).into());
     external_components_dispatcher
         .activate_external_component(
@@ -1079,6 +1100,11 @@ pub fn register_external_components_by_dispatcher(
         .activate_external_component(
             component_type: EXTERNAL_COMPONENT_ASSETS,
             component_address: *assets_external_component.class_hash,
+        );
+    external_components_dispatcher
+        .activate_external_component(
+            component_type: EXTERNAL_COMPONENT_FORCED_REQUESTS,
+            component_address: *forced_requests_external_component.class_hash,
         );
     stop_cheat_caller_address(:contract_address);
 }

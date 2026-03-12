@@ -1,7 +1,7 @@
 use perpetuals::core::types::asset::AssetId;
 use perpetuals::core::types::position::PositionId;
 use starknet::ContractAddress;
-use starkware_utils::signature::stark::{HashType, Signature};
+use starkware_utils::signature::stark::Signature;
 use starkware_utils::time::time::Timestamp;
 
 #[derive(Debug, Drop, PartialEq, starknet::Event)]
@@ -71,16 +71,6 @@ pub trait IWithdrawalManager<TContractState> {
         salt: felt252,
         interest_amount: i64,
     );
-    fn forced_withdraw_request(
-        ref self: TContractState,
-        signature: Signature,
-        collateral_id: AssetId,
-        recipient: ContractAddress,
-        position_id: PositionId,
-        amount: u64,
-        expiration: Timestamp,
-        salt: felt252,
-    ) -> HashType;
     fn forced_withdraw(
         ref self: TContractState,
         collateral_id: AssetId,
@@ -111,8 +101,8 @@ pub(crate) mod WithdrawalManager {
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
     use perpetuals::core::components::snip::SNIP12MetadataImpl;
     use perpetuals::core::errors::{
-        AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_EXPIRATION, INVALID_ZERO_AMOUNT,
-        SIGNED_TX_EXPIRED, TRANSFER_FAILED,
+        AMOUNT_OVERFLOW, FORCED_WAIT_REQUIRED, INVALID_ZERO_AMOUNT, SIGNED_TX_EXPIRED,
+        TRANSFER_FAILED,
     };
     use perpetuals::core::types::asset::AssetId;
     use perpetuals::core::types::asset::synthetic::SyntheticTrait;
@@ -308,65 +298,6 @@ pub(crate) mod WithdrawalManager {
                         interest_amount,
                     },
                 );
-        }
-
-        fn forced_withdraw_request(
-            ref self: ContractState,
-            signature: Signature,
-            collateral_id: AssetId,
-            recipient: ContractAddress,
-            position_id: PositionId,
-            amount: u64,
-            expiration: Timestamp,
-            salt: felt252,
-        ) -> HashType {
-            /// Validations:
-            ///
-            // Validate position exists.
-            let position = self.positions.get_position_snapshot(:position_id);
-            assert(amount.is_non_zero(), INVALID_ZERO_AMOUNT);
-
-            let now = Time::now();
-            let forced_action_timelock = self.forced_action_timelock.read();
-            assert(now.add(forced_action_timelock) <= expiration, INVALID_EXPIRATION);
-
-            // Validate valid collateral id.
-            if collateral_id != self.assets.get_base_collateral_id() {
-                let entry = (@self).assets.asset_config.entry(collateral_id).as_ptr();
-                assert(SyntheticTrait::is_some_config(entry), ASSET_NOT_EXISTS);
-                assert(
-                    SyntheticTrait::at_asset_type(entry) != AssetType::SYNTHETIC,
-                    CANNOT_WITHDRAW_SYNTHETIC,
-                );
-            }
-
-            let owner_account = if (position.owner_protection_enabled.read()) {
-                position.get_owner_account()
-            } else {
-                Option::None
-            };
-            let public_key = position.get_owner_public_key();
-
-            // Validate the withdraw request was not registered nor processed yet.
-            let withdraw_args_hash = self
-                .request_approvals
-                .store_approval(
-                    :public_key,
-                    args: WithdrawArgs {
-                        position_id, salt, expiration, collateral_id, amount, recipient,
-                    },
-                );
-
-            // Validate the forced request signature
-            let hash = self
-                .request_approvals
-                .register_forced_approval(
-                    :owner_account,
-                    :public_key,
-                    :signature,
-                    args: ForcedWithdrawArgs { withdraw_args_hash },
-                );
-            hash
         }
 
         fn forced_withdraw(
