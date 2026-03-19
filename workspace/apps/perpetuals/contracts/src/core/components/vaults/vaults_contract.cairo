@@ -3,6 +3,7 @@ use perpetuals::core::types::order::LimitOrder;
 use perpetuals::core::types::position::PositionId;
 use perpetuals::core::types::vault::ConvertPositionToVault;
 use starkware_utils::signature::stark::Signature;
+use crate::core::types::asset::synthetic::SpotAssetBalanceDiff;
 
 #[starknet::interface]
 pub trait IVaultExternal<TContractState> {
@@ -28,6 +29,7 @@ pub trait IVaultExternal<TContractState> {
         interest_amount_vault_position: i64,
         interest_amount_sender: i64,
         interest_amount_receiver: i64,
+        other_collaterals: Span<SpotAssetBalanceDiff>,
     );
 
     fn liquidate_vault_shares(
@@ -48,6 +50,7 @@ pub trait IVaultExternal<TContractState> {
 
 #[starknet::contract]
 pub(crate) mod VaultsManager {
+    use AssetsComponent::InternalTrait;
     use core::num::traits::{WideMul, Zero};
     use core::panics::panic_with_byte_array;
     use openzeppelin::access::accesscontrol::AccessControlComponent;
@@ -87,9 +90,13 @@ pub(crate) mod VaultsManager {
     use crate::core::components::vaults::vaults::Vaults::InternalTrait as VaultsInternal;
     use crate::core::components::vaults::vaults::{IVaults, Vaults as VaultsComponent};
     use crate::core::errors::order_expired_err;
+    use crate::core::types::asset::synthetic::{SpotAssetBalanceDiff, SpotAssetBalanceDiffTrait};
+    use crate::core::types::balance::Balance;
     use crate::core::types::order::ValidateableOrderTrait;
-    use crate::core::types::position::PositionDiff;
+    use crate::core::types::position::{MultiSpotPositionDiff, PositionDiff};
+    use crate::core::types::price::PriceMulTrait;
     use crate::core::utils::{validate_signature, validate_trade};
+    use crate::core::value_risk_calculator::assert_healthy_or_healthier;
     use super::{ConvertPositionToVault, IVaultExternal, LimitOrder, Signature};
 
     #[event]
@@ -390,6 +397,7 @@ pub(crate) mod VaultsManager {
             interest_amount_vault_position: i64,
             interest_amount_sender: i64,
             interest_amount_receiver: i64,
+            other_collaterals: Span<SpotAssetBalanceDiff>,
         ) {
             self
                 ._execute_redeem(
@@ -404,6 +412,7 @@ pub(crate) mod VaultsManager {
                     interest_amount_vault_position: interest_amount_vault_position,
                     interest_amount_sender: interest_amount_sender,
                     interest_amount_receiver: interest_amount_receiver,
+                    other_amounts: other_collaterals,
                 );
 
             let vault_config = self.vaults.get_vault_config_for_asset(order.base_asset_id);
@@ -466,6 +475,7 @@ pub(crate) mod VaultsManager {
                     interest_amount_vault_position: interest_amount_vault_position,
                     interest_amount_sender: interest_amount_liquidated,
                     interest_amount_receiver: 0,
+                    other_amounts: array![].span(),
                 );
 
             self
@@ -503,6 +513,7 @@ pub(crate) mod VaultsManager {
                     interest_amount_vault_position: 0,
                     interest_amount_sender: 0,
                     interest_amount_receiver: 0,
+                    other_amounts: array![].span(),
                 );
         }
     }
@@ -522,6 +533,7 @@ pub(crate) mod VaultsManager {
             interest_amount_vault_position: i64,
             interest_amount_sender: i64,
             interest_amount_receiver: i64,
+            other_amounts: Span<SpotAssetBalanceDiff>,
         ) {
             let vault_config = self.vaults.get_vault_config_for_asset(order.base_asset_id);
             let vault_asset = self.assets.get_asset_config(vault_config.asset_id);
@@ -529,6 +541,14 @@ pub(crate) mod VaultsManager {
             let vault_position_id: PositionId = vault_config.position_id.into();
             let redeeming_position_id = order.source_position;
             let receiving_position_id = order.receive_position;
+
+            //validate three way interest amounts
+            if (redeeming_position_id == receiving_position_id && interest_amount_receiver != 0) {
+                let err = format!(
+                    "INVALID_STATE_INTEREST_ON_SAME_POSITION: {:?}", receiving_position_id,
+                );
+                panic_with_byte_array(err: @err);
+            }
 
             if (actual_shares_user >= 0) {
                 let err = format!("INVALID_ACTUAL_SHARES_AMOUNT: {}", actual_shares_user);
@@ -540,17 +560,6 @@ pub(crate) mod VaultsManager {
                 panic_with_byte_array(err: @err);
             }
 
-            validate_trade(
-                order_a: order,
-                order_b: vault_approval,
-                actual_amount_base_a: actual_shares_user,
-                actual_amount_quote_a: actual_collateral_user,
-                actual_fee_a: 0_u64,
-                actual_fee_b: 0_u64,
-                asset: Some(vault_asset),
-                collateral_id: self.assets.get_base_collateral_id(),
-            );
-
             let vault_position = self.positions.get_position_mut(vault_position_id);
             let redeeming_position = self.positions.get_position_mut(redeeming_position_id);
             let receiving_position = self.positions.get_position_mut(receiving_position_id);
@@ -559,20 +568,24 @@ pub(crate) mod VaultsManager {
             self
                 .positions
                 .verify_and_update_interest_range(
-                    position: vault_position,
-                    position_id: vault_position_id,
-                    interest_amount: interest_amount_vault_position,
+                    vault_position, vault_position_id, interest_amount_vault_position,
                 );
+
             self
                 .positions
                 .verify_and_update_interest_range(
-                    position: redeeming_position,
-                    position_id: redeeming_position_id,
-                    interest_amount: interest_amount_sender,
+                    redeeming_position, redeeming_position_id, interest_amount_sender,
                 );
 
+            if (receiving_position_id != redeeming_position_id) {
+                self
+                    .positions
+                    .verify_and_update_interest_range(
+                        receiving_position, receiving_position_id, interest_amount_receiver,
+                    );
+            }
+
             let amount_to_burn = actual_shares_user;
-            let value_to_receive = actual_collateral_user;
 
             if (validate_user_order) {
                 let order_hash = if validate_signatures {
@@ -592,8 +605,8 @@ pub(crate) mod VaultsManager {
                     .update_fulfillment(
                         position_id: redeeming_position_id,
                         hash: order_hash,
-                        order_base_amount: order.base_amount.try_into().unwrap(),
-                        actual_base_amount: actual_shares_user.try_into().unwrap(),
+                        order_base_amount: order.base_amount,
+                        actual_base_amount: actual_shares_user,
                     );
             }
 
@@ -612,8 +625,8 @@ pub(crate) mod VaultsManager {
                 .update_fulfillment(
                     position_id: vault_position_id,
                     hash: vault_order_hash,
-                    order_base_amount: vault_approval.base_amount.try_into().unwrap(),
-                    actual_base_amount: -actual_shares_user.try_into().unwrap(),
+                    order_base_amount: vault_approval.base_amount,
+                    actual_base_amount: -actual_shares_user,
                 );
 
             let vault_dispatcher = IProtocolVaultDispatcher {
@@ -634,12 +647,37 @@ pub(crate) mod VaultsManager {
 
             let unquantized_amount_to_burn = amount_to_burn.abs().wide_mul(vault_asset.quantum);
 
+            //calculate total value of redemption
+            let mut total_value_to_receive: i128 = actual_collateral_user.into();
+            for other_collateral in other_amounts {
+                assert(*other_collateral.diff >= 0_i64, 'NEGATIVE_OTHER_COLLATERAL');
+                let price = self.assets.get_asset_price(*other_collateral.asset_id);
+                let balance_diff: Balance = (*other_collateral.diff).into();
+                total_value_to_receive += price.mul(balance_diff);
+            }
+
+            let value_to_receive: u64 = total_value_to_receive
+                .abs()
+                .try_into()
+                .expect('REDEEM_VALUE_TOO_LARGE');
+
+            validate_trade(
+                order_a: order,
+                order_b: vault_approval,
+                actual_amount_base_a: actual_shares_user,
+                actual_amount_quote_a: value_to_receive.try_into().expect('VALUE_TOO_LARGE'),
+                actual_fee_a: 0_u64,
+                actual_fee_b: 0_u64,
+                asset: Some(vault_asset),
+                collateral_id: self.assets.get_base_collateral_id(),
+            );
+
             //approve the vault contract to transfer pnl collateral to itself to "send back" to
             //perps
             pnl_collateral_dispatcher
                 .approve(
                     spender: vault_asset.token_contract.expect('NOT_ERC20'),
-                    amount: value_to_receive.abs().into(),
+                    amount: value_to_receive.into(),
                 );
 
             //approve the vault contract transferring vault shares to itself for burning
@@ -651,11 +689,13 @@ pub(crate) mod VaultsManager {
 
             let value_of_shares_from_er4626 = vault_erc4626_dispatcher
                 .preview_redeem(unquantized_amount_to_burn.into());
+
             let max_value = ((value_of_shares_from_er4626 * 1100) / 1000);
-            if value_to_receive.abs().into() > max_value {
+
+            if value_to_receive.into() > max_value {
                 let err = format!(
                     "Redeem value too high. requested={}, actual={}, number_of_shares={}",
-                    value_to_receive.abs(),
+                    value_to_receive,
                     value_of_shares_from_er4626,
                     unquantized_amount_to_burn,
                 );
@@ -664,64 +704,34 @@ pub(crate) mod VaultsManager {
             let burn_result = vault_dispatcher
                 .redeem_with_price(
                     shares: unquantized_amount_to_burn.into(),
-                    value_of_shares: value_to_receive.abs().into(),
+                    value_of_shares: value_to_receive.into(),
                 );
 
-            if (burn_result != value_to_receive.abs().into()) {
+            if (burn_result != value_to_receive.into()) {
                 let err = format!(
                     "UNFAIR_REDEEM: expected {:?}, got {:?}", value_to_receive, burn_result,
                 );
                 panic_with_byte_array(err: @err);
             }
 
-            let vault_position_diff = PositionDiff {
-                collateral_diff: -value_to_receive.into() + interest_amount_vault_position.into(),
-                asset_diff: None,
-            };
+            let mut vault_spot_diffs = array![];
+            for item in other_amounts {
+                vault_spot_diffs.append((*item).invert());
+            }
 
-            let (redeeming_position_diff, receiving_position_diff) =
-                if (receiving_position_id == redeeming_position_id) {
-                (
-                    PositionDiff {
-                        collateral_diff: value_to_receive.into() + interest_amount_sender.into(),
-                        asset_diff: Some((vault_config.asset_id, amount_to_burn.into())),
-                    },
-                    None,
-                )
-            } else {
-                // Validate receiver interest if different position
-                self
-                    .positions
-                    .verify_and_update_interest_range(
-                        position: receiving_position,
-                        position_id: receiving_position_id,
-                        interest_amount: interest_amount_receiver,
-                    );
-                (
-                    PositionDiff {
-                        asset_diff: Some((vault_config.asset_id, amount_to_burn.into())),
-                        collateral_diff: interest_amount_sender.into(),
-                    },
-                    Some(
-                        PositionDiff {
-                            collateral_diff: value_to_receive.into()
-                                + interest_amount_receiver.into(),
-                            asset_diff: None,
-                        },
-                    ),
-                )
-            };
-
-            // vault health checks
-            let tvtr = self
+            //vault
+            let vault_tv_tr = self
                 .positions
-                .validate_healthy_or_healthier_position(
+                .apply_multi_spot_diff(
                     position_id: vault_position_id,
-                    position: vault_position.into(),
-                    position_diff: vault_position_diff,
-                    tvtr_before: Default::default(),
+                    position_diff: MultiSpotPositionDiff {
+                        collateral_diff: -actual_collateral_user.into()
+                            + interest_amount_vault_position.into(),
+                        asset_diffs: vault_spot_diffs.span(),
+                    },
                 );
 
+            assert_healthy_or_healthier(position_id: vault_position_id, tvtr: vault_tv_tr);
             self
                 .positions
                 .validate_against_vault_limits(
@@ -729,12 +739,8 @@ pub(crate) mod VaultsManager {
                     vault_protection_config: self
                         .vaults
                         .get_vault_protection_config(vault_position_id),
-                    :tvtr,
+                    tvtr: vault_tv_tr.after,
                 );
-
-            self
-                .positions
-                .apply_diff(position_id: vault_position_id, position_diff: vault_position_diff);
 
             // prevent withdrawal of more collateral than is contained with the vault
             // protection against malicious operator
@@ -744,41 +750,71 @@ pub(crate) mod VaultsManager {
                     position: vault_position.into(), asset_id: self.assets.get_base_collateral_id(),
                 );
 
-            // user health checks
-            self
-                .positions
-                .validate_healthy_or_healthier_position(
-                    position_id: redeeming_position_id,
-                    position: redeeming_position.into(),
-                    position_diff: redeeming_position_diff,
-                    tvtr_before: Default::default(),
-                );
-
-            self
-                .positions
-                .apply_diff(
-                    position_id: redeeming_position_id, position_diff: redeeming_position_diff,
-                );
-
-            self
-                .positions
-                .validate_asset_balance_is_not_negative(
-                    position: redeeming_position.into(), asset_id: order.base_asset_id,
-                );
-
-            // Validate health for receiving position if different from redeeming position
-            if let Option::Some(position_diff) = receiving_position_diff {
-                self
-                    .positions
-                    .validate_healthy_or_healthier_position(
-                        position_id: receiving_position_id,
-                        position: receiving_position.into(),
-                        position_diff: position_diff,
-                        tvtr_before: Default::default(),
+            if (redeeming_position_id == receiving_position_id) {
+                let mut redeeming_spot_diffs = array![];
+                for item in other_amounts {
+                    redeeming_spot_diffs.append(*item);
+                }
+                redeeming_spot_diffs
+                    .append(
+                        SpotAssetBalanceDiff {
+                            asset_id: vault_config.asset_id, diff: actual_shares_user,
+                        },
                     );
-                self
+
+                //redeemer
+                let redeemer_tv_tr = self
                     .positions
-                    .apply_diff(position_id: receiving_position_id, position_diff: position_diff);
+                    .apply_multi_spot_diff(
+                        position_id: redeeming_position_id,
+                        position_diff: MultiSpotPositionDiff {
+                            collateral_diff: actual_collateral_user.into()
+                                + interest_amount_sender.into(),
+                            asset_diffs: redeeming_spot_diffs.span(),
+                        },
+                    );
+
+                assert_healthy_or_healthier(
+                    position_id: redeeming_position_id, tvtr: redeemer_tv_tr,
+                );
+            } else {
+                let mut redeeming_spot_diffs = array![];
+                redeeming_spot_diffs
+                    .append(
+                        SpotAssetBalanceDiff {
+                            asset_id: vault_config.asset_id, diff: actual_shares_user,
+                        },
+                    );
+                //redeemer
+                let redeemer_tv_tr = self
+                    .positions
+                    .apply_multi_spot_diff(
+                        position_id: redeeming_position_id,
+                        position_diff: MultiSpotPositionDiff {
+                            collateral_diff: 0_i64.into() + interest_amount_sender.into(),
+                            asset_diffs: redeeming_spot_diffs.span(),
+                        },
+                    );
+
+                assert_healthy_or_healthier(
+                    position_id: redeeming_position_id, tvtr: redeemer_tv_tr,
+                );
+
+                //receiver
+                let receiver_tv_tr = self
+                    .positions
+                    .apply_multi_spot_diff(
+                        position_id: receiving_position_id,
+                        position_diff: MultiSpotPositionDiff {
+                            collateral_diff: actual_collateral_user.into()
+                                + interest_amount_receiver.into(),
+                            asset_diffs: other_amounts,
+                        },
+                    );
+
+                assert_healthy_or_healthier(
+                    position_id: receiving_position_id, tvtr: receiver_tv_tr,
+                );
             }
 
             let new_perps_contract_balance = pnl_collateral_dispatcher

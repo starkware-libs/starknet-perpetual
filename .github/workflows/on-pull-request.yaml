@@ -5,7 +5,7 @@ on:
 
 jobs:
   cairo_tests:
-    runs-on: namespace-profile-starkware-libs-starknet-perpetual-xlarge-hm-ubuntu-24-04-amd64
+    runs-on: UI-Only-SUPERMAX
     steps:
       - uses: actions/checkout@v4
       - uses: foundry-rs/setup-snfoundry@v3
@@ -24,12 +24,12 @@ jobs:
           curl -L https://raw.githubusercontent.com/software-mansion/cairo-coverage/main/scripts/install.sh | sh
 
       - name: Run test and coverage
-        run: scarb test -w --coverage
+        run: snforge test --coverage -p perpetuals -p vault -p fulfillment
 
       - name: Check formatting
         run: scarb fmt -w --check
   python_tests:
-    runs-on: namespace-profile-starkware-libs-starknet-perpetual-xlarge-hm-ubuntu-24-04-amd64
+    runs-on: core-only-big
     steps:
       - uses: actions/checkout@v4
 

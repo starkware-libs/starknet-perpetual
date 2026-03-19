@@ -1,0 +1,24 @@
+[package]
+name = "test_utils"
+version = "0.0.1"
+edition = "2024_07" 
+
+[dependencies]
+starknet.workspace = true
+openzeppelin.workspace = true
+
+[[target.starknet-contract]]
+sierra = true
+casm = true
+
+[tool.fmt]
+sort-module-level-items = true
+
+[tool]
+scarb.workspace = true
+
+[profile.dev.cairo]
+unstable-add-statements-code-locations-debug-info = true
+unstable-add-statements-functions-debug-info = true
+inlining-strategy = "avoid"
+panic-backtrace = true

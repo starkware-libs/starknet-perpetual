@@ -1,10 +1,11 @@
 use perpetuals::core::types::asset::AssetId;
+use perpetuals::core::types::asset::synthetic::SpotAssetBalanceDiff;
 use perpetuals::core::types::order::{LimitOrder, Order};
 use perpetuals::core::types::position::PositionId;
+use perpetuals::core::types::vault::ConvertPositionToVault;
 use starknet::ContractAddress;
 use starkware_utils::signature::stark::Signature;
 use starkware_utils::time::time::Timestamp;
-use super::types::vault::ConvertPositionToVault;
 
 #[derive(Copy, Drop, Serde)]
 pub struct Settlement {
@@ -129,6 +130,7 @@ pub trait ICore<TContractState> {
         interest_amount_vault_position: i64,
         interest_amount_sender: i64,
         interest_amount_receiver: i64,
+        other_collaterals: Span<SpotAssetBalanceDiff>,
     );
 
     fn liquidate_vault_shares(

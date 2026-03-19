@@ -5251,6 +5251,7 @@ fn test_redeem_from_vault_with_mixed_interest_same_position() {
             interest_amount_vault_position: interest_vault,
             interest_amount_sender: interest_sender,
             interest_amount_receiver: 0,
+            other_collaterals: array![].span(),
         );
 
     state
@@ -5373,6 +5374,7 @@ fn test_redeem_from_vault_with_positive_interest_enables_otherwise_unhealthy_red
             interest_amount_vault_position: 0,
             interest_amount_sender: 1,
             interest_amount_receiver: 0,
+            other_collaterals: array![].span(),
         );
 }
 
@@ -5476,6 +5478,7 @@ fn test_redeem_from_vault_with_negative_interest_makes_redeem_unhealthy() {
             interest_amount_vault_position: 0,
             interest_amount_sender: -1,
             interest_amount_receiver: 0,
+            other_collaterals: array![].span(),
         );
 }
 
@@ -5530,6 +5533,7 @@ fn test_redeem_from_vault_non_zero_interest_without_time_advance() {
             interest_amount_vault_position: 0,
             interest_amount_sender: 1,
             interest_amount_receiver: 0,
+            other_collaterals: array![].span(),
         );
 }
 
@@ -5616,6 +5620,7 @@ fn test_redeem_from_vault_with_interest_different_receiver() {
             interest_amount_vault_position: interest_vault,
             interest_amount_sender: interest_sender,
             interest_amount_receiver: interest_receiver,
+            other_collaterals: array![].span(),
         );
 
     // Sender gets only interest (shares burned, no collateral from redeem)
@@ -5625,6 +5630,7 @@ fn test_redeem_from_vault_with_interest_different_receiver() {
             position_id: withdrawing_user.position_id,
             expected_balance: sender_collateral_before + interest_sender.into(),
         );
+    println!("Sender verified")
     // Receiver gets collateral from redeem + interest
     state
         .facade
@@ -5634,6 +5640,7 @@ fn test_redeem_from_vault_with_interest_different_receiver() {
                 + value_of_shares.into()
                 + interest_receiver.into(),
         );
+    println!("Receiver verified")
     // Vault loses collateral, gains interest
     state
         .facade
@@ -5643,6 +5650,7 @@ fn test_redeem_from_vault_with_interest_different_receiver() {
                 - value_of_shares.into()
                 + interest_vault.into(),
         );
+    println!("Vault verified")
 }
 
 #[test]
@@ -5700,6 +5708,7 @@ fn test_redeem_from_vault_negative_interest_on_vault_makes_vault_unhealthy() {
             interest_amount_vault_position: -1,
             interest_amount_sender: 0,
             interest_amount_receiver: 0,
+            other_collaterals: array![].span(),
         );
 }
 
@@ -5811,6 +5820,7 @@ fn test_redeem_from_vault_negative_interest_makes_receiver_unhealthy() {
             interest_amount_vault_position: 0,
             interest_amount_sender: 0,
             interest_amount_receiver: -10,
+            other_collaterals: array![].span(),
         );
 }
 
@@ -5876,6 +5886,7 @@ fn test_redeem_from_vault_receiver_interest_exceeds_max_allowed() {
             interest_amount_vault_position: 0,
             interest_amount_sender: 0,
             interest_amount_receiver: 11,
+            other_collaterals: array![].span(),
         );
 }
 

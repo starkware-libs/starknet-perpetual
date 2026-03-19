@@ -1,0 +1,73 @@
+name: Deploy TESTNET
+
+on:
+  workflow_dispatch:
+
+jobs:
+  CI:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+      - name: Install asdf & tools
+        uses: asdf-vm/actions/install@v4
+
+      - name: install sncast
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.starkup.sh | sh
+      - name: install foundry
+        run: |
+          asdf install starknet-foundry 0.55.0
+          asdf set -u starknet-foundry 0.55.0
+          sed -i 's/^starknet-foundry .*/starknet-foundry 0.55.0/' .tool-versions
+          cat .tool-versions
+
+      - name: Retrieve account info
+        run: |
+          echo ${{ secrets.TESTNET_DEPLOYER_ACCOUNT_JSON }} | base64 --decode > deployer_account.json
+          cat deployer_account.json
+          address=$(cat deployer_account.json | jq -r .deployment.address)
+          echo address=$address
+          sncast account import --name testnet --address $address --private-key ${{ secrets.TESTNET_DEPLOYER_KEY }} --type oz -u ${{ secrets.TEST_RPC_09_ADDRESS }}
+
+      - name: Deploy contracts
+        id: deploy_contracts
+        run: |
+          # ./utils/deploy_vault.sh -a testnet -u ${{ secrets.TEST_RPC_09_ADDRESS }}
+          CORE_HASH=$(./utils/declare.sh -a testnet -u ${{ secrets.TEST_RPC_09_ADDRESS }} -c Core -p perpetuals)
+          echo "core hash $CORE_HASH"
+          VAULT_COMPONENT_HASH=$(./utils/declare.sh -a testnet -u ${{ secrets.TEST_RPC_09_ADDRESS }} -c VaultsManager -p perpetuals)
+          echo "vault hash $VAULT_COMPONENT_HASH"
+          TRANSFER_COMPONENT_HASH=$(./utils/declare.sh -a testnet -u ${{ secrets.TEST_RPC_09_ADDRESS }} -c TransferManager -p perpetuals)
+          echo "transfer hash $TRANSFER_COMPONENT_HASH"
+          WITHDRAWAL_COMPONENT_HASH=$(./utils/declare.sh -a testnet -u ${{ secrets.TEST_RPC_09_ADDRESS }} -c WithdrawalManager -p perpetuals)
+          echo "withdrawal hash $WITHDRAWAL_COMPONENT_HASH"
+          LIQUIDATION_COMPONENT_HASH=$(./utils/declare.sh -a testnet -u ${{ secrets.TEST_RPC_09_ADDRESS }} -c LiquidationManager -p perpetuals)
+          echo "liquidation hash $LIQUIDATION_COMPONENT_HASH"
+          DELEVERAGE_COMPONENT_HASH=$(./utils/declare.sh -a testnet -u ${{ secrets.TEST_RPC_09_ADDRESS }} -c DeleverageManager -p perpetuals)
+          echo "deleverage hash $DELEVERAGE_COMPONENT_HASH"
+          DEPOSIT_COMPONENT_HASH=$(./utils/declare.sh -a testnet -u ${{ secrets.TEST_RPC_09_ADDRESS }} -c DepositManager -p perpetuals)
+          echo "deposit hash $DEPOSIT_COMPONENT_HASH"
+          ASSET_MANAGER_COMPONENT_HASH=$(./utils/declare.sh -a testnet -u ${{ secrets.TEST_RPC_09_ADDRESS }} -c AssetsManager -p perpetuals)
+          echo "asset manager hash $ASSET_MANAGER_COMPONENT_HASH"
+          FORCED_REQUESTS_COMPONENT_HASH=$(./utils/declare.sh -a testnet -u ${{ secrets.TEST_RPC_09_ADDRESS }} -c ForcedRequestsManager -p perpetuals)
+          echo "forced requests hash $FORCED_REQUESTS_COMPONENT_HASH"
+          sleep 30s
+          VAULT_CLASS_HASH=$(./utils/declare.sh -a testnet -u ${{ secrets.TEST_RPC_09_ADDRESS }} -c ProtocolVault -p vault)
+          echo "Deployed ProtocolVault contract with class hash: $VAULT_CLASS_HASH"
+
+          echo add_new_implementation ${CORE_HASH} 1 0
+          echo replace_to             ${CORE_HASH} 1 0
+
+          sncast --account=testnet invoke -u ${{ secrets.TEST_RPC_09_ADDRESS }} --contract-address 0x05F062C924EcD9f5d4C74c567A28cc5502332fcf21828687EC20581a03F7E1C8  --function add_new_implementation --calldata  ${CORE_HASH} 1 0
+          # sleep 30s
+          sncast --account=testnet invoke -u ${{ secrets.TEST_RPC_09_ADDRESS }} --contract-address 0x05F062C924EcD9f5d4C74c567A28cc5502332fcf21828687EC20581a03F7E1C8  --function replace_to             --calldata  ${CORE_HASH} 1 0
+          # sleep 30s
+          ./utils/register_and_activate_external.sh -a testnet -u ${{ secrets.TEST_RPC_09_ADDRESS }} -c 0x05F062C924EcD9f5d4C74c567A28cc5502332fcf21828687EC20581a03F7E1C8 -n VAULTS -h ${VAULT_COMPONENT_HASH}
+          ./utils/register_and_activate_external.sh -a testnet -u ${{ secrets.TEST_RPC_09_ADDRESS }} -c 0x05F062C924EcD9f5d4C74c567A28cc5502332fcf21828687EC20581a03F7E1C8 -n TRANSFERS -h ${TRANSFER_COMPONENT_HASH}
+          ./utils/register_and_activate_external.sh -a testnet -u ${{ secrets.TEST_RPC_09_ADDRESS }} -c 0x05F062C924EcD9f5d4C74c567A28cc5502332fcf21828687EC20581a03F7E1C8 -n WITHDRAWALS -h ${WITHDRAWAL_COMPONENT_HASH}
+          ./utils/register_and_activate_external.sh -a testnet -u ${{ secrets.TEST_RPC_09_ADDRESS }} -c 0x05F062C924EcD9f5d4C74c567A28cc5502332fcf21828687EC20581a03F7E1C8 -n LIQUIDATIONS -h ${LIQUIDATION_COMPONENT_HASH}
+          ./utils/register_and_activate_external.sh -a testnet -u ${{ secrets.TEST_RPC_09_ADDRESS }} -c 0x05F062C924EcD9f5d4C74c567A28cc5502332fcf21828687EC20581a03F7E1C8 -n DELEVERAGES -h ${DELEVERAGE_COMPONENT_HASH}
+          ./utils/register_and_activate_external.sh -a testnet -u ${{ secrets.TEST_RPC_09_ADDRESS }} -c 0x05F062C924EcD9f5d4C74c567A28cc5502332fcf21828687EC20581a03F7E1C8 -n DEPOSITS -h ${DEPOSIT_COMPONENT_HASH}
+          ./utils/register_and_activate_external.sh -a testnet -u ${{ secrets.TEST_RPC_09_ADDRESS }} -c 0x05F062C924EcD9f5d4C74c567A28cc5502332fcf21828687EC20581a03F7E1C8 -n ASSETS -h ${ASSET_MANAGER_COMPONENT_HASH}
+          ./utils/register_and_activate_external.sh -a testnet -u ${{ secrets.TEST_RPC_09_ADDRESS }} -c 0x05F062C924EcD9f5d4C74c567A28cc5502332fcf21828687EC20581a03F7E1C8 -n FORCED_REQUESTS -h ${FORCED_REQUESTS_COMPONENT_HASH}

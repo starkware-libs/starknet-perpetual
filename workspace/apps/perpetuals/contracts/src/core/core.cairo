@@ -69,6 +69,7 @@ pub mod Core {
     use crate::core::components::vaults::vaults::{IVaults, Vaults as VaultsComponent};
     use crate::core::components::vaults::vaults_contract::IVaultExternalDispatcherTrait;
     use crate::core::components::withdrawal::withdrawal_manager::IWithdrawalManagerDispatcherTrait;
+    use crate::core::types::asset::synthetic::SpotAssetBalanceDiff;
     use crate::core::utils::{validate_signature, validate_trade};
 
 
@@ -657,6 +658,7 @@ pub mod Core {
             interest_amount_vault_position: i64,
             interest_amount_sender: i64,
             interest_amount_receiver: i64,
+            other_collaterals: Span<SpotAssetBalanceDiff>,
         ) {
             self.pausable.assert_not_paused();
             self.assets.validate_assets_integrity();
@@ -674,6 +676,7 @@ pub mod Core {
                     :interest_amount_vault_position,
                     :interest_amount_sender,
                     :interest_amount_receiver,
+                    :other_collaterals,
                 )
         }
 

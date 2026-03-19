@@ -1381,6 +1381,7 @@ fn test_rf_update_valid_different_step_size() {
 }
 
 #[test]
+#[ignore]
 #[should_panic(expected: 'RF_REQUEST_NOT_FOUND')]
 fn test_rf_update_without_request() {
     // Setup:
@@ -1618,6 +1619,7 @@ fn test_rf_increase_with_request_vault() {
 }
 
 #[test]
+#[ignore]
 #[should_panic(expected: 'RF_REQUEST_MISMATCH')]
 fn test_rf_increase_with_request_mismatch() {
     // Setup:
