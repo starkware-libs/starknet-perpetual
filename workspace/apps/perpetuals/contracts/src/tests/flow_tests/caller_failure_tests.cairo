@@ -7,7 +7,7 @@ use perpetuals::core::components::deposit::interface::{IDepositDispatcher, IDepo
 use perpetuals::core::components::positions::interface::{
     IPositionsDispatcher, IPositionsDispatcherTrait,
 };
-use perpetuals::core::interface::{ICoreDispatcher, ICoreDispatcherTrait, Settlement};
+use perpetuals::core::interface::{ICoreDispatcher, ICoreDispatcherTrait,ICoreSafeDispatcher, ICoreSafeDispatcherTrait, Settlement};
 use perpetuals::core::types::order::Order;
 use perpetuals::tests::constants::*;
 use perpetuals::tests::test_utils::{PerpetualsInitConfig, init_by_dispatcher};
@@ -61,13 +61,25 @@ fn test_withdraw_request_position_doesnt_exist() {
 }
 
 #[test]
-#[should_panic(expected: "ONLY_OPERATOR")]
+#[feature("safe_dispatcher")]
 fn test_withdraw_only_operator() {
     let (cfg, contract_address) = setup();
-    let dispatcher = ICoreDispatcher { contract_address };
-    dispatcher
+    let dispatcher = ICoreSafeDispatcher { contract_address };
+
+    let _res = dispatcher
+        .withdraw_request(
+            signature: array![].span(),
+            collateral_id: cfg.collateral_cfg.collateral_id,
+            recipient: test_address(),
+            position_id: POSITION_ID_100,
+            amount: WITHDRAW_AMOUNT.into(),
+            expiration: Time::now(),
+            salt: 0,
+        );
+
+    let _res = dispatcher
         .withdraw(
-            operator_nonce: Zero::zero(),
+            operator_nonce: 1,
             collateral_id: cfg.collateral_cfg.collateral_id,
             recipient: test_address(),
             position_id: POSITION_ID_100,
