@@ -39,6 +39,7 @@ pub mod Vaults {
     use starknet::storage::{
         Map, StorageAsPointer, StorageMapReadAccess, StorageMapWriteAccess, StoragePathEntry,
     };
+    use starkware_utils::components::common_roles::CommonRolesComponent;
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
     use starkware_utils::components::roles::RolesComponent;
@@ -82,6 +83,7 @@ pub mod Vaults {
         impl OperatorNonce: OperatorNonceComponent::HasComponent<TContractState>,
         impl Pausable: PausableComponent::HasComponent<TContractState>,
         impl Positions: PositionsComponent::HasComponent<TContractState>,
+        impl CommonRoles: CommonRolesComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
         impl RequestApprovals: RequestApprovalsComponent::HasComponent<TContractState>,
         impl ExchangeTime: ExchangeTimeComponent::HasComponent<TContractState>,
@@ -175,6 +177,7 @@ pub mod Vaults {
         impl OperatorNonce: OperatorNonceComponent::HasComponent<TContractState>,
         impl Pausable: PausableComponent::HasComponent<TContractState>,
         impl Positions: PositionsComponent::HasComponent<TContractState>,
+        impl CommonRoles: CommonRolesComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
         impl RequestApprovals: RequestApprovalsComponent::HasComponent<TContractState>,
         impl ExchangeTime: ExchangeTimeComponent::HasComponent<TContractState>,

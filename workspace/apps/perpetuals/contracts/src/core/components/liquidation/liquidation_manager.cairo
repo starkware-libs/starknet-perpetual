@@ -80,6 +80,7 @@ pub(crate) mod LiquidationManager {
     use perpetuals::core::types::asset::synthetic::SyntheticTrait;
     use perpetuals::core::types::position::{PositionId, PositionTrait};
     use starknet::storage::{Mutable, StorageAsPointer, StoragePath, StoragePathEntry};
+    use starkware_utils::components::common_roles::CommonRolesComponent;
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalImpl as PausableInternal;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
@@ -127,6 +128,8 @@ pub(crate) mod LiquidationManager {
         #[flat]
         AccessControlEvent: AccessControlComponent::Event,
         #[flat]
+        CommonRolesEvent: CommonRolesComponent::Event,
+        #[flat]
         RolesEvent: RolesComponent::Event,
         #[flat]
         VaultsEvent: VaultsComponent::Event,
@@ -140,6 +143,8 @@ pub(crate) mod LiquidationManager {
         operator_nonce: OperatorNonceComponent::Storage,
         #[substorage(v0)]
         pausable: PausableComponent::Storage,
+        #[substorage(v0)]
+        pub common_roles: CommonRolesComponent::Storage,
         #[substorage(v0)]
         pub roles: RolesComponent::Storage,
         #[substorage(v0)]
@@ -165,6 +170,7 @@ pub(crate) mod LiquidationManager {
     component!(path: AssetsComponent, storage: assets, event: AssetsEvent);
     component!(path: PositionsComponent, storage: positions, event: PositionsEvent);
     component!(path: ExchangeTimeComponent, storage: exchange_time, event: ExchangeTimeEvent);
+    component!(path: CommonRolesComponent, storage: common_roles, event: CommonRolesEvent);
     component!(path: RolesComponent, storage: roles, event: RolesEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);

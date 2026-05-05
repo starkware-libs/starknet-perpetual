@@ -42,6 +42,7 @@ pub mod Positions {
         StoragePointerWriteAccess,
     };
     use starknet::{ContractAddress, get_caller_address};
+    use starkware_utils::components::common_roles::CommonRolesComponent;
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
@@ -106,6 +107,7 @@ pub mod Positions {
         impl Assets: AssetsComponent::HasComponent<TContractState>,
         impl OperatorNonce: OperatorNonceComponent::HasComponent<TContractState>,
         impl Pausable: PausableComponent::HasComponent<TContractState>,
+        impl CommonRoles: CommonRolesComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
         impl RequestApprovals: RequestApprovalsComponent::HasComponent<TContractState>,
         impl ExchangeTime: ExchangeTimeComponent::HasComponent<TContractState>,
@@ -415,6 +417,7 @@ pub mod Positions {
         impl Assets: AssetsComponent::HasComponent<TContractState>,
         impl OperatorNonce: OperatorNonceComponent::HasComponent<TContractState>,
         impl Pausable: PausableComponent::HasComponent<TContractState>,
+        impl CommonRoles: CommonRolesComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
         impl RequestApprovals: RequestApprovalsComponent::HasComponent<TContractState>,
         impl ExchangeTime: ExchangeTimeComponent::HasComponent<TContractState>,
@@ -970,6 +973,7 @@ pub mod Positions {
         impl Assets: AssetsComponent::HasComponent<TContractState>,
         impl OperatorNonce: OperatorNonceComponent::HasComponent<TContractState>,
         impl Pausable: PausableComponent::HasComponent<TContractState>,
+        impl CommonRoles: CommonRolesComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
         impl RequestApprovals: RequestApprovalsComponent::HasComponent<TContractState>,
     > of PrivateTrait<TContractState> {

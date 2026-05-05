@@ -10,6 +10,7 @@ pub mod ExternalComponents {
     use starknet::storage::{
         Map, StoragePathEntry, StoragePointerReadAccess, StoragePointerWriteAccess,
     };
+    use starkware_utils::components::common_roles::CommonRolesComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
     use starkware_utils::components::replaceability::interface::IReplaceable;
     use starkware_utils::components::roles::RolesComponent;
@@ -55,6 +56,7 @@ pub mod ExternalComponents {
         +Drop<TContractState>,
         +AccessControlComponent::HasComponent<TContractState>,
         +SRC5Component::HasComponent<TContractState>,
+        impl CommonRoles: CommonRolesComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
         impl Replaceability: ReplaceabilityComponent::HasComponent<TContractState>,
     > of IExternalComponents<ComponentState<TContractState>> {
@@ -83,6 +85,7 @@ pub mod ExternalComponents {
         +Drop<TContractState>,
         +AccessControlComponent::HasComponent<TContractState>,
         +SRC5Component::HasComponent<TContractState>,
+        impl CommonRoles: CommonRolesComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
     > of InternalTrait<TContractState> {
         fn _get_vault_manager_dispatcher(
@@ -181,6 +184,7 @@ pub mod ExternalComponents {
         +Drop<TContractState>,
         +AccessControlComponent::HasComponent<TContractState>,
         +SRC5Component::HasComponent<TContractState>,
+        impl CommonRoles: CommonRolesComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
         impl Replaceability: ReplaceabilityComponent::HasComponent<TContractState>,
     > of PrivateTrait<TContractState> {

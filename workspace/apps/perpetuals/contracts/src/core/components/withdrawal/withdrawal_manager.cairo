@@ -114,6 +114,7 @@ pub(crate) mod WithdrawalManager {
     use starknet::storage::{
         Mutable, StorageAsPointer, StoragePath, StoragePathEntry, StoragePointerReadAccess,
     };
+    use starkware_utils::components::common_roles::CommonRolesComponent;
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalImpl as PausableInternal;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
@@ -158,6 +159,8 @@ pub(crate) mod WithdrawalManager {
         #[flat]
         AccessControlEvent: AccessControlComponent::Event,
         #[flat]
+        CommonRolesEvent: CommonRolesComponent::Event,
+        #[flat]
         RolesEvent: RolesComponent::Event,
         #[flat]
         VaultsEvent: VaultsComponent::Event,
@@ -173,6 +176,8 @@ pub(crate) mod WithdrawalManager {
         operator_nonce: OperatorNonceComponent::Storage,
         #[substorage(v0)]
         pausable: PausableComponent::Storage,
+        #[substorage(v0)]
+        pub common_roles: CommonRolesComponent::Storage,
         #[substorage(v0)]
         pub roles: RolesComponent::Storage,
         #[substorage(v0)]
@@ -201,6 +206,7 @@ pub(crate) mod WithdrawalManager {
     component!(path: OperatorNonceComponent, storage: operator_nonce, event: OperatorNonceEvent);
     component!(path: AssetsComponent, storage: assets, event: AssetsEvent);
     component!(path: PositionsComponent, storage: positions, event: PositionsEvent);
+    component!(path: CommonRolesComponent, storage: common_roles, event: CommonRolesEvent);
     component!(path: RolesComponent, storage: roles, event: RolesEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);

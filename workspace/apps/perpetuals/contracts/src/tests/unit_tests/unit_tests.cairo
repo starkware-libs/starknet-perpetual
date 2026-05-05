@@ -467,7 +467,7 @@ fn test_signature_validation() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     dispatcher
         .multi_trade(
-            operator_nonce: 7,
+            operator_nonce: 6,
             trades: array![
                 Settlement {
                     signature_a,
@@ -493,7 +493,7 @@ fn test_signature_validation() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     let result = dispatcher
         .multi_trade(
-            operator_nonce: 8,
+            operator_nonce: 7,
             trades: array![
                 Settlement {
                     signature_a,
@@ -521,7 +521,7 @@ fn test_signature_validation() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     let result = dispatcher
         .multi_trade(
-            operator_nonce: 9,
+            operator_nonce: 7,
             trades: array![
                 Settlement {
                     signature_a,
@@ -550,7 +550,7 @@ fn test_signature_validation() {
     cheat_caller_address_once(:contract_address, caller_address: cfg.operator);
     let result = dispatcher
         .multi_trade(
-            operator_nonce: 10,
+            operator_nonce: 7,
             trades: array![
                 Settlement {
                     signature_a,

@@ -66,6 +66,7 @@ pub(crate) mod VaultsManager {
     use perpetuals::core::components::positions::Positions::InternalTrait as PositionsInternal;
     use perpetuals::core::types::asset::AssetId;
     use perpetuals::core::types::position::{PositionId, PositionTrait};
+    use starkware_utils::components::common_roles::CommonRolesComponent;
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
     use starkware_utils::components::roles::RolesComponent;
@@ -119,6 +120,8 @@ pub(crate) mod VaultsManager {
         #[flat]
         AccessControlEvent: AccessControlComponent::Event,
         #[flat]
+        CommonRolesEvent: CommonRolesComponent::Event,
+        #[flat]
         RolesEvent: RolesComponent::Event,
         #[flat]
         VaultsEvent: VaultsComponent::Event,
@@ -134,6 +137,8 @@ pub(crate) mod VaultsManager {
         operator_nonce: OperatorNonceComponent::Storage,
         #[substorage(v0)]
         pausable: PausableComponent::Storage,
+        #[substorage(v0)]
+        pub common_roles: CommonRolesComponent::Storage,
         #[substorage(v0)]
         pub roles: RolesComponent::Storage,
         #[substorage(v0)]
@@ -164,6 +169,7 @@ pub(crate) mod VaultsManager {
     component!(path: PositionsComponent, storage: positions, event: PositionsEvent);
     component!(path: ExchangeTimeComponent, storage: exchange_time, event: ExchangeTimeEvent);
     component!(path: DepositComponent, storage: deposits, event: DepositEvent);
+    component!(path: CommonRolesComponent, storage: common_roles, event: CommonRolesEvent);
     component!(path: RolesComponent, storage: roles, event: RolesEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);

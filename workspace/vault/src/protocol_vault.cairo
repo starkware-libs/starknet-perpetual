@@ -14,6 +14,7 @@ pub mod ProtocolVault {
     };
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
     use starknet::{ContractAddress, get_caller_address};
+    use starkware_utils::components::common_roles::CommonRolesComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
     use starkware_utils::components::replaceability::ReplaceabilityComponent::InternalReplaceabilityTrait;
     use starkware_utils::components::roles::RolesComponent;
@@ -28,6 +29,7 @@ pub mod ProtocolVault {
     const SCALE: u64 = 1000000_u64;
 
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
+    component!(path: CommonRolesComponent, storage: common_roles, event: CommonRolesEvent);
     component!(path: ReplaceabilityComponent, storage: replaceability, event: ReplaceabilityEvent);
     component!(path: RolesComponent, storage: roles, event: RolesEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
@@ -58,6 +60,8 @@ pub mod ProtocolVault {
         #[substorage(v0)]
         accesscontrol: AccessControlComponent::Storage,
         #[substorage(v0)]
+        common_roles: CommonRolesComponent::Storage,
+        #[substorage(v0)]
         replaceability: ReplaceabilityComponent::Storage,
         #[substorage(v0)]
         roles: RolesComponent::Storage,
@@ -76,6 +80,8 @@ pub mod ProtocolVault {
     enum Event {
         #[flat]
         AccessControlEvent: AccessControlComponent::Event,
+        #[flat]
+        CommonRolesEvent: CommonRolesComponent::Event,
         #[flat]
         ReplaceabilityEvent: ReplaceabilityComponent::Event,
         #[flat]

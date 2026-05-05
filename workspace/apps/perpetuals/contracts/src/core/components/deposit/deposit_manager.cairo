@@ -69,6 +69,7 @@ pub(crate) mod DepositManager {
     use perpetuals::core::types::position::PositionId;
     use starknet::storage::{StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess};
     use starknet::{ContractAddress, get_contract_address};
+    use starkware_utils::components::common_roles::CommonRolesComponent;
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::request_approvals::RequestApprovalsComponent;
     use starkware_utils::components::roles::RolesComponent;
@@ -111,6 +112,8 @@ pub(crate) mod DepositManager {
         #[flat]
         AccessControlEvent: AccessControlComponent::Event,
         #[flat]
+        CommonRolesEvent: CommonRolesComponent::Event,
+        #[flat]
         RolesEvent: RolesComponent::Event,
         #[flat]
         VaultsEvent: VaultsComponent::Event,
@@ -127,6 +130,8 @@ pub(crate) mod DepositManager {
         operator_nonce: OperatorNonceComponent::Storage,
         #[substorage(v0)]
         pausable: PausableComponent::Storage,
+        #[substorage(v0)]
+        pub common_roles: CommonRolesComponent::Storage,
         #[substorage(v0)]
         pub roles: RolesComponent::Storage,
         #[substorage(v0)]
@@ -155,6 +160,7 @@ pub(crate) mod DepositManager {
     component!(path: AssetsComponent, storage: assets, event: AssetsEvent);
     component!(path: PositionsComponent, storage: positions, event: PositionsEvent);
     component!(path: DepositComponent, storage: deposits, event: DepositEvent);
+    component!(path: CommonRolesComponent, storage: common_roles, event: CommonRolesEvent);
     component!(path: RolesComponent, storage: roles, event: RolesEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);

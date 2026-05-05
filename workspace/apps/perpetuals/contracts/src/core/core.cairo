@@ -38,6 +38,7 @@ pub mod Core {
         StorageMapReadAccess, StoragePointerReadAccess, StoragePointerWriteAccess,
     };
     use starknet::{ContractAddress, get_caller_address};
+    use starkware_utils::components::common_roles::CommonRolesComponent;
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
     use starkware_utils::components::replaceability::ReplaceabilityComponent;
@@ -77,6 +78,7 @@ pub mod Core {
     component!(path: PausableComponent, storage: pausable, event: PausableEvent);
     component!(path: ExchangeTimeComponent, storage: exchange_time, event: ExchangeTimeEvent);
     component!(path: ReplaceabilityComponent, storage: replaceability, event: ReplaceabilityEvent);
+    component!(path: CommonRolesComponent, storage: common_roles, event: CommonRolesEvent);
     component!(path: RolesComponent, storage: roles, event: RolesEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
     component!(path: AssetsComponent, storage: assets, event: AssetsEvent);
@@ -150,6 +152,8 @@ pub mod Core {
         #[substorage(v0)]
         pub replaceability: ReplaceabilityComponent::Storage,
         #[substorage(v0)]
+        pub common_roles: CommonRolesComponent::Storage,
+        #[substorage(v0)]
         pub roles: RolesComponent::Storage,
         #[substorage(v0)]
         src5: SRC5Component::Storage,
@@ -192,6 +196,8 @@ pub mod Core {
         ExchangeTimeEvent: ExchangeTimeComponent::Event,
         #[flat]
         ReplaceabilityEvent: ReplaceabilityComponent::Event,
+        #[flat]
+        CommonRolesEvent: CommonRolesComponent::Event,
         #[flat]
         RolesEvent: RolesComponent::Event,
         #[flat]

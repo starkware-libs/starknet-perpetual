@@ -37,6 +37,7 @@ pub mod AssetsComponent {
         Map, StorageAsPointer, StorageMapReadAccess, StoragePathEntry, StoragePointerReadAccess,
         StoragePointerWriteAccess, Vec, VecTrait,
     };
+    use starkware_utils::components::common_roles::CommonRolesComponent;
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
     use starkware_utils::components::roles::RolesComponent;
@@ -98,6 +99,7 @@ pub mod AssetsComponent {
         +SRC5Component::HasComponent<TContractState>,
         impl OperatorNonce: OperatorNonceComponent::HasComponent<TContractState>,
         impl Pausable: PausableComponent::HasComponent<TContractState>,
+        impl CommonRoles: CommonRolesComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
     > of IAssets<ComponentState<TContractState>> {
         /// Funding tick is called by the operator to update the funding index of all synthetic
@@ -255,6 +257,7 @@ pub mod AssetsComponent {
         +SRC5Component::HasComponent<TContractState>,
         impl OperatorNonce: OperatorNonceComponent::HasComponent<TContractState>,
         impl Pausable: PausableComponent::HasComponent<TContractState>,
+        impl CommonRoles: CommonRolesComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
         impl ExternalComponents: ExternalComponentsComponent::HasComponent<TContractState>,
     > of IAssetsManager<ComponentState<TContractState>> {
@@ -447,6 +450,7 @@ pub mod AssetsComponent {
         +SRC5Component::HasComponent<TContractState>,
         impl OperatorNonce: OperatorNonceComponent::HasComponent<TContractState>,
         impl Pausable: PausableComponent::HasComponent<TContractState>,
+        impl CommonRoles: CommonRolesComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
     > of InternalTrait<TContractState> {
         fn initialize(
@@ -633,6 +637,7 @@ pub mod AssetsComponent {
         +SRC5Component::HasComponent<TContractState>,
         impl OperatorNonce: OperatorNonceComponent::HasComponent<TContractState>,
         impl Pausable: PausableComponent::HasComponent<TContractState>,
+        impl CommonRoles: CommonRolesComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
     > of PrivateTrait<TContractState> {
         fn _get_asset_config(

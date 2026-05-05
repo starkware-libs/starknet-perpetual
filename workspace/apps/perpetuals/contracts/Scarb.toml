@@ -24,8 +24,8 @@ test = "SNFORGE_BACKTRACE=1 snforge test -- --run-native"
 [tool.fmt]
 sort-module-level-items = true
 
-[tool]
-scarb.workspace = true
+[tool.scarb]
+allow-prebuilt-plugins = ["snforge_std", "snforge_scarb_plugin"]
 
 [profile.dev.cairo]
 unstable-add-statements-code-locations-debug-info = true

@@ -2,12 +2,12 @@
 members = ["workspace/apps/perpetuals/contracts", "workspace/vault/", "workspace/fulfillment"]
 
 [workspace.dependencies]
-starknet = "2.15.1"
-assert_macros = "2.15.1"
+starknet = "2.18.0"
+assert_macros = "2.18.0"
 openzeppelin = "3.0.0"
-snforge_std = "0.55.0"
-starkware_utils = { git = "https://github.com/starkware-libs/starkware-starknet-utils", branch = "main" }
-starkware_utils_testing = { git = "https://github.com/starkware-libs/starkware-starknet-utils", branch = "main" }
+snforge_std = "0.60.0"
+starkware_utils = { git = "https://github.com/starkware-libs/starkware-starknet-utils", rev = "1efaea14eedeeb734de380ba8a98b5ce47b9dd18" }
+starkware_utils_testing = { git = "https://github.com/starkware-libs/starkware-starknet-utils", rev = "1efaea14eedeeb734de380ba8a98b5ce47b9dd18" }
 
 [scripts]
 test = "snforge test --run-native"
@@ -22,4 +22,4 @@ panic-backtrace = true
 inlining-strategy = 30
 
 [workspace.tool.scarb]
-allow-prebuilt-plugins = ["snforge_std"]
+allow-prebuilt-plugins = ["snforge_std", "snforge_scarb_plugin"]

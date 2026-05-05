@@ -16,6 +16,7 @@ pub mod ExchangeTimeComponent {
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent::InternalTrait as NonceInternal;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
+    use starkware_utils::components::common_roles::CommonRolesComponent;
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::pausable::PausableComponent::InternalTrait as PausableInternal;
     use starkware_utils::components::roles::RolesComponent;
@@ -48,6 +49,7 @@ pub mod ExchangeTimeComponent {
         +SRC5Component::HasComponent<TContractState>,
         impl OperatorNonce: OperatorNonceComponent::HasComponent<TContractState>,
         impl Pausable: PausableComponent::HasComponent<TContractState>,
+        impl CommonRoles: CommonRolesComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
     > of IExchangeTime<ComponentState<TContractState>> {
         fn get_exchange_time(self: @ComponentState<TContractState>) -> Timestamp {

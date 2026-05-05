@@ -4,10 +4,12 @@ pub mod NonceMock {
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::operator_nonce::OperatorNonceComponent;
     use starknet::ContractAddress;
+    use starkware_utils::components::common_roles::CommonRolesComponent;
     use starkware_utils::components::roles::RolesComponent;
     use starkware_utils::components::roles::RolesComponent::InternalTrait as RolesInternal;
 
     component!(path: OperatorNonceComponent, storage: nonce, event: NonceEvent);
+    component!(path: CommonRolesComponent, storage: common_roles, event: CommonRolesEvent);
     component!(path: RolesComponent, storage: roles, event: RolesEvent);
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
@@ -24,6 +26,8 @@ pub mod NonceMock {
     pub struct Storage {
         #[substorage(v0)]
         pub nonce: OperatorNonceComponent::Storage,
+        #[substorage(v0)]
+        pub common_roles: CommonRolesComponent::Storage,
         #[substorage(v0)]
         pub roles: RolesComponent::Storage,
         #[substorage(v0)]
@@ -42,6 +46,8 @@ pub mod NonceMock {
     enum Event {
         #[flat]
         NonceEvent: OperatorNonceComponent::Event,
+        #[flat]
+        CommonRolesEvent: CommonRolesComponent::Event,
         #[flat]
         RolesEvent: RolesComponent::Event,
         #[flat]

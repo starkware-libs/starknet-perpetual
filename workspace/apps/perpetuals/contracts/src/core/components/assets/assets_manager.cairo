@@ -88,6 +88,7 @@ pub(crate) mod AssetsManager {
         StoragePathEntry, StoragePointerReadAccess, StoragePointerWriteAccess,
     };
     use starknet::{ContractAddress, SyscallResultTrait};
+    use starkware_utils::components::common_roles::CommonRolesComponent;
     use starkware_utils::components::pausable::PausableComponent;
     use starkware_utils::components::roles::RolesComponent;
     use starkware_utils::constants::{TWO_POW_128, TWO_POW_40};
@@ -128,6 +129,8 @@ pub(crate) mod AssetsManager {
         #[flat]
         SRC5Event: SRC5Component::Event,
         #[flat]
+        CommonRolesEvent: CommonRolesComponent::Event,
+        #[flat]
         RolesEvent: RolesComponent::Event,
         #[flat]
         AssetsEvent: AssetsComponent::Event,
@@ -150,6 +153,8 @@ pub(crate) mod AssetsManager {
         #[substorage(v0)]
         pausable: PausableComponent::Storage,
         #[substorage(v0)]
+        pub common_roles: CommonRolesComponent::Storage,
+        #[substorage(v0)]
         pub roles: RolesComponent::Storage,
         #[substorage(v0)]
         src5: SRC5Component::Storage,
@@ -160,6 +165,7 @@ pub(crate) mod AssetsManager {
 
     component!(path: PausableComponent, storage: pausable, event: PausableEvent);
     component!(path: OperatorNonceComponent, storage: operator_nonce, event: OperatorNonceEvent);
+    component!(path: CommonRolesComponent, storage: common_roles, event: CommonRolesEvent);
     component!(path: RolesComponent, storage: roles, event: RolesEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);

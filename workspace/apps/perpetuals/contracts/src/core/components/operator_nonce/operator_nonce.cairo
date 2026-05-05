@@ -8,6 +8,7 @@ pub mod OperatorNonceComponent {
     use openzeppelin::introspection::src5::SRC5Component;
     use perpetuals::core::components::operator_nonce::interface::IOperatorNonce;
     use starknet::storage::{StoragePointerReadAccess, StoragePointerWriteAccess};
+    use starkware_utils::components::common_roles::CommonRolesComponent;
     use starkware_utils::components::roles::RolesComponent;
     use starkware_utils::components::roles::RolesComponent::InternalTrait as RolesInternal;
 
@@ -24,6 +25,7 @@ pub mod OperatorNonceComponent {
         +Drop<TContractState>,
         +AccessControlComponent::HasComponent<TContractState>,
         +SRC5Component::HasComponent<TContractState>,
+        impl CommonRoles: CommonRolesComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
     > of IOperatorNonce<ComponentState<TContractState>> {
         /// Returns the next unused nonce.
@@ -39,6 +41,7 @@ pub mod OperatorNonceComponent {
         +Drop<TContractState>,
         +AccessControlComponent::HasComponent<TContractState>,
         +SRC5Component::HasComponent<TContractState>,
+        impl CommonRoles: CommonRolesComponent::HasComponent<TContractState>,
         impl Roles: RolesComponent::HasComponent<TContractState>,
     > of InternalTrait<TContractState> {
         /// Consumes a nonce, returns the current value, and increments nonce.
